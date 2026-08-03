@@ -25,9 +25,12 @@ service cloud.firestore {
 
       // 참여(코드 입력): waiting 상태에서 본인 uid를 추가하며 paired로 전환할 때만 허용.
       //   생성자 본인이 자기 문서를 갱신하는 것도 허용(코드 재생성 등)하되 멤버 변경은 위 규칙으로 제한.
-      allow update: if signedIn() && (
-        // 케이스 A: 이미 멤버인 사람의 일반 갱신(멤버 목록 변경 없음)
-        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids)
+      // 이별 프로토콜(v1): 일단 dissolved로 전환된 문서는 그 무엇으로도 되돌리거나 추가 수정할 수 없다(툼스톤 고정).
+      //   → 전체 allow update에 "현재 상태가 dissolved가 아닐 것"을 선행 조건으로 건다.
+      allow update: if signedIn() && resource.data.status != "dissolved" && (
+        // 케이스 A: 이미 멤버인 사람의 일반 갱신(멤버 목록 변경 없음). dissolved로의 전환은 케이스 C 전용 통로로만 허용.
+        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status != "dissolved")
         ||
         // 케이스 B: 대기중인 쌍에 새 멤버(본인)가 합류
         (resource.data.status == "waiting"
@@ -36,13 +39,27 @@ service cloud.firestore {
           && request.resource.data.memberUids.hasAll(resource.data.memberUids)
           && request.resource.data.memberUids.hasAny([request.auth.uid])
           && request.resource.data.status == "paired")
+        ||
+        // 케이스 C: 관계 정리(이별 프로토콜) — 어느 쪽 멤버든 단독 실행 가능. 상대 동의 불필요(설계 철학: 인질 방지).
+        //   멤버 목록은 불변, status/dissolvedAt/dissolvedBy 필드만 갱신 가능(다른 필드 끼워넣기 차단).
+        (isMember(resource.data)
+          && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == "dissolved"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status","dissolvedAt","dissolvedBy"]))
       );
+      // pairs 문서 자체는 삭제하지 않는다(툼스톤 유지) — 양쪽 클라이언트가 실시간으로 "dissolved"
+      // 상태를 관측해 각자 로컬 정리를 마칠 수 있어야 하므로, 문서가 통째로 사라지면 그 관측이 불가능해진다.
+      // 문서에는 멤버 uid 2개와 상태값만 남고, 대화·사진 등 실제 "기록"은 아래 하위컬렉션 삭제로 전부 제거된다.
       allow delete: if false;
 
       match /messages/{msgId} {
         allow read: if isMember(pairOf(pairId));
-        allow create: if isMember(pairOf(pairId)) && request.resource.data.sender == request.auth.uid;
-        allow update, delete: if false;
+        allow create: if isMember(pairOf(pairId)) && request.resource.data.sender == request.auth.uid
+          && pairOf(pairId).status != "dissolved";
+        allow update: if false;
+        // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
+        // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
+        allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
       }
     }
   }

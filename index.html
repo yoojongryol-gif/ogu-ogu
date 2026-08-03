@@ -163,7 +163,50 @@ input.code-input{
     </div>
     <button class="toggle" id="lockToggle"><span class="knob"></span></button>
   </div>
+  <div class="settings-row" style="border-color:#f4c9c9">
+    <div>
+      <div class="label" style="color:var(--red)">관계 정리</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">이 공간을 정리하고 기록을 삭제해요</div>
+    </div>
+    <button class="ghost-btn" id="btnBreakup" style="color:var(--red);text-decoration:none;font-weight:700">정리하기</button>
+  </div>
   <button class="ghost-btn" id="btnBackFromSettings">← 대화로 돌아가기</button>
+</div>
+
+<!-- 관계가 정리된 뒤 안내 화면 -->
+<div class="screen center" id="screenDissolved">
+  <div class="logo">🕊️</div>
+  <div class="title" style="font-size:20px">관계가 정리되었습니다</div>
+  <div class="hint">함께한 공간은 안전하게 삭제되었어요.<br>그동안 이 공간을 지켜줘서 고마웠어요.</div>
+  <button class="primary-btn" id="btnDissolvedHome">처음으로</button>
+</div>
+
+<!-- 관계 정리 확인 모달(2단계 확인: 확인 버튼 → 암호/문구 재입력) -->
+<div id="breakupModal" style="position:fixed;inset:0;z-index:700;background:rgba(74,59,59,.55);display:none;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border-radius:20px;padding:26px 22px;max-width:320px;width:100%;text-align:center">
+    <div id="breakupStep1">
+      <div style="font-size:34px;margin-bottom:8px">🕊️</div>
+      <div style="font-weight:800;font-size:16px;margin-bottom:10px">관계를 정리할까요?</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">
+        정말 정리하시겠어요? 두 사람의 대화와 기록이 모두 삭제되며 되돌릴 수 없습니다.<br>
+        상대방에게도 똑같이 안내돼요.
+      </div>
+      <button class="primary-btn" id="breakupStep1Confirm" style="background:var(--red);max-width:none">정리할게요</button>
+      <button class="ghost-btn" id="breakupStep1Cancel">취소</button>
+    </div>
+    <div id="breakupStep2" style="display:none">
+      <div style="font-weight:800;font-size:15px;margin-bottom:10px">마지막 확인이에요</div>
+      <div id="breakupStep2Desc" style="font-size:12.5px;color:var(--muted);margin-bottom:14px">암호를 다시 입력해주세요</div>
+      <input id="breakupPinInput" type="password" inputmode="numeric" maxlength="6" class="code-input" style="width:150px;font-size:22px;margin:0 auto" autocomplete="off">
+      <div id="breakupMsg" style="font-size:12px;color:var(--red);min-height:16px;margin-top:8px"></div>
+      <button class="primary-btn" id="breakupStep2Confirm" style="background:var(--red);max-width:none;margin-top:10px">완전히 정리하기</button>
+      <button class="ghost-btn" id="breakupStep2Cancel">취소</button>
+    </div>
+    <div id="breakupStep3" style="display:none">
+      <div class="spinner" style="margin:10px auto"></div>
+      <div style="font-size:13px;color:var(--muted);margin-top:10px">정리하는 중이에요...</div>
+    </div>
+  </div>
 </div>
 
 <!-- 잠금화면 -->
@@ -293,6 +336,7 @@ async function initFirebase(){
 function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
 
 async function createPair(){
+  _dissolvedHandled=false; // 새 페어링 시작 — 이전 관계 정리 가드 해제(재페어링 가능해야 함)
   const code = genCode();
   const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
     code, memberUids:[fb.uid], status:"waiting",
@@ -306,6 +350,7 @@ async function createPair(){
 }
 
 async function joinPair(){
+  _dissolvedHandled=false; // 새 페어링 시작 — 이전 관계 정리 가드 해제(재페어링 가능해야 함)
   const code = document.getElementById("joinInput").value.trim();
   const msgEl = document.getElementById("joinMsg");
   msgEl.textContent="";
@@ -335,6 +380,8 @@ function watchPair(){
       show("screenStart"); return;
     }
     currentPairData = snap.data();
+    // 이별 프로토콜: 내가 실행했든(즉시 반영) 상대가 실행했든(실시간 수신), 감지 즉시 동일하게 처리.
+    if(currentPairData.status==="dissolved"){ handleDissolved(); return; }
     if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
       enterChat();
     } else {
@@ -379,6 +426,107 @@ async function sendMessage(){
   }).catch(err=>{ console.error(err); toast("전송에 실패했어요"); input.value=text; });
 }
 
+/* =====================================================================
+   이별 프로토콜 v1 — 핵심 철학: 어느 한쪽도 상대 동의 없이 기록을 인질로 잡을 수 없다.
+   ①pairs/{id} 문서에 dissolved 마킹(툼스톤, 삭제 아님 — 양쪽이 실시간으로 관측 가능해야 함)
+   ②messages 하위컬렉션 배치 삭제(페이지네이션, 대량 대비)
+   ③양쪽 클라이언트는 dissolved 감지 즉시 로컬 상태 소거 후 안내 화면
+   ④초기 화면 복귀(새 페어링 가능) — 즉시 삭제만 v1(유예 모드는 v1.1)
+   ===================================================================== */
+let _dissolvedHandled=false;
+
+function openBreakup(){
+  document.getElementById("breakupModal").style.display="flex";
+  document.getElementById("breakupStep1").style.display="block";
+  document.getElementById("breakupStep2").style.display="none";
+  document.getElementById("breakupStep3").style.display="none";
+}
+function closeBreakup(){
+  document.getElementById("breakupModal").style.display="none";
+}
+
+// 2단계 확인 진입: PIN 잠금이 켜져 있으면 PIN 재입력, 꺼져 있으면(재입력할 PIN 자체가 없으므로)
+// "정리"라는 문구를 그대로 입력하는 동등한 강도의 2차 확인으로 대체한다.
+function openBreakupStep2(){
+  document.getElementById("breakupStep1").style.display="none";
+  document.getElementById("breakupStep2").style.display="block";
+  const input=document.getElementById("breakupPinInput");
+  const desc=document.getElementById("breakupStep2Desc");
+  input.value=""; document.getElementById("breakupMsg").textContent="";
+  if(lockIsOn()){
+    input.type="password"; input.setAttribute("inputmode","numeric"); input.setAttribute("maxlength","6");
+    desc.textContent="암호를 다시 입력해서 확인해주세요";
+  } else {
+    input.type="text"; input.removeAttribute("inputmode"); input.setAttribute("maxlength","2");
+    desc.textContent='확인을 위해 "정리"라고 입력해주세요';
+  }
+  setTimeout(()=>{try{input.focus();}catch(e){}},100);
+}
+
+async function verifyBreakupStep2(){
+  const val=document.getElementById("breakupPinInput").value;
+  const msgEl=document.getElementById("breakupMsg");
+  if(lockIsOn()){
+    if(!val || await hashPin(val)!==localStorage.getItem("oguogu.lock")){ msgEl.textContent="암호가 일치하지 않아요"; return; }
+  } else {
+    if(val!=="정리"){ msgEl.textContent='"정리"라고 정확히 입력해주세요'; return; }
+  }
+  document.getElementById("breakupStep2").style.display="none";
+  document.getElementById("breakupStep3").style.display="block";
+  try{
+    await dissolvePair();
+  }catch(err){
+    console.error(err);
+    closeBreakup();
+    toast("정리하지 못했어요. 다시 시도해주세요");
+  }
+}
+
+// 하위컬렉션(messages) 전체 삭제 — Firestore 대량 삭제 표준 패턴: limit 페이지 조회 + writeBatch,
+// 페이지가 빌 때까지 반복(메시지가 아무리 많아도 한 번에 다 못 지우는 상황을 방지).
+async function purgeAllMessages(id){
+  const PAGE=300;
+  const colRef=M.collection(fb.db,"pairs",id,"messages");
+  while(true){
+    const q=M.query(colRef, M.limit(PAGE));
+    const snap=await M.getDocs(q);
+    if(snap.empty) break;
+    const batch=M.writeBatch(fb.db);
+    snap.docs.forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+    if(snap.docs.length<PAGE) break;
+  }
+}
+
+async function dissolvePair(){
+  const id=pairId, myUid=fb.uid;
+  // ① dissolved 마킹 — 상대 동의/승인 절차 없음(단독 실행 가능이 이 기능의 핵심)
+  await M.updateDoc(M.doc(fb.db,"pairs",id), {
+    status:"dissolved", dissolvedAt:M.serverTimestamp(), dissolvedBy:myUid
+  });
+  // ② 하위 데이터(대화) 영구 삭제
+  await purgeAllMessages(id);
+  closeBreakup();
+  // ③ 로컬 정리 + 안내 화면 (내 쪽은 여기서 즉시 반영. onSnapshot으로도 동일 함수가 호출되므로 멱등 처리됨)
+  handleDissolved();
+}
+
+// 내가 정리를 실행했든, 상대가 정리를 실행해 실시간으로 감지했든 동일하게 처리한다.
+function handleDissolved(){
+  if(_dissolvedHandled) return;
+  _dissolvedHandled=true;
+  if(unsubPair) unsubPair();
+  if(unsubMsgs) unsubMsgs();
+  closeBreakup();
+  hideLock();
+  // 로컬 상태 전부 소거(v1 기준 앱이 실제로 쓰는 로컬 저장 키). 향후 사진 등 IndexedDB 캐시가
+  // 생기면(2단계) 여기서 함께 지워야 한다.
+  localStorage.removeItem("oguogu.pairId");
+  localStorage.removeItem("oguogu.lock");
+  pairId=null; currentPairData=null;
+  show("screenDissolved");
+}
+
 /* ===== 이벤트 바인딩 ===== */
 document.getElementById("btnCreate").onclick=()=>createPair().catch(err=>{console.error(err); toast("코드를 만들지 못했어요");});
 document.getElementById("btnJoin").onclick=()=>{ document.getElementById("joinInput").value=""; document.getElementById("joinMsg").textContent=""; show("screenJoin"); };
@@ -394,6 +542,13 @@ document.getElementById("sendBtn").onclick=()=>sendMessage();
 document.getElementById("msgInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendMessage(); });
 document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); show("screenSettings"); };
 document.getElementById("btnBackFromSettings").onclick=()=>show("screenChat");
+document.getElementById("btnBreakup").onclick=openBreakup;
+document.getElementById("breakupStep1Cancel").onclick=closeBreakup;
+document.getElementById("breakupStep1Confirm").onclick=openBreakupStep2;
+document.getElementById("breakupStep2Cancel").onclick=closeBreakup;
+document.getElementById("breakupStep2Confirm").onclick=()=>verifyBreakupStep2();
+document.getElementById("breakupPinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") verifyBreakupStep2(); });
+document.getElementById("btnDissolvedHome").onclick=()=>show("screenStart");
 
 /* ===== 시작 ===== */
 function showConnectionPending(){
