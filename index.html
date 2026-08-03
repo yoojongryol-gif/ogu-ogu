@@ -105,7 +105,10 @@ input.code-input{
 
 <!-- 로딩 -->
 <div class="screen active center" id="screenLoading">
-  <div class="spinner"></div>
+  <div class="spinner" id="loadingSpinner"></div>
+  <div id="loadingPendingMsg" style="display:none; margin-top:18px; text-align:center; color:#a8798a; font-size:14px; line-height:1.6; padding:0 32px;">
+    서버 연결 준비 중이에요.<br>잠시 후 새로고침 해주세요.
+  </div>
 </div>
 
 <!-- 시작 화면 -->
@@ -275,11 +278,14 @@ async function initFirebase(){
     try{ M.connectAuthEmulator(fb.auth, "http://127.0.0.1:9099", {disableWarnings:true}); }catch(e){}
     try{ M.connectFirestoreEmulator(fb.db, "127.0.0.1", 8080); }catch(e){}
   }
-  await new Promise(res=>{
+  await new Promise((res,rej)=>{
     M.onAuthStateChanged(fb.auth, async user=>{
       if(user){ fb.uid=user.uid; res(); }
-      else{ await M.signInAnonymously(fb.auth).catch(err=>{console.error(err); toast("연결에 실패했어요. 새로고침 해주세요");}); }
-    });
+      else{
+        try{ await M.signInAnonymously(fb.auth); }
+        catch(err){ console.error(err); rej(err); }
+      }
+    }, err=>{ console.error(err); rej(err); });
   });
 }
 
@@ -390,12 +396,22 @@ document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); show("s
 document.getElementById("btnBackFromSettings").onclick=()=>show("screenChat");
 
 /* ===== 시작 ===== */
+function showConnectionPending(){
+  document.getElementById("loadingSpinner").style.display="none";
+  document.getElementById("loadingPendingMsg").style.display="block";
+  toast("연결에 실패했어요. 새로고침 해주세요");
+}
 (async function boot(){
-  await initFirebase();
-  if(pairId){
-    watchPair();
-  } else {
-    show("screenStart");
+  try{
+    await initFirebase();
+    if(pairId){
+      watchPair();
+    } else {
+      show("screenStart");
+    }
+  }catch(err){
+    console.error(err);
+    showConnectionPending();
   }
 })();
 
