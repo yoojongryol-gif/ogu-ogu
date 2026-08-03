@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 2단계(사진 기능)에서 구현 예정 — 1단계는 채팅 텍스트만이라 전면 차단.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

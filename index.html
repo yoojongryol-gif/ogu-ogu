@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>오구오구</title>
+<meta name="description" content="단둘이 쓰는 우리만의 공간">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-512.png">
+<meta name="theme-color" content="#ff8ea8">
+<style>
+:root{
+  --bg:#fff2f0; --card:#fffaf7; --accent:#ff8ea8; --accent-d:#f2678f;
+  --beige:#ffe9d6; --beige-d:#f4c9a0; --text:#4a3b3b; --muted:#a68f8f; --red:#e0577a;
+  --bubble-me:#ff8ea8; --bubble-you:#ffe9d6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  background:var(--bg); color:var(--text); overscroll-behavior:none;
+  display:flex; flex-direction:column; height:100dvh;
+}
+button{font-family:inherit; cursor:pointer}
+.screen{display:none; flex-direction:column; flex:1; min-height:0}
+.screen.active{display:flex}
+.center{align-items:center; justify-content:center; text-align:center; padding:32px 24px; gap:14px}
+.logo{font-size:44px}
+.title{font-size:26px; font-weight:800; color:var(--accent-d)}
+.tagline{font-size:14px; color:var(--muted); margin-bottom:18px}
+.primary-btn{
+  width:100%; max-width:280px; padding:14px; border:none; border-radius:16px;
+  background:var(--accent); color:#fff; font-size:16px; font-weight:700;
+  box-shadow:0 4px 14px rgba(255,142,168,.35);
+}
+.primary-btn:disabled{opacity:.5}
+.secondary-btn{
+  width:100%; max-width:280px; padding:14px; border-radius:16px;
+  background:var(--card); color:var(--accent-d); font-size:16px; font-weight:700;
+  border:2px solid var(--beige-d);
+}
+.ghost-btn{background:none;border:none;color:var(--muted);font-size:13px;text-decoration:underline;padding:8px}
+.code-box{
+  font-size:40px; letter-spacing:10px; font-weight:800; color:var(--accent-d);
+  background:var(--card); border:2px dashed var(--beige-d); border-radius:18px;
+  padding:18px 14px; margin:10px 0;
+}
+.hint{font-size:12.5px; color:var(--muted); line-height:1.6; max-width:280px}
+.warn{font-size:12.5px; color:var(--red); background:#fff0f3; border-radius:10px; padding:10px 12px; max-width:280px; line-height:1.6}
+input.code-input{
+  width:220px; text-align:center; font-size:26px; letter-spacing:8px; padding:12px;
+  border:2px solid var(--beige-d); border-radius:14px; background:var(--card); color:var(--text);
+}
+.spinner{width:26px;height:26px;border:3px solid var(--beige); border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* 채팅 화면 */
+#screenChat{padding:0}
+.chat-header{
+  display:flex; align-items:center; justify-content:space-between; padding:12px 16px;
+  background:var(--card); border-bottom:1px solid var(--beige); flex:none;
+}
+.chat-header .h-title{font-weight:800; color:var(--accent-d); font-size:17px}
+.icon-btn{background:none;border:none;font-size:20px;color:var(--muted); padding:6px}
+#msgList{flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px}
+.bubble{max-width:72%; padding:10px 13px; border-radius:16px; font-size:15px; line-height:1.45; word-break:break-word}
+.bubble.me{align-self:flex-end; background:var(--bubble-me); color:#fff; border-bottom-right-radius:4px}
+.bubble.you{align-self:flex-start; background:var(--bubble-you); color:var(--text); border-bottom-left-radius:4px}
+.msg-empty{margin:auto; text-align:center; color:var(--muted); font-size:13.5px; line-height:1.7}
+.chat-input-row{display:flex; gap:8px; padding:10px 12px; background:var(--card); border-top:1px solid var(--beige); flex:none}
+#msgInput{
+  flex:1; border:1.5px solid var(--beige-d); border-radius:20px; padding:11px 16px;
+  font-size:15px; background:#fff; color:var(--text);
+}
+#sendBtn{width:44px; height:44px; border-radius:50%; background:var(--accent); color:#fff; border:none; font-size:18px; flex:none}
+#sendBtn:disabled{opacity:.4}
+
+/* 설정 */
+.settings-row{
+  display:flex; align-items:center; justify-content:space-between; width:100%; max-width:320px;
+  background:var(--card); border-radius:14px; padding:14px 16px; margin-bottom:10px; border:1px solid var(--beige);
+}
+.settings-row .label{font-size:14.5px; font-weight:600}
+.toggle{
+  width:46px; height:26px; border-radius:20px; background:var(--beige-d); position:relative; border:none; flex:none;
+}
+.toggle.on{background:var(--accent)}
+.toggle .knob{position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .15s}
+.toggle.on .knob{left:23px}
+
+/* 잠금화면 */
+#lockScreen{
+  position:fixed; inset:0; z-index:500; background:var(--bg);
+  display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; gap:6px;
+}
+.toast{
+  position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+  background:rgba(74,59,59,.92); color:#fff; padding:10px 18px; border-radius:20px; font-size:13.5px;
+  opacity:0; pointer-events:none; transition:.25s; z-index:600; max-width:86%; text-align:center;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- 로딩 -->
+<div class="screen active center" id="screenLoading">
+  <div class="spinner"></div>
+</div>
+
+<!-- 시작 화면 -->
+<div class="screen center" id="screenStart">
+  <div class="logo">🩷</div>
+  <div class="title">오구오구</div>
+  <div class="tagline">단둘이 쓰는 우리만의 공간</div>
+  <button class="primary-btn" id="btnCreate">코드 만들기</button>
+  <button class="secondary-btn" id="btnJoin">코드로 들어가기</button>
+  <div class="hint">이메일이나 전화번호 없이, 6자리 코드로 상대방과 이 공간을 연결해요.</div>
+</div>
+
+<!-- 코드 생성 후 대기 -->
+<div class="screen center" id="screenWaiting">
+  <div class="tagline" style="margin-bottom:0">이 코드를 상대방에게 알려주세요</div>
+  <div class="code-box" id="waitCode">------</div>
+  <div class="spinner"></div>
+  <div class="hint">상대방이 코드를 입력하면 자동으로 연결돼요.</div>
+  <div class="warn">⚠️ 코드는 10분 후 사라져요. 계정이 없어서, 이 코드를 잃어버리면 기기를 바꿨을 때 이 공간을 다시 열 수 없어요. 어딘가에 꼭 저장해두세요.</div>
+  <button class="ghost-btn" id="btnCancelWait">취소하고 처음으로</button>
+</div>
+
+<!-- 코드 입력 -->
+<div class="screen center" id="screenJoin">
+  <div class="tagline" style="margin-bottom:0">상대방이 알려준 6자리 코드를 입력하세요</div>
+  <input class="code-input" id="joinInput" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="off">
+  <div id="joinMsg" style="font-size:12.5px; color:var(--red); min-height:16px"></div>
+  <button class="primary-btn" id="btnJoinSubmit">들어가기</button>
+  <button class="ghost-btn" id="btnJoinCancel">뒤로</button>
+</div>
+
+<!-- 채팅 -->
+<div class="screen" id="screenChat">
+  <div class="chat-header">
+    <div class="h-title">🩷 오구오구</div>
+    <button class="icon-btn" id="btnSettings" title="설정">⚙️</button>
+  </div>
+  <div id="msgList"><div class="msg-empty">아직 대화가 없어요.<br>첫 인사를 건네보세요 🩷</div></div>
+  <div class="chat-input-row">
+    <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
+    <button id="sendBtn">➤</button>
+  </div>
+</div>
+
+<!-- 설정 -->
+<div class="screen center" id="screenSettings" style="justify-content:flex-start; padding-top:26px">
+  <div class="title" style="font-size:19px">설정</div>
+  <div class="settings-row">
+    <div>
+      <div class="label">암호 잠금</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px" id="lockStatusLabel">꺼짐</div>
+    </div>
+    <button class="toggle" id="lockToggle"><span class="knob"></span></button>
+  </div>
+  <button class="ghost-btn" id="btnBackFromSettings">← 대화로 돌아가기</button>
+</div>
+
+<!-- 잠금화면 -->
+<div id="lockScreen">
+  <div style="font-size:48px">🔒</div>
+  <div style="font-size:15.5px;font-weight:700;margin:10px 0 16px">암호를 입력하세요</div>
+  <input id="lockInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off"
+    style="width:170px;text-align:center;font-size:24px;letter-spacing:8px;padding:12px;border:2px solid var(--beige-d);border-radius:14px;background:var(--card);color:var(--text)">
+  <div id="lockMsg" style="font-size:12px;color:var(--red);margin-top:10px;min-height:16px"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   오구오구 v0 — 페어링 + 채팅 + PIN 잠금
+   회사 패턴 재사용: team-messenger(채팅/Firestore 구조), my-planner(PIN 잠금)
+   ========================================================= */
+const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
+const M = {};
+const fb = { app:null, auth:null, db:null, uid:null };
+
+// 프로덕션 전환 시 이 값을 실제 Firebase 프로젝트 설정으로 교체하세요.
+// (팀톡과 분리된 신규 프로젝트 권장 — 데이터 격리. 현재는 로컬 에뮬레이터용 demo 설정)
+const firebaseConfig = {
+  apiKey: "demo-oguogu-key",
+  authDomain: "demo-oguogu.firebaseapp.com",
+  projectId: "demo-oguogu",
+  storageBucket: "demo-oguogu.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:0000000000000000000000"
+};
+const USE_EMULATOR = (location.hostname==="localhost" || location.hostname==="127.0.0.1");
+
+let pairId = localStorage.getItem("oguogu.pairId") || null;
+let unsubPair=null, unsubMsgs=null;
+let currentPairData = null;
+
+function toast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(toast._h); toast._h=setTimeout(()=>t.classList.remove("show"),2200);
+}
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+/* ===== PIN 잠금 (마이플래너 패턴 재사용: SHA-256 해시, 평문 미저장) ===== */
+async function hashPin(pin){const b=new TextEncoder().encode("oguogu-lock|"+pin);const h=await crypto.subtle.digest("SHA-256",b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,"0")).join("");}
+function lockIsOn(){return !!localStorage.getItem("oguogu.lock");}
+let _unlockedThisSession=false;
+function showLock(){
+  if(!lockIsOn()){_unlockedThisSession=true;return;}
+  if(_unlockedThisSession)return;
+  document.getElementById("lockScreen").style.display="flex";
+  const pin=document.getElementById("lockInput");
+  pin.value=""; document.getElementById("lockMsg").textContent="";
+  setTimeout(()=>{try{pin.focus();}catch(e){}},150);
+}
+function hideLock(){_unlockedThisSession=true;document.getElementById("lockScreen").style.display="none";}
+async function autoUnlockCheck(){
+  const pin=document.getElementById("lockInput").value;
+  if(pin.length<4)return;
+  if(await hashPin(pin)===localStorage.getItem("oguogu.lock")){hideLock();}
+  else if(pin.length>=6){document.getElementById("lockMsg").textContent="암호가 틀렸어요";document.getElementById("lockInput").value="";}
+}
+async function setupPin(){
+  const pin=prompt("설정할 암호 (4~6자리 숫자)");
+  if(pin==null)return false;
+  if(!/^\d{4,6}$/.test(pin)){toast("4~6자리 숫자로 입력하세요");return false;}
+  localStorage.setItem("oguogu.lock",await hashPin(pin));
+  toast("🔒 암호 잠금을 켰어요");
+  return true;
+}
+function turnOffPin(){
+  if(!confirm("암호 잠금을 끌까요?"))return;
+  localStorage.removeItem("oguogu.lock");
+  toast("암호 잠금을 껐어요");
+  renderLockToggle();
+}
+function renderLockToggle(){
+  const t=document.getElementById("lockToggle"), lbl=document.getElementById("lockStatusLabel");
+  if(lockIsOn()){t.classList.add("on"); lbl.textContent="켜짐 — 대화방을 열 때마다 암호 필요";}
+  else{t.classList.remove("on"); lbl.textContent="꺼짐";}
+}
+document.getElementById("lockToggle").onclick=async ()=>{
+  if(lockIsOn()) turnOffPin();
+  else if(await setupPin()) renderLockToggle();
+};
+document.getElementById("lockInput").addEventListener("input",autoUnlockCheck);
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden && lockIsOn()) _unlockedThisSession=false; // 다음에 돌아오면 다시 잠금
+});
+
+/* ===== Firebase 초기화 ===== */
+async function initFirebase(){
+  // 로컬 e2e 테스트 전용 훅: window.__OGUOGU_MOCK__이 설정된 경우에만 목 SDK 사용.
+  // 프로덕션에서는 이 전역이 절대 설정되지 않으므로 항상 아래 else(실제 CDN Firebase SDK) 경로를 탄다.
+  if (window.__OGUOGU_MOCK__){
+    Object.assign(M, window.__OGUOGU_MOCK__);
+  } else {
+    const appMod = await import(SDK+"firebase-app.js");
+    const authMod = await import(SDK+"firebase-auth.js");
+    const dbMod = await import(SDK+"firebase-firestore.js");
+    Object.assign(M, appMod, authMod, dbMod);
+  }
+  fb.app = M.initializeApp(firebaseConfig);
+  fb.auth = M.getAuth(fb.app);
+  fb.db = M.getFirestore(fb.app);
+  if(USE_EMULATOR){
+    try{ M.connectAuthEmulator(fb.auth, "http://127.0.0.1:9099", {disableWarnings:true}); }catch(e){}
+    try{ M.connectFirestoreEmulator(fb.db, "127.0.0.1", 8080); }catch(e){}
+  }
+  await new Promise(res=>{
+    M.onAuthStateChanged(fb.auth, async user=>{
+      if(user){ fb.uid=user.uid; res(); }
+      else{ await M.signInAnonymously(fb.auth).catch(err=>{console.error(err); toast("연결에 실패했어요. 새로고침 해주세요");}); }
+    });
+  });
+}
+
+/* ===== 페어링 ===== */
+function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
+
+async function createPair(){
+  const code = genCode();
+  const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
+    code, memberUids:[fb.uid], status:"waiting",
+    createdAt:M.serverTimestamp(), codeExpiresAt: Date.now()+10*60*1000
+  });
+  pairId = ref.id;
+  localStorage.setItem("oguogu.pairId", pairId);
+  document.getElementById("waitCode").textContent = code.slice(0,3)+" "+code.slice(3);
+  show("screenWaiting");
+  watchPair();
+}
+
+async function joinPair(){
+  const code = document.getElementById("joinInput").value.trim();
+  const msgEl = document.getElementById("joinMsg");
+  msgEl.textContent="";
+  if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
+  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","waiting"));
+  const snap = await M.getDocs(q).catch(()=>null);
+  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 다시 확인해주세요"; return; }
+  const d = snap.docs[0];
+  if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){
+    msgEl.textContent="코드가 만료됐어요. 상대방에게 새 코드를 요청하세요"; return;
+  }
+  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 만든 코드예요. 상대방 기기에서 입력해주세요"; return; }
+  await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" }).catch(err=>{
+    console.error(err); msgEl.textContent="연결에 실패했어요. 다시 시도해주세요";
+  });
+  pairId = d.id;
+  localStorage.setItem("oguogu.pairId", pairId);
+  watchPair();
+}
+
+function watchPair(){
+  if(unsubPair) unsubPair();
+  unsubPair = M.onSnapshot(M.doc(fb.db,"pairs",pairId), snap=>{
+    if(!snap.exists()){
+      // 상대 없이 만료/삭제된 경우 처음으로
+      localStorage.removeItem("oguogu.pairId"); pairId=null;
+      show("screenStart"); return;
+    }
+    currentPairData = snap.data();
+    if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
+      enterChat();
+    } else {
+      document.getElementById("waitCode").textContent = (currentPairData.code||"------").replace(/(\d{3})(\d{3})/,"$1 $2");
+      show("screenWaiting");
+    }
+  }, err=>{ console.error(err); toast("연결 상태를 확인할 수 없어요"); });
+}
+
+function enterChat(){
+  showLock();
+  show("screenChat");
+  watchMessages();
+}
+
+/* ===== 채팅 ===== */
+function watchMessages(){
+  if(unsubMsgs) unsubMsgs();
+  const q = M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.limitToLast(200));
+  unsubMsgs = M.onSnapshot(q, snap=>{
+    const list = document.getElementById("msgList");
+    if(snap.empty){ list.innerHTML = '<div class="msg-empty">아직 대화가 없어요.<br>첫 인사를 건네보세요 🩷</div>'; return; }
+    list.innerHTML="";
+    snap.docs.forEach(d=>{
+      const m=d.data();
+      const b=document.createElement("div");
+      b.className="bubble "+(m.sender===fb.uid?"me":"you");
+      b.textContent=m.text||"";
+      list.appendChild(b);
+    });
+    list.scrollTop = list.scrollHeight;
+  }, err=>{ console.error(err); });
+}
+
+async function sendMessage(){
+  const input=document.getElementById("msgInput");
+  const text=input.value.trim();
+  if(!text || !pairId) return;
+  input.value="";
+  await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
+    sender: fb.uid, text, ts: M.serverTimestamp()
+  }).catch(err=>{ console.error(err); toast("전송에 실패했어요"); input.value=text; });
+}
+
+/* ===== 이벤트 바인딩 ===== */
+document.getElementById("btnCreate").onclick=()=>createPair().catch(err=>{console.error(err); toast("코드를 만들지 못했어요");});
+document.getElementById("btnJoin").onclick=()=>{ document.getElementById("joinInput").value=""; document.getElementById("joinMsg").textContent=""; show("screenJoin"); };
+document.getElementById("btnJoinSubmit").onclick=()=>joinPair();
+document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") joinPair(); });
+document.getElementById("btnJoinCancel").onclick=()=>show("screenStart");
+document.getElementById("btnCancelWait").onclick=()=>{
+  if(unsubPair) unsubPair();
+  localStorage.removeItem("oguogu.pairId"); pairId=null;
+  show("screenStart");
+};
+document.getElementById("sendBtn").onclick=()=>sendMessage();
+document.getElementById("msgInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendMessage(); });
+document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); show("screenSettings"); };
+document.getElementById("btnBackFromSettings").onclick=()=>show("screenChat");
+
+/* ===== 시작 ===== */
+(async function boot(){
+  await initFirebase();
+  if(pairId){
+    watchPair();
+  } else {
+    show("screenStart");
+  }
+})();
+
+/* ===== SW 등록 ===== */
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
