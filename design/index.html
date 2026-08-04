@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0c0c0e">
+<title>5959 · 디자인 시안 3종</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
+<!--
+================================================================================
+  5959 — 디자인 시안 목업 (정적 단일 파일)  ·  2026-08-04
+  화면 HTML 1벌 + CSS 변수 토큰 세트 3벌  ·  시안 전환 = [data-theme] 속성 교체
+  (실서비스 "둘이 꾸미기" 테마 기능의 기술 검증 겸)
+
+  ── 시안(테마) ────────────────────────────────────────────────
+    data-theme="warm"      ⓐ 따뜻한 감성  — 정제된 핑크베이지, 아늑함
+    data-theme="minimal"   ⓑ 미니멀 모던  — 여백·타이포 중심, 젠더 중립
+    data-theme="midnight"  ⓒ 미드나잇     — 어두운 톤, 조용한 우리 공간
+
+  ── 공통 토큰(테마 무관, :root) ──────────────────────────────
+    스페이싱(4px 배수) : --s1 4  --s2 8  --s3 12  --s4 16  --s5 20  --s6 24  --s8 32
+    라운딩             : --r-sm 10  --r-md 16  --r-lg 22  --r-xl 30  --r-full 999
+    타이포 스케일      : --t-cap 12.5 · --t-body 15.5 · --t-title 17 · --t-h 22 · --t-display 34
+    라인하이트/자간    : --lh 1.5 · --tracking (테마별)
+
+  ── 테마 토큰(시안별로 값만 교체) ────────────────────────────
+    색면    : --bg  --surface  --surface2  --line
+    글자    : --text  --muted  --tracking
+    브랜드  : --accent  --accent-ink  --accent-soft
+    말풍선  : --me-bg  --me-ink  --you-bg  --you-ink  --bubble-r
+    수신확인: --read           엘리베이션: --shadow, --shadow-lg
+    글꼴 굵기: --w-reg  --w-med  --w-bold   (시안별 무게 느낌)
+  전 화면이 위 토큰만 참조 → 레이아웃 기본기는 3종 동일, 차이는 값으로만.
+================================================================================
+-->
+<style>
+/* ── reset ─────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input{font:inherit}
+
+/* ── 공통 토큰 ─────────────────────────────────────── */
+:root{
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  --r-sm:10px; --r-md:16px; --r-lg:22px; --r-xl:30px; --r-full:999px;
+  --t-cap:12.5px; --t-body:15.5px; --t-title:17px; --t-h:22px; --t-display:34px;
+  --lh:1.5;
+  --font:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+}
+
+/* ══ 시안 ⓐ WARM — 정제된 핑크베이지 ══════════════════ */
+[data-theme="warm"]{
+  --bg:#fbf3ee; --surface:#ffffff; --surface2:#f6ece5; --line:#efe2d9;
+  --text:#3a3133; --muted:#ab9a95; --tracking:0;
+  --accent:#ec7f9b; --accent-ink:#ffffff; --accent-soft:#fbe6ec;
+  --me-bg:linear-gradient(135deg,#f18ba4,#ec7f9b); --me-ink:#ffffff;
+  --you-bg:#f4ebe4; --you-ink:#42383a; --bubble-r:20px;
+  --read:#ec7f9b;
+  --shadow:0 1px 2px rgba(90,60,60,.05); --shadow-lg:0 12px 34px rgba(150,90,100,.16);
+  --w-reg:420; --w-med:560; --w-bold:720;
+}
+/* ══ 시안 ⓑ MINIMAL — 여백·타이포, 젠더 중립 ═══════════ */
+[data-theme="minimal"]{
+  --bg:#f6f6f7; --surface:#ffffff; --surface2:#efeff1; --line:#e8e8eb;
+  --text:#17181c; --muted:#9a9ba3; --tracking:-.01em;
+  --accent:#17181c; --accent-ink:#ffffff; --accent-soft:#ecedf0;
+  --me-bg:#17181c; --me-ink:#ffffff;
+  --you-bg:#ececed; --you-ink:#26272c; --bubble-r:14px;
+  --read:#17181c;
+  --shadow:0 1px 2px rgba(20,20,25,.05); --shadow-lg:0 14px 40px rgba(20,20,30,.12);
+  --w-reg:380; --w-med:520; --w-bold:640;
+}
+/* ══ 시안 ⓒ MIDNIGHT — 조용한 우리 공간 ════════════════ */
+[data-theme="midnight"]{
+  --bg:#14151b; --surface:#1c1e26; --surface2:#242732; --line:#2b2e3a;
+  --text:#e9eaf0; --muted:#8b8fa0; --tracking:0;
+  --accent:#8b8fff; --accent-ink:#0f1016; --accent-soft:#23253a;
+  --me-bg:linear-gradient(135deg,#8b8fff,#7a7ef0); --me-ink:#12131c;
+  --you-bg:#262a36; --you-ink:#e4e6ef; --bubble-r:20px;
+  --read:#8b8fff;
+  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 16px 44px rgba(0,0,0,.5);
+  --w-reg:400; --w-med:540; --w-bold:680;
+}
+
+/* ── 무대(뷰어) ────────────────────────────────────── */
+body{
+  font-family:var(--font);
+  background:#0e0f13;
+  background:radial-gradient(120% 90% at 50% -10%,#20222c 0%,#0d0e12 60%);
+  color:#fff; min-height:100%;
+  display:flex; flex-direction:column; align-items:center;
+  padding:28px 16px 132px;
+}
+.stage-title{text-align:center;margin-bottom:20px;opacity:.9}
+.stage-title b{font-size:16px;font-weight:800;letter-spacing:.02em}
+.stage-title span{display:block;font-size:12px;color:#8b8fa0;margin-top:3px}
+
+/* ── 폰 프레임(데스크톱) ───────────────────────────── */
+.phone{
+  position:relative; width:390px; height:838px; flex:none;
+  border-radius:52px; padding:11px; background:#0a0a0c;
+  box-shadow:0 0 0 2px #2a2b31, var(--shadow-lg), 0 40px 80px rgba(0,0,0,.55);
+}
+.screen-wrap{
+  position:relative; width:100%; height:100%;
+  border-radius:42px; overflow:hidden; background:var(--bg);
+}
+
+/* ── 화면 공통 ─────────────────────────────────────── */
+.screen{
+  position:absolute; inset:0; display:none; flex-direction:column;
+  background:var(--bg); color:var(--text);
+  letter-spacing:var(--tracking);
+}
+.screen.active{display:flex}
+
+/* 상태바(연출용) */
+.statusbar{
+  flex:none; height:52px; padding:0 26px 0 30px;
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:14px; font-weight:700; color:var(--text);
+  padding-top:env(safe-area-inset-top,0);
+}
+.statusbar .sig{display:flex; gap:6px; align-items:center}
+.batt{width:22px;height:11px;border:1.4px solid var(--text);border-radius:3px;position:relative;opacity:.9}
+.batt::after{content:"";position:absolute;top:2px;left:2px;bottom:2px;width:70%;background:var(--text);border-radius:1px}
+.batt::before{content:"";position:absolute;right:-3px;top:3px;width:2px;height:5px;background:var(--text);border-radius:1px}
+.dots{letter-spacing:1px;font-size:13px}
+
+/* ═══════════════ 화면 ① 채팅 ═══════════════ */
+.chead{
+  flex:none; display:flex; align-items:center; gap:var(--s3);
+  padding:var(--s2) var(--s3); background:var(--surface);
+  border-bottom:1px solid var(--line); box-shadow:var(--shadow); z-index:2;
+}
+.chead .back{font-size:22px;color:var(--muted);width:32px;text-align:center;line-height:1}
+.avatar{
+  width:40px;height:40px;border-radius:var(--r-full);flex:none;
+  background:var(--accent-soft);display:grid;place-items:center;font-size:20px;
+}
+.chead .who{flex:1;min-width:0}
+.chead .who .nm{font-size:var(--t-title);font-weight:var(--w-bold);display:flex;align-items:center;gap:6px}
+.dday{
+  font-size:11px;font-weight:var(--w-bold);color:var(--accent);
+  background:var(--accent-soft);padding:2px 7px;border-radius:var(--r-full);
+}
+.chead .who .st{font-size:12px;color:var(--muted);margin-top:1px}
+.chead .hbtn{font-size:20px;color:var(--muted);width:34px;text-align:center}
+
+.msgs{
+  flex:1; overflow-y:auto; padding:var(--s4) var(--s3) var(--s3);
+  display:flex; flex-direction:column; gap:var(--s1);
+  -webkit-overflow-scrolling:touch; scroll-behavior:smooth;
+}
+.daysep{align-self:center;margin:var(--s3) 0;font-size:11.5px;color:var(--muted);
+  background:var(--surface2);padding:4px 12px;border-radius:var(--r-full)}
+.row{display:flex;align-items:flex-end;gap:6px;max-width:100%}
+.row.me{justify-content:flex-end}
+.row.you{justify-content:flex-start}
+.row+.row.grp{margin-top:2px}          /* 연속 메시지 묶음(같은 사람) */
+.row.newgrp{margin-top:var(--s3)}       /* 발신자 전환 */
+.bubble{
+  max-width:76%; padding:9px 13px; font-size:var(--t-body); line-height:1.42;
+  font-weight:var(--w-reg); word-break:break-word; border-radius:var(--bubble-r);
+  box-shadow:var(--shadow);
+}
+.me .bubble{background:var(--me-bg);color:var(--me-ink)}
+.you .bubble{background:var(--you-bg);color:var(--you-ink)}
+/* 꼬리: 그룹 마지막 말풍선만 */
+.me.tail .bubble{border-bottom-right-radius:6px}
+.you.tail .bubble{border-bottom-left-radius:6px}
+/* 그룹 내부(마지막 아님) 말풍선은 꼬리쪽 라운딩 축소 */
+.me.grp .bubble{border-top-right-radius:8px}
+.you.grp .bubble{border-top-left-radius:8px}
+.meta{display:flex;flex-direction:column;font-size:10.5px;color:var(--muted);line-height:1.3;padding-bottom:2px}
+.me .meta{align-items:flex-end;order:-1}
+.you .meta{align-items:flex-start}
+.meta .rd{color:var(--read);font-weight:700}
+.meta .rd::before{content:"● ";font-size:8px;vertical-align:1px}
+
+.inbar{
+  flex:none; display:flex; align-items:center; gap:var(--s2);
+  padding:var(--s2) var(--s3);
+  padding-bottom:calc(var(--s2) + env(safe-area-inset-bottom,0));
+  background:var(--surface); border-top:1px solid var(--line);
+}
+.inbar .plus{width:38px;height:38px;border-radius:var(--r-full);color:var(--muted);
+  font-size:22px;flex:none;display:grid;place-items:center}
+.inbar input{
+  flex:1;background:var(--surface2);border-radius:var(--r-full);
+  padding:10px 16px;font-size:var(--t-body);color:var(--text);border:none;
+}
+.inbar input::placeholder{color:var(--muted)}
+.send{width:40px;height:40px;border-radius:var(--r-full);flex:none;
+  background:var(--accent);color:var(--accent-ink);font-size:17px;
+  display:grid;place-items:center;box-shadow:var(--shadow)}
+
+/* ═══════════════ 화면 ② 페어링 ═══════════════ */
+.pair{flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:var(--s6) var(--s6) calc(var(--s6) + env(safe-area-inset-bottom,0));text-align:center}
+.brandmark{margin-top:var(--s6);display:flex;flex-direction:column;align-items:center;gap:var(--s3)}
+.logo{font-size:32px;font-weight:800;letter-spacing:.06em;color:var(--accent);
+  display:grid;place-items:center;width:76px;height:76px;border-radius:24px;
+  background:var(--accent-soft);box-shadow:var(--shadow)}
+.pair h1{font-size:var(--t-h);font-weight:var(--w-bold);margin-top:var(--s5);line-height:1.35}
+.pair .sub{font-size:var(--t-body);color:var(--muted);margin-top:var(--s2);line-height:var(--lh)}
+.codebox{display:flex;gap:var(--s2);margin-top:var(--s6)}
+.codebox .d{
+  width:44px;height:56px;border-radius:var(--r-md);background:var(--surface);
+  border:1.5px solid var(--line);display:grid;place-items:center;
+  font-size:26px;font-weight:var(--w-bold);color:var(--text);box-shadow:var(--shadow)}
+.codebox .d.on{border-color:var(--accent);color:var(--accent)}
+.copychip{margin-top:var(--s4);display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:var(--w-med);color:var(--accent);
+  background:var(--accent-soft);padding:8px 16px;border-radius:var(--r-full)}
+.waiting{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:var(--s3);width:100%}
+.merge{display:flex;align-items:center;gap:2px}
+.merge .h{width:34px;height:34px;border-radius:var(--r-full);display:grid;place-items:center;
+  font-size:17px;background:var(--surface);border:1.5px solid var(--line);
+  animation:breathe 2.4s ease-in-out infinite}
+.merge .h:last-child{animation-delay:1.2s}
+.merge .link{width:26px;height:2px;background:var(--accent);opacity:.5;margin:0 -3px}
+@keyframes breathe{0%,100%{transform:scale(1);border-color:var(--line)}50%{transform:scale(1.12);border-color:var(--accent)}}
+.wtext{font-size:13.5px;color:var(--muted);line-height:var(--lh)}
+.wtext b{color:var(--text);font-weight:var(--w-med)}
+.pinput{width:100%;margin-top:var(--s5);display:flex;gap:var(--s2)}
+.pinput input{flex:1;background:var(--surface2);border:1.5px solid var(--line);
+  border-radius:var(--r-md);padding:13px 16px;text-align:center;font-size:18px;
+  letter-spacing:6px;color:var(--text)}
+.pinput input::placeholder{letter-spacing:2px;color:var(--muted);font-size:14px}
+.pbtn{width:100%;margin-top:var(--s3);padding:15px;border-radius:var(--r-md);
+  background:var(--accent);color:var(--accent-ink);font-size:var(--t-body);
+  font-weight:var(--w-bold);box-shadow:var(--shadow)}
+
+/* ═══════════════ 화면 ③ 잠금 ═══════════════ */
+.lock{flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:var(--s8) var(--s6) calc(var(--s5) + env(safe-area-inset-bottom,0))}
+.lock .logo{margin-top:var(--s6)}
+.lock h2{font-size:var(--t-title);font-weight:var(--w-med);margin-top:var(--s5);color:var(--text)}
+.lock .hi{font-size:13px;color:var(--muted);margin-top:var(--s1)}
+.pindots{display:flex;gap:var(--s4);margin-top:var(--s6)}
+.pindots i{width:13px;height:13px;border-radius:var(--r-full);border:1.6px solid var(--accent);display:block}
+.pindots i.f{background:var(--accent)}
+.pad{margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4) var(--s5);width:100%;max-width:264px}
+.key{height:64px;border-radius:var(--r-full);font-size:26px;font-weight:var(--w-med);
+  color:var(--text);background:var(--surface);box-shadow:var(--shadow);
+  display:grid;place-items:center}
+.key.blank{background:none;box-shadow:none}
+.key.util{background:none;box-shadow:none;font-size:14px;color:var(--muted);font-weight:var(--w-med)}
+.faceid{margin-top:var(--s5);display:inline-flex;align-items:center;gap:8px;
+  color:var(--accent);font-size:13.5px;font-weight:var(--w-med)}
+.faceid .fi{width:22px;height:22px;border:1.6px solid var(--accent);border-radius:7px;
+  display:grid;place-items:center;font-size:12px}
+
+/* ── 뷰어 컨트롤(테마 무관, 자체 팔레트) ────────────── */
+.controls{
+  position:fixed;left:50%;bottom:0;transform:translateX(-50%);
+  width:100%;max-width:440px;z-index:50;
+  padding:12px 16px calc(14px + env(safe-area-inset-bottom,0));
+  background:linear-gradient(180deg,rgba(14,15,19,0) 0%,rgba(14,15,19,.92) 26%);
+}
+.ctitle{font-size:10.5px;letter-spacing:.14em;color:#6b6f7e;text-transform:uppercase;text-align:center;margin-bottom:8px;font-weight:700}
+.tabrow{display:flex;gap:7px;background:#1b1d24;border:1px solid #2b2e3a;
+  padding:5px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.tabrow+.tabrow{margin-top:8px}
+.tab{flex:1;padding:10px 6px;border-radius:12px;color:#9a9ead;
+  font-size:12.5px;font-weight:600;text-align:center;line-height:1.25;transition:.16s}
+.tab small{display:block;font-size:10px;opacity:.7;margin-top:1px;font-weight:500}
+.tab.on{background:#eceef4;color:#16171d}
+.tab.on small{opacity:.65}
+.theme-a.on{background:#ec7f9b;color:#fff}
+.theme-b.on{background:#eceef4;color:#16171d}
+.theme-c.on{background:#8b8fff;color:#12131c}
+
+/* ── 반응형: 모바일 = 풀스크린 프레임 ──────────────── */
+@media (max-width:460px){
+  body{padding:0}
+  .stage-title{display:none}
+  .phone{width:100vw;height:100vh;height:100dvh;border-radius:0;padding:0;box-shadow:none;background:var(--bg)}
+  .screen-wrap{border-radius:0}
+  .msgs{padding-bottom:var(--s2)}
+  /* 컨트롤이 입력바를 가리지 않도록 채팅 하단 여유 */
+}
+@media (min-width:461px){
+  .controls{border-radius:22px;bottom:20px;background:rgba(20,21,27,.72);backdrop-filter:blur(10px);
+    border:1px solid #2b2e3a;padding:12px 14px}
+}
+</style>
+</head>
+<body>
+
+<div class="stage-title">
+  <b>5959 · 디자인 시안</b>
+  <span>아래 탭으로 시안 ⓐⓑⓒ · 화면 ①②③ 전환</span>
+</div>
+
+<div class="phone" id="phone" data-theme="warm">
+  <div class="screen-wrap">
+
+    <!-- ═══ 화면 ① 채팅 ═══ -->
+    <section class="screen active" data-screen="chat">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sig"><span class="dots">••• </span><span style="font-size:12px">5G</span><span class="batt"></span></span>
+      </div>
+      <div class="chead">
+        <div class="back">‹</div>
+        <div class="avatar">🐰</div>
+        <div class="who">
+          <div class="nm">여봉 <span class="dday">D+283</span></div>
+          <div class="st">지금 접속 중</div>
+        </div>
+        <div class="hbtn">⌕</div>
+        <div class="hbtn">⋯</div>
+      </div>
+      <div class="msgs" id="msgs">
+        <div class="daysep">2026년 8월 4일 월요일</div>
+
+        <div class="row you newgrp tail">
+          <div class="bubble">오늘 야근 몇 시에 끝나?</div>
+          <div class="meta"><span>오후 7:12</span></div>
+        </div>
+
+        <div class="row me newgrp tail">
+          <div class="meta"><span class="rd">읽음</span><span>오후 7:14</span></div>
+          <div class="bubble">8시쯤? 생각보다 일찍 끝날 것 같아</div>
+        </div>
+
+        <div class="row you newgrp grp">
+          <div class="bubble">오 다행이다</div>
+        </div>
+        <div class="row you grp tail">
+          <div class="bubble">그럼 저녁 안 먹고 기다릴까</div>
+          <div class="meta"><span>오후 7:15</span></div>
+        </div>
+
+        <div class="row me newgrp grp">
+          <div class="bubble">그럼 저번에 얘기했던 그 파스타집 갈래?</div>
+        </div>
+        <div class="row me grp tail">
+          <div class="meta"><span class="rd">읽음</span><span>오후 7:16</span></div>
+          <div class="bubble">가는 길에 예약해둘게</div>
+        </div>
+
+        <div class="row you newgrp grp">
+          <div class="bubble">좋아좋아 거기 계속 가보고 싶었어</div>
+        </div>
+        <div class="row you grp tail">
+          <div class="bubble">이따 봐, 보고 싶다 :)</div>
+          <div class="meta"><span>오후 7:17</span></div>
+        </div>
+
+        <div class="row me newgrp tail">
+          <div class="meta"><span class="rd">읽음</span><span>오후 7:18</span></div>
+          <div class="bubble">나도. 금방 갈게 🚶</div>
+        </div>
+      </div>
+      <div class="inbar">
+        <button class="plus">＋</button>
+        <input id="chatInput" placeholder="메시지 입력" aria-label="메시지 입력">
+        <button class="send" id="sendBtn">↑</button>
+      </div>
+    </section>
+
+    <!-- ═══ 화면 ② 페어링 ═══ -->
+    <section class="screen" data-screen="pair">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sig"><span class="dots">••• </span><span style="font-size:12px">5G</span><span class="batt"></span></span>
+      </div>
+      <div class="pair">
+        <div class="brandmark">
+          <div class="logo">5959</div>
+        </div>
+        <h1>우리 둘만의 공간을<br>함께 열어요</h1>
+        <div class="sub">이 코드를 짝에게 보내면<br>둘만 들어올 수 있는 방이 만들어져요</div>
+
+        <div class="codebox">
+          <div class="d on">4</div><div class="d on">8</div><div class="d on">2</div>
+          <div class="d on">9</div><div class="d on">1</div><div class="d on">5</div>
+        </div>
+        <div class="copychip">⧉ 초대코드 복사</div>
+
+        <div class="waiting">
+          <div class="merge">
+            <span class="h">🙂</span><span class="link"></span><span class="h">🙂</span>
+          </div>
+          <div class="wtext"><b>연결을 기다리는 중</b><br>짝이 코드를 입력하면 자동으로 이어져요</div>
+          <div class="pinput">
+            <input placeholder="받은 코드 입력" maxlength="6" inputmode="numeric">
+          </div>
+          <button class="pbtn">코드로 입장하기</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 화면 ③ 잠금 ═══ -->
+    <section class="screen" data-screen="lock">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="sig"><span class="dots">••• </span><span style="font-size:12px">5G</span><span class="batt"></span></span>
+      </div>
+      <div class="lock">
+        <div class="logo">5959</div>
+        <h2>우리 공간 잠금 해제</h2>
+        <div class="hi">여봉 님, 다시 오셨네요</div>
+        <div class="pindots">
+          <i class="f"></i><i class="f"></i><i></i><i></i>
+        </div>
+        <div class="pad">
+          <button class="key">1</button><button class="key">2</button><button class="key">3</button>
+          <button class="key">4</button><button class="key">5</button><button class="key">6</button>
+          <button class="key">7</button><button class="key">8</button><button class="key">9</button>
+          <button class="key util">Face ID</button><button class="key">0</button><button class="key util">⌫</button>
+        </div>
+        <div class="faceid"><span class="fi">◠</span> Face ID로 빠르게 열기</div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ── 뷰어 컨트롤 ── -->
+<div class="controls">
+  <div class="ctitle">시안 · 화면 전환</div>
+  <div class="tabrow" id="themeTabs">
+    <button class="tab theme-a on" data-theme="warm">ⓐ 따뜻한 감성<small>정제된 핑크베이지</small></button>
+    <button class="tab theme-b"    data-theme="minimal">ⓑ 미니멀 모던<small>여백·타이포</small></button>
+    <button class="tab theme-c"    data-theme="midnight">ⓒ 미드나잇<small>조용한 우리 공간</small></button>
+  </div>
+  <div class="tabrow" id="screenTabs">
+    <button class="tab on" data-screen="chat">① 채팅</button>
+    <button class="tab"    data-screen="pair">② 페어링</button>
+    <button class="tab"    data-screen="lock">③ 잠금</button>
+  </div>
+</div>
+
+<script>
+  var phone = document.getElementById('phone');
+
+  // 시안(테마) 전환 — data-theme 속성만 교체 (토큰 세트 스왑)
+  document.getElementById('themeTabs').addEventListener('click', function(e){
+    var b = e.target.closest('.tab'); if(!b) return;
+    phone.setAttribute('data-theme', b.dataset.theme);
+    this.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on', t===b)});
+    var m = {warm:'#fbf3ee', minimal:'#f6f6f7', midnight:'#14151b'}[b.dataset.theme];
+    document.querySelector('meta[name=theme-color]').setAttribute('content', m);
+  });
+
+  // 화면 전환
+  document.getElementById('screenTabs').addEventListener('click', function(e){
+    var b = e.target.closest('.tab'); if(!b) return;
+    document.querySelectorAll('.screen').forEach(function(s){
+      s.classList.toggle('active', s.dataset.screen===b.dataset.screen);
+    });
+    this.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on', t===b)});
+  });
+
+  // 채팅 데모: 입력 → 내 말풍선 추가 (기본기 시연)
+  var input = document.getElementById('chatInput');
+  var msgs  = document.getElementById('msgs');
+  function timeNow(){var d=new Date(),h=d.getHours(),m=d.getMinutes();
+    var ap=h<12?'오전':'오후';h=h%12||12;return ap+' '+h+':'+(m<10?'0'+m:m);}
+  function send(){
+    var v=(input.value||'').trim(); if(!v) return;
+    var row=document.createElement('div'); row.className='row me newgrp tail';
+    row.innerHTML='<div class="meta"><span>'+timeNow()+'</span></div>'+
+                  '<div class="bubble"></div>';
+    row.querySelector('.bubble').textContent=v;
+    msgs.appendChild(row); input.value=''; msgs.scrollTop=msgs.scrollHeight;
+  }
+  document.getElementById('sendBtn').addEventListener('click', send);
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter') send(); });
+
+  // 초기 스크롤 하단
+  window.addEventListener('load', function(){ msgs.scrollTop=msgs.scrollHeight; });
+</script>
+</body>
+</html>
