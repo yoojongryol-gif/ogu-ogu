@@ -617,7 +617,9 @@ function watchPair(){
       document.getElementById("waitCode").textContent = (currentPairData.code||"------").replace(/(\d{3})(\d{3})/,"$1 $2");
       show("screenWaiting");
     }
-  }, err=>{ console.error(err); toast("연결 상태를 확인할 수 없어요"); });
+  }, err=>{ console.error(err);
+    if(isDeniedErr(err)){ recoverFromDeadPair(); return; } // pair 읽기 거부 = 더는 이 pair의 멤버가 아님
+    toast("연결 상태를 확인할 수 없어요"); });
 }
 
 function enterChat(){
@@ -677,7 +679,7 @@ function watchMessages(){
     _lastMsgSnapshotDocs = snap.empty ? [] : snap.docs;
     renderMessages();
     if(!isLocked() && document.getElementById("screenChat").classList.contains("active") && document.visibilityState==="visible") markRead();
-  }, err=>{ console.error(err); });
+  }, err=>{ console.error(err); if(isDeniedErr(err) && pairId){ recoverFromDeadPair(); } });
 }
 
 /* ----- 읽음 확인 (lastReadAt, 본인 uid 키만 갱신 — firestore.rules로 강제) ----- */
@@ -700,7 +702,12 @@ async function sendMessage(){
   try{ input.focus(); }catch(e){} // iOS: 전송 직후 동기적으로 refocus해야 키보드가 안 내려감
   await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
     sender: fb.uid, text, ts: M.serverTimestamp()
-  }).catch(err=>{ console.error(err); toast("전송에 실패했어요"); input.value=text; });
+  }).catch(err=>{
+    console.error(err);
+    input.value=text; // 실패 시 입력 복원(어느 경로든 사용자가 문구를 잃지 않도록)
+    if(isDeniedErr(err)){ recoverFromDeadPair(); return; } // 죽은 페어/신원 불일치 → 페어링 화면 복귀
+    toast("전송에 실패했어요");
+  });
 }
 
 /* =====================================================================
@@ -806,6 +813,26 @@ function handleDissolved(){
   pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null;
   show("screenDissolved");
 }
+
+/* 죽은 페어/신원 불일치 방어(2026-08-04): 테스트 데이터 정리·익명 계정 삭제 등으로 폰의
+   localStorage pairId가 가리키는 pair가 "현재 uid"를 더는 멤버로 인정하지 않으면, 모든
+   읽기/쓰기가 permission-denied로 실패한다(rules상 정상 거부). 이때 채팅 화면에 갇힌 채
+   전송만 반복 실패하지 않도록, 감지 즉시 stale 로컬을 비우고 안내 후 페어링 화면으로
+   돌려보낸다 — "조용한 실패 금지" 원칙의 구현체. permission-denied만 트리거로 삼는다
+   (오프라인은 code="unavailable"이라 캐시로 계속 동작하므로 여기서 걸리지 않는다). */
+let _recovering=false;
+function recoverFromDeadPair(){
+  if(_recovering) return; _recovering=true;
+  if(unsubPair) unsubPair();
+  if(unsubMsgs) unsubMsgs();
+  localStorage.removeItem("oguogu.pairId");
+  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null;
+  hideLock();
+  toast("연결이 만료됐어요. 다시 연결해주세요");
+  show("screenStart");
+  setTimeout(()=>{ _recovering=false; }, 1500);
+}
+function isDeniedErr(err){ return !!(err && (err.code==="permission-denied" || err.code==="firestore/permission-denied")); }
 
 /* ===== 이벤트 바인딩 ===== */
 document.getElementById("btnCreate").onclick=()=>createPair().catch(err=>{console.error(err); toast("코드를 만들지 못했어요");});
