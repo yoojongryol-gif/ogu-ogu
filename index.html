@@ -133,6 +133,7 @@ input.code-input{
   <div class="spinner" id="loadingSpinner"></div>
   <div id="loadingPendingMsg" style="display:none; margin-top:18px; text-align:center; color:#a8798a; font-size:14px; line-height:1.6; padding:0 32px;">
     서버 연결 준비 중이에요.<br>잠시 후 새로고침 해주세요.
+    <div style="margin-top:14px"><button class="secondary-btn" id="btnRefreshLoading" style="max-width:200px;margin:0 auto">🔄 새로고침</button></div>
   </div>
 </div>
 
@@ -170,7 +171,10 @@ input.code-input{
 <div class="screen" id="screenChat">
   <div class="chat-header">
     <div class="h-title">🩷 5959</div>
-    <button class="icon-btn" id="btnSettings" title="설정">⚙️</button>
+    <div>
+      <button class="icon-btn" id="btnRefreshChat" title="새로고침">🔄</button>
+      <button class="icon-btn" id="btnSettings" title="설정">⚙️</button>
+    </div>
   </div>
   <div class="install-hint" id="installHint">
     <span>📲 홈 화면에 추가하면 전체 화면 앱처럼 쓸 수 있어요</span>
@@ -218,6 +222,13 @@ input.code-input{
       <div style="font-size:12px;color:var(--muted);margin-top:2px" id="notifyStatusLabel">꺼짐 — 내용은 절대 표시되지 않아요</div>
     </div>
     <button class="toggle" id="notifyToggle"><span class="knob"></span></button>
+  </div>
+  <div class="settings-row">
+    <div>
+      <div class="label">앱 새로고침</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">최신 버전 확인 후 다시 불러와요</div>
+    </div>
+    <button class="ghost-btn" id="btnRefreshSettings" style="text-decoration:none;font-weight:700">🔄 새로고침</button>
   </div>
   <div class="settings-row" style="border-color:#f4c9c9">
     <div>
@@ -341,11 +352,27 @@ async function registerBio(){
     if(!cred)return false;
     localStorage.setItem("oguogu.lock.bio",_bufToB64u(cred.rawId));
     return true;
-  }catch(e){toast("생체인증 등록 실패 — 비밀번호로 사용하세요");return false;}
+  }catch(e){
+    console.error(e);
+    // 등록 단계는 항상 버튼 탭(chooseLockMode) 안에서만 호출되므로 제스처 문제는 없다 —
+    // 실패는 사용자 취소이거나 기기 자체가 지원하지 않는 경우.
+    toast(e && e.name==="NotAllowedError" ? "생체인증 등록이 취소됐어요" : "이 기기에서는 생체인증을 등록할 수 없어요 — 비밀번호로 사용하세요");
+    return false;
+  }
 }
+/* 폰 실기 피드백("일부 기종에서 Face ID가 안 됨") 근본원인 판정:
+   WebAuthn get()은 스펙상 사용자 제스처(transient activation) 없이 호출되면 브라우저가
+   조용히 NotAllowedError로 거부할 수 있다(특히 iOS Safari가 엄격). 구버전 코드는 showLock()이
+   화면 진입/포그라운드 복귀(visibilitychange, 스냅샷 콜백, 앱 부팅 — 전부 제스처 아님) 시점에
+   setTimeout으로 bioUnlock()을 "자동" 호출했다 — 이게 기기별로 갈리는 실패의 유력 원인이다.
+   수리: 자동 호출 전부 제거, lockBioBtn 탭(진짜 사용자 제스처)에서만 호출되게 한다. */
+let _bioBusy=false;
 async function bioUnlock(){
   const id=localStorage.getItem("oguogu.lock.bio");if(!id)return;
-  document.getElementById("lockMsg").textContent="";
+  if(_bioBusy)return; // 연타로 인한 "operation already pending" 방지
+  _bioBusy=true;
+  const msgEl=document.getElementById("lockMsg");
+  msgEl.textContent="";
   try{
     const a=await navigator.credentials.get({publicKey:{
       challenge:crypto.getRandomValues(new Uint8Array(32)),
@@ -353,7 +380,24 @@ async function bioUnlock(){
       userVerification:"required",timeout:60000
     }});
     if(a) hideLock();
-  }catch(e){document.getElementById("lockMsg").textContent="생체인증 취소됨 — 비밀번호로 해제하세요";}
+  }catch(e){
+    console.error(e);
+    const name=e && e.name;
+    if(name==="NotAllowedError"){
+      // 정상 취소/얼굴·지문 불일치 — 재시도하거나 비밀번호로 넘어가면 됨
+      msgEl.textContent="인증이 취소됐어요 — 다시 시도하거나 비밀번호로 해제하세요";
+    }else if(name==="SecurityError" || name==="InvalidStateError" || name==="NotSupportedError"){
+      // 저장된 인증정보를 이 기기에서 더 이상 쓸 수 없는 상태 — 매번 실패를 반복하지 않도록
+      // 생체 옵션을 자동으로 끄고 비밀번호 모드로 전환(요구사항: 실패 기기는 생체 옵션 자동 비활성).
+      localStorage.setItem("oguogu.lock.mode","pin");
+      msgEl.textContent="이 기기에서는 지문·Face ID를 쓸 수 없어요 — 비밀번호로 전환했어요";
+      showPinFallback();
+    }else{
+      msgEl.textContent="지문·Face ID 인증에 실패했어요 — 비밀번호로 해제하세요";
+    }
+  }finally{
+    _bioBusy=false;
+  }
 }
 function lockMode(){return localStorage.getItem("oguogu.lock.mode")||(bioIsOn()?"bio":"pin");}
 
@@ -376,8 +420,9 @@ function showLock(){
   pin.value=""; document.getElementById("lockMsg").textContent="";
   lockContentNow(); // 잠기는 즉시 대화 DOM에서 실제 내용 제거(시각적 가림만이 아니라 실제 비노출)
   if(lockMode()==="bio" && bioIsOn()){
+    // 자동 트리거 없음(실기 수리 — 위 bioUnlock 주석 참고): lockBioBtn 탭이 유일한 진입점.
+    // 사용자 제스처 안에서 호출돼야 iOS/Android가 생체인증 프롬프트를 신뢰성 있게 띄운다.
     pin.style.display="none"; bb.style.display="block"; fbk.style.display="block";
-    setTimeout(()=>{try{bioUnlock();}catch(e){}},300);
   }else{
     pin.style.display="block"; bb.style.display="none"; fbk.style.display="none";
     setTimeout(()=>{try{pin.focus();}catch(e){}},150);
@@ -783,6 +828,22 @@ document.getElementById("chatForm").addEventListener("submit", e=>{
   sendMessage();
 });
 document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); renderNotifyUI(); show("screenSettings"); };
+/* ----- 새로고침 (standalone PWA엔 브라우저 새로고침 버튼이 없어 실기 피드백으로 추가됨) -----
+   단순 location.reload()가 아니라 서비스워커 업데이트를 먼저 확인시켜, 새 배포분이 있으면
+   그걸 반영한 채로 다시 불러온다. update() 실패해도 새로고침 자체는 항상 진행. */
+async function refreshApp(){
+  try{
+    if("serviceWorker" in navigator){
+      const reg = await navigator.serviceWorker.getRegistration();
+      if(reg) await reg.update();
+    }
+  }catch(e){ console.error(e); }
+  location.reload();
+}
+["btnRefreshChat","btnRefreshSettings","btnRefreshLoading"].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.onclick=refreshApp;
+});
 document.getElementById("btnBackFromSettings").onclick=()=>show("screenChat");
 document.getElementById("btnBreakup").onclick=openBreakup;
 document.getElementById("breakupStep1Cancel").onclick=closeBreakup;
