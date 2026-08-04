@@ -1,5 +1,5 @@
 /* 오구오구 PWA 서비스워커 — 앱 셸 캐시 + 자동 업데이트 (팀톡 sw.js 패턴 재사용) */
-const VER = "oguogu-v0.1.0";
+const VER = "oguogu-v0.2.0";
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
