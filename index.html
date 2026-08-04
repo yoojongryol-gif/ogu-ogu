@@ -13,7 +13,9 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
 <!--
 ================================================================================
-  5959 (v0.5.0) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
+  5959 (v0.5.3) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
+  · v0.5.3: 양쪽-솔로 합류(설정→받은 코드 입력, 합류 성공 후 내 솔로 정리) + 초대 저장실패 문구 분리
+    (permission-denied↔네트워크) + 케이스 I가 waiting 수용(구세대) + 설정에 앱/캐시 버전 표시.
   · 토큰 구조는 design/index.html 시안(2026-08-04, 사장님 ⓐ "따뜻한 감성" 확정)에서 이식.
   · 전 화면이 아래 토큰만 참조 → 레이아웃 기본기는 테마 무관 동일, 차이는 값(팔레트)으로만.
   · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
@@ -498,7 +500,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
     <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">짝의 합류를 기다리는 중</b></div>
   </div>
-  <div class="notice">짝이 들어오면 지금까지의 기록도 함께 보게 돼요. 이 코드는 10분 뒤 자동으로 닫히고, 언제든 다시 만들 수 있어요.</div>
+  <div class="notice">짝이 이 코드를 입력하면 지금까지의 기록도 함께 보게 돼요. 코드는 24시간 유효하고 언제든 다시 만들 수 있어요.<br><b>짝도 이미 공간을 만들었다면?</b> 짝의 <b>설정 → 받은 초대코드 입력</b>에 이 코드를 넣으면 돼요.</div>
   <button class="ghost-btn" id="btnInviteBack">← 대화로 돌아가기</button>
 </div>
 
@@ -506,7 +508,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 <div class="screen center mid" id="screenJoin">
   <div class="brandmark"><div class="logo">5959</div></div>
   <h1 class="h">받은 코드를 입력해요</h1>
-  <div class="sub">상대방이 알려준 6자리 코드를 입력하세요</div>
+  <div class="sub" id="joinSub">상대방이 알려준 6자리 코드를 입력하세요</div>
+  <div class="notice" id="joinSoloNotice" style="display:none">짝이 먼저 만든 공간으로 합류해요. 지금 내 공간의 기록은 함께 옮겨지지 않아요.</div>
   <input class="code-input" id="joinInput" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="off">
   <div class="errline" id="joinMsg"></div>
   <button class="primary-btn" id="btnJoinSubmit">들어가기</button>
@@ -704,6 +707,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div><div class="label">짝 초대하기</div><div class="desc">6자리 코드를 짝에게 보내면 둘만의 공간이 돼요. 지금까지의 기록도 함께 보게 돼요</div></div>
       <button class="link-btn" id="btnInvite">코드 만들기</button>
     </div>
+    <div class="set-row" id="joinFromSoloRow" style="display:none">
+      <div><div class="label">받은 초대코드 입력</div><div class="desc">짝이 먼저 공간을 만들었다면, 짝의 코드로 그 공간에 합류해요. 지금 내 공간의 기록은 함께 옮겨지지 않아요</div></div>
+      <button class="link-btn" id="btnJoinFromSolo">코드 입력</button>
+    </div>
     <div class="set-row" id="reinviteRow">
       <div><div class="label">상대방 다시 초대</div><div class="desc">상대가 폰을 바꾸거나 앱을 지웠어도, 여기서 만든 코드를 입력하면 지금까지의 대화 그대로 이어져요</div></div>
       <button class="link-btn" id="btnReinvite">코드 만들기</button>
@@ -722,6 +729,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 
   <button class="ghost-btn" id="btnBackFromSettings">← 대화로 돌아가기</button>
+  <div class="hint" id="appVersionLine" style="text-align:center; margin:2px auto 8px">버전 확인 중…</div>
 </div>
 
 <!-- 재초대 코드 표시(살아있는 멤버가 발급) -->
@@ -813,6 +821,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
+const APP_VERSION = "0.5.3"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -864,7 +873,27 @@ function showTab(tab){
   if(tab==="chat"){ applyChatHeader(); if(!isLocked()) markRead(); }
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
-  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); }
+  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); renderAppVersion(); }
+}
+/* 앱/캐시 버전 표시 — "폰이 어느 버전인지"를 사장님이 한눈에 읽도록(재발 방지 인프라).
+   APP_VERSION = 로드된 index.html, 캐시 = 실제 페이지를 제어 중인 서비스워커 VER(둘이 다르면 캐시 미갱신). */
+function swVersion(){
+  return new Promise(res=>{
+    try{
+      const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+      if(!sw){ res(null); return; }
+      const ch=new MessageChannel();
+      ch.port1.onmessage=e=>res(e.data);
+      sw.postMessage({type:"version"},[ch.port2]);
+      setTimeout(()=>res(null),1200);
+    }catch(e){ res(null); }
+  });
+}
+async function renderAppVersion(){
+  const el=document.getElementById("appVersionLine"); if(!el) return;
+  el.textContent="5959 v"+APP_VERSION;
+  const v=await swVersion();
+  if(v){ const cache=String(v).replace(/^oguogu-v?/,""); el.textContent="5959 v"+APP_VERSION+(cache && cache!==APP_VERSION ? " · 캐시 "+cache : ""); }
 }
 document.getElementById("tabbar").addEventListener("click",e=>{
   const b=e.target.closest("[data-tab]"); if(!b) return;
@@ -920,6 +949,7 @@ function updateSoloAffordances(){
   const banner=document.getElementById("soloBanner");
   if(banner) banner.style.display = solo ? "flex" : "none";
   const invRow=document.getElementById("inviteRow"); if(invRow) invRow.style.display = solo ? "flex" : "none";
+  const jfsRow=document.getElementById("joinFromSoloRow"); if(jfsRow) jfsRow.style.display = solo ? "flex" : "none"; // 양쪽-솔로 합류 진입
   const reRow=document.getElementById("reinviteRow"); if(reRow) reRow.style.display = (pairId && otherUid()) ? "flex" : "none";
 }
 async function setTheme(patch){
@@ -1274,8 +1304,17 @@ async function openInvite(force){
     const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--muted)"; err.textContent="짝이 이 코드를 입력하면 바로 이어져요"; }
   }catch(e){
     console.error(e);
-    const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--danger)"; err.textContent="저장이 지연되고 있어요 — 연결을 확인하고 ‘다시 만들기’를 눌러주세요"; }
-    const retry=document.getElementById("btnInviteRetry"); if(retry) retry.style.display="";
+    const err=document.getElementById("inviteErr"), retry=document.getElementById("btnInviteRetry");
+    if(isDeniedErr(e)){
+      // rules 거부(permission-denied) = 재시도로 안 풀린다. "지연/다시 만들기"로 뭉뚱그리면 무한 루프 → 상태별 안내.
+      if(retry) retry.style.display="none";
+      if(otherUid()){ toast("이미 짝과 연결돼 있어요"); enterChat(); return; }
+      if(err){ err.style.color="var(--danger)"; err.textContent="지금은 이 공간에서 코드를 만들 수 없어요. 앱을 새로고침(설정 → 앱 새로고침)해 주세요"; }
+    }else{
+      // 네트워크/일시 지연 — 이 경우에만 "다시 만들기"가 유효.
+      if(err){ err.style.color="var(--danger)"; err.textContent="저장이 지연되고 있어요 — 연결을 확인하고 ‘다시 만들기’를 눌러주세요"; }
+      if(retry) retry.style.display="";
+    }
   }
 }
 
@@ -1303,6 +1342,37 @@ async function joinPair(){
   pairId = d.id;
   localStorage.setItem("oguogu.pairId", pairId);
   watchPair();
+}
+
+/* 양쪽-솔로 합류: 이미 내 솔로 공간이 있는 상태에서 짝의 코드로 짝의 공간에 합류한다.
+   (설계 누락 수리: 솔로 시작 도입 후, 양쪽이 각자 공간을 만들면 첫 화면 코드입력에 못 가 합류 경로가 없었다.)
+   원자성 순서: 반드시 ①짝 공간 합류 성공 → ②그 뒤에 내 옛 솔로 공간 정리. 순서를 뒤집지 않는다
+   (합류 실패했는데 내 공간이 먼저 사라지는 사고 방지). rules 케이스 B는 솔로 보유 uid의 합류를 허용(실측 200). */
+async function joinFromSolo(){
+  const code = document.getElementById("joinInput").value.trim();
+  const msgEl = document.getElementById("joinMsg"); msgEl.textContent="";
+  if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
+  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","solo"));
+  const snap = await M.getDocs(q).catch(()=>null);
+  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 짝의 코드를 다시 확인해주세요"; return; }
+  const d = snap.docs[0];
+  if(d.id===pairId){ msgEl.textContent="이건 내 공간의 코드예요. 짝의 코드를 입력해주세요"; return; }
+  if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){ msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; }
+  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 그 공간의 멤버예요"; return; }
+  if(!confirm("지금 내 공간의 기록은 함께 옮겨지지 않아요. 짝의 공간으로 합류할까요?")) return;
+  const oldSolo = pairId; // 합류 성공 후에만 정리할 내 옛 솔로 공간
+  _dissolvedHandled=false;
+  try{
+    await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" }); // ① 합류(성공해야 다음 단계)
+  }catch(err){
+    console.error(err);
+    msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "합류에 실패했어요. 다시 시도해주세요";
+    return; // 실패 시 내 솔로 공간은 그대로 보존
+  }
+  pairId = d.id;
+  localStorage.setItem("oguogu.pairId", pairId);
+  watchPair(); // ②-a 합류한 공간으로 입장(옛 pair 리스너 해제)
+  if(oldSolo && oldSolo!==d.id){ dissolvePairById(oldSolo).catch(e=>console.error("옛 솔로 공간 정리 실패(비치명):", e)); } // ②-b 정리
 }
 
 function watchPair(){
@@ -1895,15 +1965,17 @@ async function purgeAllMessages(id){
     if(snap.docs.length<PAGE) break;
   }
 }
-async function dissolvePair(){
-  const id=pairId, myUid=fb.uid;
-  await M.updateDoc(M.doc(fb.db,"pairs",id), {
-    status:"dissolved", dissolvedAt:M.serverTimestamp(), dissolvedBy:myUid
-  });
-  // 이별 소거: 메시지 + 일정 + 다이어리(사진 포함) 전량 삭제(rules는 dissolved 시 삭제 허용).
+/* 특정 pair를 관계정리(dissolve + 하위 전량 소거)만 수행 — UI 전환 없음.
+   양쪽-솔로 합류에서 "합류 성공 후 내 솔로 공간 정리"에 재사용(현재 pair가 아닌 옛 pair를 지목 삭제). */
+async function dissolvePairById(id){
+  if(!id) return;
+  await M.updateDoc(M.doc(fb.db,"pairs",id), {status:"dissolved", dissolvedAt:M.serverTimestamp(), dissolvedBy:fb.uid});
   await purgeAllMessages(id);
   await purgeCollection(["pairs",id,"events"]);
   await purgeDiaryAll(id);
+}
+async function dissolvePair(){
+  await dissolvePairById(pairId);
   closeBreakup();
   handleDissolved();
 }
@@ -1952,10 +2024,25 @@ function isDeniedErr(err){ return !!(err && (err.code==="permission-denied" || e
 
 /* ===== 이벤트 바인딩 ===== */
 document.getElementById("btnStart").onclick=()=>createSolo().catch(err=>{console.error(err); toast("시작하지 못했어요. 잠시 후 다시 시도해주세요");});
-document.getElementById("btnJoin").onclick=()=>{ document.getElementById("joinInput").value=""; document.getElementById("joinMsg").textContent=""; show("screenJoin"); };
-document.getElementById("btnJoinSubmit").onclick=()=>joinPair();
-document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") joinPair(); });
-document.getElementById("btnJoinCancel").onclick=()=>show("screenStart");
+/* 코드 입력 화면은 두 진입점을 공유한다:
+   · 첫 화면 "받은 초대코드가 있어요"(_joinFromSolo=false) → 공간이 없는 새 기기가 합류(joinPair).
+   · 설정 "받은 초대코드 입력"(_joinFromSolo=true) → 이미 내 솔로 공간이 있는데 짝 공간으로 합류(joinFromSolo). */
+let _joinFromSolo=false;
+function openJoinScreen(fromSolo){
+  _joinFromSolo=fromSolo;
+  document.getElementById("joinInput").value="";
+  document.getElementById("joinMsg").textContent="";
+  const notice=document.getElementById("joinSoloNotice"), sub=document.getElementById("joinSub");
+  if(notice) notice.style.display = fromSolo ? "block" : "none";
+  if(sub) sub.textContent = fromSolo ? "짝이 알려준 6자리 코드를 입력하세요" : "상대방이 알려준 6자리 코드를 입력하세요";
+  show("screenJoin");
+}
+function submitJoinScreen(){ _joinFromSolo ? joinFromSolo() : joinPair(); }
+document.getElementById("btnJoin").onclick=()=>openJoinScreen(false);
+document.getElementById("btnJoinFromSolo").onclick=()=>openJoinScreen(true);
+document.getElementById("btnJoinSubmit").onclick=()=>submitJoinScreen();
+document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitJoinScreen(); });
+document.getElementById("btnJoinCancel").onclick=()=>{ if(_joinFromSolo && pairId) showTab("settings"); else show("screenStart"); };
 document.getElementById("btnRejoin").onclick=()=>{ document.getElementById("rejoinInput").value=""; document.getElementById("rejoinMsg").textContent=""; show("screenRejoin"); };
 document.getElementById("btnRejoinSubmit").onclick=()=>submitRejoin();
 document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitRejoin(); });

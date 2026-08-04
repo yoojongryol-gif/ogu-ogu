@@ -79,10 +79,12 @@ service cloud.firestore {
           && request.resource.data.memberUids.hasAny([request.auth.uid])
           && request.resource.data.status == "paired")
         ||
-        // 케이스 I: 솔로 멤버가 초대코드 재발급(만료 갱신/새 코드). 멤버·상태(solo) 불변, code 계열만 갱신.
+        // 케이스 I: 솔로/구대기(waiting=구세대) 멤버가 초대코드 재발급. 멤버·상태 불변, code 계열만 갱신.
+        //   waiting 추가: 솔로 도입 이전 생성된 구세대 pair가 재발급 시 403 → 클라가 "저장 지연"으로 오인해
+        //   무한 재시도에 빠지던 것 봉합(케이스 B의 solo/waiting 수용과 대칭). status는 그대로 유지(승격 아님).
         (isMember(resource.data)
-          && resource.data.status == "solo"
-          && request.resource.data.status == "solo"
+          && (resource.data.status == "solo" || resource.data.status == "waiting")
+          && request.resource.data.status == resource.data.status
           && request.resource.data.memberUids == resource.data.memberUids
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["code","codeExpiresAt"]))
         ||

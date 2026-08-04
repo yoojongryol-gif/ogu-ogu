@@ -3,7 +3,7 @@
    ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
    화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
    주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
-const VER = "oguogu-v0.5.2";
+const VER = "oguogu-v0.5.3";
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
@@ -12,6 +12,10 @@ self.addEventListener("install", e=>{
 });
 self.addEventListener("activate", e=>{
   e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VER).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
+});
+/* 버전 조회 응답 — 설정 화면이 "지금 페이지를 제어 중인 SW 버전"을 읽어 표시(환경 확인용). */
+self.addEventListener("message", e=>{
+  if(e.data && e.data.type==="version" && e.ports && e.ports[0]){ e.ports[0].postMessage(VER); }
 });
 self.addEventListener("fetch", e=>{
   const req=e.request;
