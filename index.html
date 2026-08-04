@@ -1208,6 +1208,15 @@ function fillCells(elId,code){
   el.innerHTML="";
   String(code).split("").forEach(c=>{ const d=document.createElement("div"); d.className="d"; d.textContent=c; el.appendChild(d); });
 }
+/* 초대코드 단일 출처(single source of truth): 복사·보내기는 오직 "화면에 실제 표시된" #inviteCode 셀에서만
+   읽는다 → "표시==복사==공유"가 구조적으로 항상 성립(따로 저장한 전역과 어긋날 여지 자체가 없음).
+   (3회째 버그 뿌리 제거: 구 window._lastCode 전역은 createSolo·_renderInviteScreen·watchPair 3곳이 각자
+    갱신했고, 특히 watchPair 솔로 스냅샷이 '지연된 서버 코드'로 덮어써, 재발급 직후 표시=새코드/복사=옛코드로
+    어긋났다. 이제 전역을 없애고 표시 DOM만 읽는다.) */
+function displayedInviteCode(){
+  const d=[...document.querySelectorAll("#inviteCode .d")].map(x=>x.textContent.trim()).join("");
+  return /^\d{6}$/.test(d) ? d : "";
+}
 
 /* 솔로 시작: 페어링 게이트 없이 내 공간(status "solo")을 만들고 바로 입장. 짝은 초대코드로 나중에 합류. */
 async function createSolo(){
@@ -1219,7 +1228,6 @@ async function createSolo(){
   });
   pairId = ref.id;
   localStorage.setItem("oguogu.pairId", pairId);
-  window._lastCode=code;
   watchPair(); // 스냅샷이 solo를 관측 → enterChat
 }
 
@@ -1235,7 +1243,6 @@ async function createSolo(){
    새 코드는 만료됐거나(24h 경과) 사용자가 "다시 만들기"를 눌렀을 때만 발급하며, 이때도 즉시 표시하되
    저장 상태를 문구로 구분해 안내한다. */
 function _renderInviteScreen(code, statusText, isErr){
-  window._lastCode=code;
   const chips=document.getElementById("inviteChips"), err=document.getElementById("inviteErr"), retry=document.getElementById("btnInviteRetry"), shareChip=document.getElementById("shareChip");
   if(shareChip) shareChip.style.display = (typeof navigator!=="undefined" && navigator.share) ? "inline-flex" : "none";
   fillCells("inviteCode", code);
@@ -1246,15 +1253,19 @@ function _renderInviteScreen(code, statusText, isErr){
 async function openInvite(force){
   if(!pairId || !currentPairData){ toast("먼저 공간을 만들어주세요"); return; }
   if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
+  // 저장된 코드의 "유효성(만료 여부)"을 먼저 확인한다 — 이게 레거시 pair 마이그레이션 구멍의 봉합.
+  //   구세대 pair(10분 TTL 시절 생성)는 codeExpiresAt이 이미 과거 → valid=false → 아래 재발급 경로로 자연 치유.
+  //   1분 버퍼: 곧 만료될 코드를 짝에게 전달하는 사이 rules 서버시간 만료(403)로 죽는 것 방지.
   const existing=currentPairData.code;
-  const valid = existing && currentPairData.codeExpiresAt && currentPairData.codeExpiresAt > Date.now();
+  const valid = existing && currentPairData.codeExpiresAt && currentPairData.codeExpiresAt > Date.now() + 60000;
   if(!force && valid){
     // 이미 서버에 저장된 유효 코드 → 즉시 표시(쓰기 없음·네트워크 무관·경쟁 없음). "코드 안 나옴" 원천 차단.
     _renderInviteScreen(existing, "짝이 이 코드를 입력하면 바로 이어져요");
     show("screenInvite");
     return;
   }
-  // 만료됐거나 강제 재발급 — 새 코드 즉시 표시(blank 방지) + 저장 병행, 상태 문구로 구분.
+  // 만료됐거나(레거시 자연치유) 강제 재발급 — 새 코드로 저장+표시+공유를 한 값(code)으로 원자 갱신.
+  //   표시/복사/공유는 모두 이 code(=표시 DOM)에서 나오고 updateDoc도 같은 code를 저장하므로 "표시==저장==공유".
   const code=genCode();
   _renderInviteScreen(code, "코드를 저장하는 중이에요…");
   show("screenInvite");
@@ -1328,8 +1339,9 @@ function watchPair(){
       }
     } else if(currentPairData.status==="solo" || currentPairData.status==="waiting"){
       // 솔로: 페어링 게이트 없이 전 기능 사용. 초대 화면은 유지, 그 외엔 바로 대화로.
+      //   (구 window._lastCode 갱신 제거 — 초대코드 표시/복사/공유는 이제 표시 DOM 단일 출처만 사용.
+      //    이 스냅샷이 지연된 서버 코드로 전역을 덮어써 표시와 복사가 어긋나던 3회째 버그의 진원지였다.)
       _prevRejoinOpen=false;
-      window._lastCode=currentPairData.code||window._lastCode||"";
       if(document.getElementById("screenInvite").classList.contains("active")){
         // 초대 코드 대기 유지(짝이 아직 안 들어옴)
       } else if(inAppTabs()){
@@ -1953,11 +1965,11 @@ document.getElementById("btnInvite").onclick=()=>openInvite();
 document.getElementById("btnInviteRetry").onclick=()=>openInvite(true); // 강제 새 코드 발급
 document.getElementById("soloBanner").onclick=()=>openInvite();
 document.getElementById("copyChip").onclick=async ()=>{
-  const c=window._lastCode||""; if(!c) return;
+  const c=displayedInviteCode(); if(!c){ toast("표시된 코드를 확인해주세요"); return; } // 표시 DOM 단일 출처
   try{ await navigator.clipboard.writeText(c); toast("코드를 복사했어요"); }catch(e){ toast("복사를 지원하지 않는 기기예요"); }
 };
 document.getElementById("shareChip").onclick=async ()=>{
-  const c=window._lastCode||""; if(!c) return;
+  const c=displayedInviteCode(); if(!c){ toast("표시된 코드를 확인해주세요"); return; } // 표시 DOM 단일 출처
   if(!navigator.share){ toast("이 기기는 보내기를 지원하지 않아요"); return; }
   try{ await navigator.share({title:"5959", text:"우리 둘만의 공간 5959 초대코드: "+c+"\n앱에서 '받은 초대코드가 있어요'에 입력해줘"}); }
   catch(e){ /* 사용자가 취소한 경우 조용히 무시 */ }
