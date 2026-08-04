@@ -217,6 +217,11 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   background:var(--accent-soft); color:var(--text); font-size:12px; line-height:1.5; padding:9px 14px;
 }
 .install-hint button{color:var(--muted); font-size:15px; padding:2px 6px}
+.solo-banner{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; flex:none; width:100%;
+  background:var(--accent-soft); color:var(--text); font-size:12.5px; line-height:1.5; padding:11px 14px; text-align:left;
+}
+.solo-banner .go{color:var(--accent); font-weight:var(--w-bold); flex:none}
 
 #msgList{
   flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
@@ -367,28 +372,31 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
     <div class="logo">5959</div>
     <div class="logo-sub">오구오구라고 읽어요</div>
   </div>
-  <h1 class="h">우리 둘만의 공간을<br>함께 열어요</h1>
-  <div class="sub">이메일이나 전화번호 없이,<br>6자리 코드로 상대방과 연결해요</div>
+  <h1 class="h">우리 둘만의 공간,<br>혼자 먼저 열어봐요</h1>
+  <div class="sub">이메일이나 전화번호 없이 바로 시작해요.<br>나중에 초대코드를 보내면 둘만의 공간이 돼요</div>
   <div class="spring"></div>
-  <button class="primary-btn" id="btnCreate">코드 만들기</button>
-  <button class="secondary-btn" id="btnJoin">코드로 들어가기</button>
+  <button class="primary-btn" id="btnStart">시작하기</button>
+  <button class="secondary-btn" id="btnJoin">받은 초대코드가 있어요</button>
   <button class="ghost-btn" id="btnRejoin">예전에 쓰던 공간이 있나요? · 다시 연결 코드 입력</button>
 </div>
 
-<!-- 코드 생성 후 대기 -->
-<div class="screen center" id="screenWaiting">
+<!-- 짝 초대 코드(솔로 상태에서 발급) -->
+<div class="screen center" id="screenInvite">
   <div class="brandmark"><div class="logo">5959</div></div>
-  <h1 class="h">코드를 상대에게 보내요</h1>
-  <div class="sub">짝이 이 코드를 입력하면 자동으로 이어져요</div>
-  <div class="codebox" id="waitCode"></div>
-  <div class="copychip" id="copyChip">⧉ 초대코드 복사</div>
+  <h1 class="h">초대코드를 짝에게 보내요</h1>
+  <div class="sub">짝이 이 코드를 <b>받은 초대코드가 있어요</b>에 입력하면<br>둘만의 공간으로 이어져요</div>
+  <div class="codebox" id="inviteCode"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+    <div class="copychip" id="copyChip">⧉ 코드 복사</div>
+    <div class="copychip" id="shareChip" style="display:none">↗ 코드 보내기</div>
+  </div>
   <div class="spring"></div>
   <div class="waiting">
     <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
-    <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">연결을 기다리는 중</b></div>
+    <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">짝의 합류를 기다리는 중</b></div>
   </div>
-  <div class="notice">이 코드는 지금 연결용이에요. 나중에 폰을 바꾸거나 앱을 지워도, 상대방이 설정에서 <b>다시 연결 코드</b>를 만들어주면 우리 공간이 그대로 이어져요.</div>
-  <button class="ghost-btn" id="btnCancelWait">취소하고 처음으로</button>
+  <div class="notice">짝이 들어오면 지금까지의 기록도 함께 보게 돼요. 이 코드는 10분 뒤 자동으로 닫히고, 언제든 다시 만들 수 있어요.</div>
+  <button class="ghost-btn" id="btnInviteBack">← 대화로 돌아가기</button>
 </div>
 
 <!-- 코드 입력 -->
@@ -428,6 +436,10 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
     <span>📲 홈 화면에 추가하면 전체 화면 앱처럼 쓸 수 있어요</span>
     <button id="installHintClose" aria-label="닫기">✕</button>
   </div>
+  <button class="solo-banner" id="soloBanner" style="display:none">
+    <span>💌 아직 나 혼자예요 · 짝을 초대하면 둘만의 공간이 돼요</span>
+    <span class="go">초대하기 →</span>
+  </button>
   <div id="msgList"><div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div></div>
   <form class="inbar" id="chatForm">
     <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
@@ -539,6 +551,10 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   <!-- 복구 · 앱 -->
   <div class="set-label">공간 관리</div>
   <div class="set-group">
+    <div class="set-row" id="inviteRow" style="display:none">
+      <div><div class="label">짝 초대하기</div><div class="desc">6자리 코드를 짝에게 보내면 둘만의 공간이 돼요. 지금까지의 기록도 함께 보게 돼요</div></div>
+      <button class="link-btn" id="btnInvite">코드 만들기</button>
+    </div>
     <div class="set-row" id="reinviteRow">
       <div><div class="label">상대방 다시 초대</div><div class="desc">상대가 폰을 바꾸거나 앱을 지웠어도, 여기서 만든 코드를 입력하면 지금까지의 대화 그대로 이어져요</div></div>
       <button class="link-btn" id="btnReinvite">코드 만들기</button>
@@ -652,6 +668,7 @@ let unsubPair=null, unsubMsgs=null;
 let currentPairData = null;
 let _lastAnimatedId=null;
 let _prevRejoinOpen=false;
+let _prevMemberCount=0;
 
 function toast(msg){
   const t=document.getElementById("toast");
@@ -696,12 +713,22 @@ function ddayText(){
   return days>=1 ? "D+"+days : "";
 }
 function applyChatHeader(){
-  const av=document.getElementById("chatAvatar"), nk=document.getElementById("chatNick"), dd=document.getElementById("chatDday");
+  const av=document.getElementById("chatAvatar"), nk=document.getElementById("chatNick"), dd=document.getElementById("chatDday"), stt=document.getElementById("chatStatus");
   if(!nk) return;
+  const solo = pairId && !otherUid();
   av.textContent=partnerEmoji();
   nk.textContent=partnerNick() || "우리 공간";
   const t=ddayText();
   if(t){ dd.textContent=t; dd.style.display=""; } else { dd.style.display="none"; }
+  if(stt) stt.textContent = solo ? "혼자 둘러보는 중 · 짝을 초대해보세요" : "단둘이 쓰는 우리만의 공간";
+}
+/* 솔로/짝연결 상태에 따른 UI 노출(배너·설정 초대행) — 스냅샷·화면진입마다 호출. */
+function updateSoloAffordances(){
+  const solo = pairId && !otherUid();
+  const banner=document.getElementById("soloBanner");
+  if(banner) banner.style.display = solo ? "flex" : "none";
+  const invRow=document.getElementById("inviteRow"); if(invRow) invRow.style.display = solo ? "flex" : "none";
+  const reRow=document.getElementById("reinviteRow"); if(reRow) reRow.style.display = (pairId && otherUid()) ? "flex" : "none";
 }
 async function setTheme(patch){
   if(!pairId){ if(patch.palette) localStorage.setItem("oguogu.pref.palette",patch.palette); applyThemeFromData(); return; }
@@ -731,7 +758,7 @@ function renderDecorUI(){
   document.querySelectorAll("#myEmojiPicker [data-emo]").forEach(el=>el.classList.toggle("on", (myEmoji()||"🩷")===el.dataset.emo));
   const nick=document.getElementById("myNickInput"); if(nick && document.activeElement!==nick) nick.value=myNick();
   const anniv=document.getElementById("annivInput"); if(anniv && document.activeElement!==anniv) anniv.value=(profileOf().anniversary||"");
-  const rr=document.getElementById("reinviteRow"); if(rr) rr.style.display = (pairId && otherUid()) ? "flex" : "none";
+  updateSoloAffordances();
 }
 
 /* ===== PIN 잠금 (마이플래너 패턴 재사용: SHA-256 해시, 평문 미저장) ===== */
@@ -969,19 +996,32 @@ function fillCells(elId,code){
   String(code).split("").forEach(c=>{ const d=document.createElement("div"); d.className="d"; d.textContent=c; el.appendChild(d); });
 }
 
-async function createPair(){
+/* 솔로 시작: 페어링 게이트 없이 내 공간(status "solo")을 만들고 바로 입장. 짝은 초대코드로 나중에 합류. */
+async function createSolo(){
   _dissolvedHandled=false;
   const code = genCode();
   const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
-    code, memberUids:[fb.uid], status:"waiting",
+    code, memberUids:[fb.uid], status:"solo",
     createdAt:M.serverTimestamp(), codeExpiresAt: Date.now()+10*60*1000
   });
   pairId = ref.id;
   localStorage.setItem("oguogu.pairId", pairId);
-  fillCells("waitCode", code);
   window._lastCode=code;
-  show("screenWaiting");
-  watchPair();
+  watchPair(); // 스냅샷이 solo를 관측 → enterChat
+}
+
+/* 짝 초대: 솔로 상태에서 언제든 새 코드 발급(만료 갱신) 후 초대 화면 표시. 기존 기록/꾸미기는 그대로 유지. */
+async function openInvite(){
+  if(!pairId){ toast("먼저 공간을 만들어주세요"); return; }
+  if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
+  const code = genCode();
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+10*60*1000}); }
+  catch(e){ console.error(e); toast("코드를 만들지 못했어요"); return; }
+  window._lastCode=code;
+  fillCells("inviteCode", code);
+  const shareChip=document.getElementById("shareChip");
+  if(shareChip) shareChip.style.display = (typeof navigator!=="undefined" && navigator.share) ? "inline-flex" : "none";
+  show("screenInvite");
 }
 
 async function joinPair(){
@@ -990,17 +1030,21 @@ async function joinPair(){
   const msgEl = document.getElementById("joinMsg");
   msgEl.textContent="";
   if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
-  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","waiting"));
+  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","solo"));
   const snap = await M.getDocs(q).catch(()=>null);
   if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 다시 확인해주세요"; return; }
   const d = snap.docs[0];
   if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){
     msgEl.textContent="코드가 만료됐어요. 상대방에게 새 코드를 요청하세요"; return;
   }
-  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 만든 코드예요. 상대방 기기에서 입력해주세요"; return; }
-  await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" }).catch(err=>{
-    console.error(err); msgEl.textContent="연결에 실패했어요. 다시 시도해주세요";
-  });
+  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 내 공간의 코드예요. 짝의 기기에서 입력해주세요"; return; }
+  try{
+    await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" });
+  }catch(err){
+    console.error(err);
+    msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "연결에 실패했어요. 다시 시도해주세요";
+    return;
+  }
   pairId = d.id;
   localStorage.setItem("oguogu.pairId", pairId);
   watchPair();
@@ -1013,24 +1057,41 @@ function watchPair(){
       localStorage.removeItem("oguogu.pairId"); pairId=null;
       show("screenStart"); return;
     }
+    const prevCount=_prevMemberCount;
     currentPairData = snap.data();
+    _prevMemberCount=(currentPairData.memberUids||[]).length;
     applyThemeFromData(); // 꾸미기 실시간 동기화(테마/배경/말풍선)
     if(currentPairData.status==="dissolved"){ handleDissolved(); return; }
     if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
       // 짝 도움 복귀: 상대가 방금 승계(재연결)했으면 안내
       if(_prevRejoinOpen && currentPairData.rejoinOpen!==true){ toast("💞 상대가 다시 연결됐어요"); }
       _prevRejoinOpen = currentPairData.rejoinOpen===true;
+      // 솔로 → paired 승격(짝이 방금 초대코드로 합류): 초대/대화 화면에서 안내 + 입장.
+      const justPaired = prevCount===1;
+      if(document.getElementById("screenInvite").classList.contains("active")){
+        toast("💞 짝이 들어왔어요"); enterChat(); return;
+      }
       if(document.getElementById("screenChat").classList.contains("active")){
+        if(justPaired) toast("💞 짝이 들어왔어요");
+        updateSoloAffordances();
         renderMessages(); // 읽음표시 등 부가 필드 변경만 반영, 구독 유지
       } else if(document.getElementById("screenReinvite").classList.contains("active") && currentPairData.rejoinOpen===true){
         // 재초대 코드 대기 화면은 유지(상대가 아직 안 들어옴)
       } else {
         enterChat();
       }
-    } else {
-      fillCells("waitCode", currentPairData.code||"------");
-      window._lastCode=currentPairData.code||"";
-      show("screenWaiting");
+    } else if(currentPairData.status==="solo" || currentPairData.status==="waiting"){
+      // 솔로: 페어링 게이트 없이 전 기능 사용. 초대 화면은 유지, 그 외엔 바로 대화로.
+      _prevRejoinOpen=false;
+      window._lastCode=currentPairData.code||window._lastCode||"";
+      if(document.getElementById("screenInvite").classList.contains("active")){
+        // 초대 코드 대기 유지(짝이 아직 안 들어옴)
+      } else if(document.getElementById("screenChat").classList.contains("active")
+             || document.getElementById("screenSettings").classList.contains("active")){
+        updateSoloAffordances(); renderMessages();
+      } else {
+        enterChat();
+      }
     }
   }, err=>{ console.error(err);
     if(isDeniedErr(err)){ recoverFromDeadPair(); return; }
@@ -1041,6 +1102,7 @@ function enterChat(){
   showLock();
   show("screenChat");
   applyChatHeader();
+  updateSoloAffordances();
   watchMessages();
   if(!isLocked()) markRead();
   maybeShowInstallHint();
@@ -1071,7 +1133,11 @@ function renderMessages(){
   if(isLocked()){ lockContentNow(); return; }
   applyChatHeader();
   if(!_lastMsgSnapshotDocs || _lastMsgSnapshotDocs.length===0){
-    list.innerHTML='<div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div>';
+    const solo = pairId && !otherUid();
+    list.innerHTML = solo
+      ? '<div class="msg-empty"><div class="empty-emoji">🩷</div>내 공간이 열렸어요.<br>여기 적어둔 기록은 짝을 초대하면 함께 보게 돼요.<br><button class="secondary-btn" id="emptyInviteBtn" style="max-width:220px;margin:16px auto 0">💌 짝 초대하기</button></div>'
+      : '<div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div>';
+    const eb=document.getElementById("emptyInviteBtn"); if(eb) eb.onclick=openInvite;
     return;
   }
   const otherRead = currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[otherUid()]) : 0;
@@ -1187,6 +1253,13 @@ async function submitRejoin(){
    ===================================================================== */
 let _dissolvedHandled=false;
 function openBreakup(){
+  const solo = pairId && !otherUid();
+  const h=document.querySelector("#breakupStep1 .modal-h");
+  const desc=document.querySelector("#breakupStep1 .modal-desc");
+  if(h) h.textContent = solo ? "이 공간을 지울까요?" : "관계를 정리할까요?";
+  if(desc) desc.innerHTML = solo
+    ? "이 공간의 기록이 모두 삭제되며 되돌릴 수 없어요."
+    : "정말 정리하시겠어요? 두 사람의 대화와 기록이 모두 삭제되며 되돌릴 수 없습니다.<br>상대방에게도 똑같이 안내돼요.";
   document.getElementById("breakupModal").style.display="flex";
   document.getElementById("breakupStep1").style.display="block";
   document.getElementById("breakupStep2").style.display="none";
@@ -1246,6 +1319,12 @@ async function dissolvePair(){
 function handleDissolved(){
   if(_dissolvedHandled) return;
   _dissolvedHandled=true;
+  const wasSolo = currentPairData && (currentPairData.memberUids||[]).length<=1;
+  const dh=document.querySelector("#screenDissolved h1.h"), ds=document.querySelector("#screenDissolved .sub");
+  if(dh) dh.textContent = wasSolo ? "공간을 지웠어요" : "관계가 정리되었습니다";
+  if(ds) ds.innerHTML = wasSolo
+    ? "기록이 안전하게 삭제되었어요.<br>언제든 다시 시작할 수 있어요."
+    : "함께한 공간은 안전하게 삭제되었어요.<br>그동안 이 공간을 지켜줘서 고마웠어요.";
   if(unsubPair) unsubPair();
   if(unsubMsgs) unsubMsgs();
   closeBreakup();
@@ -1275,7 +1354,7 @@ function recoverFromDeadPair(){
 function isDeniedErr(err){ return !!(err && (err.code==="permission-denied" || err.code==="firestore/permission-denied")); }
 
 /* ===== 이벤트 바인딩 ===== */
-document.getElementById("btnCreate").onclick=()=>createPair().catch(err=>{console.error(err); toast("코드를 만들지 못했어요");});
+document.getElementById("btnStart").onclick=()=>createSolo().catch(err=>{console.error(err); toast("시작하지 못했어요. 잠시 후 다시 시도해주세요");});
 document.getElementById("btnJoin").onclick=()=>{ document.getElementById("joinInput").value=""; document.getElementById("joinMsg").textContent=""; show("screenJoin"); };
 document.getElementById("btnJoinSubmit").onclick=()=>joinPair();
 document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") joinPair(); });
@@ -1284,14 +1363,18 @@ document.getElementById("btnRejoin").onclick=()=>{ document.getElementById("rejo
 document.getElementById("btnRejoinSubmit").onclick=()=>submitRejoin();
 document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitRejoin(); });
 document.getElementById("btnRejoinCancel").onclick=()=>show("screenStart");
-document.getElementById("btnCancelWait").onclick=()=>{
-  if(unsubPair) unsubPair();
-  localStorage.removeItem("oguogu.pairId"); pairId=null;
-  show("screenStart");
-};
+document.getElementById("btnInviteBack").onclick=()=>{ if(pairId) enterChat(); else show("screenStart"); };
+document.getElementById("btnInvite").onclick=()=>openInvite();
+document.getElementById("soloBanner").onclick=()=>openInvite();
 document.getElementById("copyChip").onclick=async ()=>{
   const c=window._lastCode||""; if(!c) return;
   try{ await navigator.clipboard.writeText(c); toast("코드를 복사했어요"); }catch(e){ toast("복사를 지원하지 않는 기기예요"); }
+};
+document.getElementById("shareChip").onclick=async ()=>{
+  const c=window._lastCode||""; if(!c) return;
+  if(!navigator.share){ toast("이 기기는 보내기를 지원하지 않아요"); return; }
+  try{ await navigator.share({title:"5959", text:"우리 둘만의 공간 5959 초대코드: "+c+"\n앱에서 '받은 초대코드가 있어요'에 입력해줘"}); }
+  catch(e){ /* 사용자가 취소한 경우 조용히 무시 */ }
 };
 /* iOS 키보드 유지: 전송 버튼 기본 blur 차단 + form submit 경로로 전송 */
 ["mousedown","touchstart"].forEach(ev=>{

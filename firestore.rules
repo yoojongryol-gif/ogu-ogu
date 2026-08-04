@@ -2,8 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 오구오구(5959): 계정 없음(익명 auth uid만). pairs/{pairId} = 커플 한 쌍.
-    //   status: "waiting"(1명, 코드로 상대 대기) -> "paired"(2명 완료) -> "dissolved"(관계 정리, 툼스톤)
+    // 오구오구(5959): 계정 없음(익명 auth uid만). pairs/{pairId} = 커플 한 쌍(또는 솔로 1인).
+    //   status: "solo"(1명, 혼자 둘러보며 초대 대기) -> "paired"(2명 완료) -> "dissolved"(관계 정리, 툼스톤)
+    //     · "solo"는 페어링 게이트 없이 바로 입장해 전 기능(채팅/꾸미기/잠금)을 쓰는 상태.
+    //       나중에 초대코드로 짝이 합류하면 같은 문서가 그대로 paired로 승격 → 솔로 시절 기록/꾸미기 유지.
+    //     · 과거 "waiting"(구 페어링 대기) 문서와의 하위호환: 합류 규칙은 solo/waiting 둘 다 수용.
+    //   code/codeExpiresAt: 초대코드(6자리, 만료). 솔로 멤버가 언제든 재발급 가능(케이스 I).
     //   theme/profile: "둘이 함께 꾸미기" 동기화 필드(멤버만 갱신, 값은 취향 데이터).
     //   rejoin*: 짝 도움 복귀(partner re-invite) — 저장소를 잃은 쪽이 기존 자리를 승계하기 위한 1회용 코드.
     function signedIn() { return request.auth != null; }
@@ -15,18 +19,19 @@ service cloud.firestore {
     }
 
     match /pairs/{pairId} {
-      // 읽기: 이미 멤버이거나, 아직 대기중(waiting)이거나, 재합류 초대(rejoinOpen)가 열려 있는 쌍은
+      // 읽기: 이미 멤버이거나, 솔로/대기 상태이거나, 재합류 초대(rejoinOpen)가 열려 있는 쌍은
       //   코드 입력을 위해 조회 가능. (코드 자체는 6자리 랜덤이라 추측 난이도로 방어 + 짧은 TTL로 창을 좁힘.
-      //   rejoinOpen==true 는 등가(equality) 조건이라 쿼리 where("rejoinOpen","==",true)로 규칙 증명이 성립한다.)
+      //   status/rejoinOpen 모두 등가(equality) 조건이라 where("status","==","solo") 등으로 규칙 증명이 성립한다.)
       allow read: if isMember(resource.data)
+        || resource.data.status == "solo"
         || resource.data.status == "waiting"
         || (("rejoinOpen" in resource.data) && resource.data.rejoinOpen == true);
 
-      // 생성: 본인 uid 1명으로만 시작 가능 (초대자)
+      // 생성: 본인 uid 1명 솔로로 시작 (페어링 게이트 없이 바로 입장). 짝은 초대코드로 나중에 합류.
       allow create: if signedIn()
         && request.resource.data.memberUids.size() == 1
         && request.resource.data.memberUids[0] == request.auth.uid
-        && request.resource.data.status == "waiting";
+        && request.resource.data.status == "solo";
 
       // 이별 프로토콜(v1): 일단 dissolved로 전환된 문서는 그 무엇으로도 되돌리거나 추가 수정할 수 없다(툼스톤 고정).
       //   → 전체 allow update에 "현재 상태가 dissolved가 아닐 것"을 선행 조건으로 건다.
@@ -51,13 +56,24 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme","profile"]))
         ||
-        // 케이스 B: 대기중인 쌍에 새 멤버(본인)가 합류
-        (resource.data.status == "waiting"
+        // 케이스 B: 솔로(또는 구 대기) 쌍에 초대코드로 새 멤버(본인)가 합류 → paired 승격.
+        //   기존 1인은 그대로 보존(hasAll) + 본인 추가, 결과 정확히 2명. 상태만 paired로.
+        //   코드 만료(codeExpiresAt)를 서버시간으로 강제 → 만료 코드로는 합류 불가(rules 레벨 방어).
+        //   (codeExpiresAt 없는 구 waiting 문서는 관대하게 통과 — 하위호환.)
+        ((resource.data.status == "solo" || resource.data.status == "waiting")
           && resource.data.memberUids.size() == 1
+          && (!("codeExpiresAt" in resource.data) || request.time.toMillis() < resource.data.codeExpiresAt)
           && request.resource.data.memberUids.size() == 2
           && request.resource.data.memberUids.hasAll(resource.data.memberUids)
           && request.resource.data.memberUids.hasAny([request.auth.uid])
           && request.resource.data.status == "paired")
+        ||
+        // 케이스 I: 솔로 멤버가 초대코드 재발급(만료 갱신/새 코드). 멤버·상태(solo) 불변, code 계열만 갱신.
+        (isMember(resource.data)
+          && resource.data.status == "solo"
+          && request.resource.data.status == "solo"
+          && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["code","codeExpiresAt"]))
         ||
         // 케이스 C: 관계 정리(이별 프로토콜) — 어느 쪽 멤버든 단독 실행 가능. 상대 동의 불필요(설계 철학: 인질 방지).
         //   멤버 목록은 불변, status/dissolvedAt/dissolvedBy 필드만 갱신 가능(다른 필드 끼워넣기 차단).
