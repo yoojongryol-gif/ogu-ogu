@@ -285,8 +285,15 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .set-label{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); align-self:flex-start; max-width:340px; width:100%; margin:0 auto 6px; padding-left:4px}
 .set-row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; text-align:left}
 .set-row + .set-row{border-top:1px solid var(--line)}
+/* 라벨-값 2단(space-between) 행: 텍스트 칼럼은 남는 폭을 먹고 줄바꿈, 우측 컨트롤은 고정폭·줄바꿈 금지.
+   (이게 없으면 한글 버튼("코드 만들기")이 세로로 쪼개지고 설명이 잘려 "글자 뒤죽박죽"으로 보임.) */
+.set-row:not(.set-col) > div:first-child{flex:1 1 auto; min-width:0}
+.set-row:not(.set-col) > .toggle,
+.set-row:not(.set-col) > .link-btn{flex:none; white-space:nowrap}
 .set-row .label{font-size:14.5px; font-weight:var(--w-med)}
-.set-row .desc{font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5}
+/* 긴 라벨은 한 줄 말줄임(2단 행에서만) */
+.set-row:not(.set-col) .label{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.set-row .desc{font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5; word-break:keep-all; overflow-wrap:anywhere}
 .set-col{display:block}
 .toggle{width:46px; height:28px; border-radius:20px; background:var(--surface2); position:relative; border:1px solid var(--line); flex:none}
 .toggle.on{background:var(--accent); border-color:var(--accent)}
@@ -302,7 +309,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 /* 꾸미기 위젯 */
 .swatches{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px}
 .swatch{width:44px; text-align:center; font-size:10px; color:var(--muted)}
-.swatch .chip{width:44px; height:44px; border-radius:14px; border:2px solid var(--line); box-shadow:var(--shadow); margin-bottom:4px; position:relative}
+.swatch .chip{display:block; width:44px; height:44px; border-radius:14px; border:2px solid var(--line); box-shadow:var(--shadow); margin-bottom:4px; position:relative}
 .swatch.on .chip{border-color:var(--accent)}
 .swatch.on .chip::after{content:"✓"; position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:15px; text-shadow:0 1px 2px rgba(0,0,0,.4)}
 .chip.p-warm{background:linear-gradient(135deg,#f18ba4,#ec7f9b)}
@@ -772,23 +779,41 @@ function _bufToB64u(buf){const b=new Uint8Array(buf);let s="";for(let i=0;i<b.le
 function _b64uToBuf(s){s=s.replace(/-/g,"+").replace(/_/g,"/");const pad=s.length%4?4-(s.length%4):0;s+="=".repeat(pad);const bin=atob(s);const b=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return b.buffer;}
 function bioIsOn(){return !!localStorage.getItem("oguogu.lock.bio");}
 async function bioAvailable(){try{return !!window.PublicKeyCredential&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}catch(e){return false;}}
+/* 진단 채널: 지문·Face ID 관련 마지막 사유(에러 name+message)를 설정 화면에 짧게 표시.
+   실기 없이 다음 폰 테스트에서 정확한 원인을 읽기 위한 통로. PIN 폴백은 항상 유지. */
+let _bioDiag="";
+function setBioDiag(msg){
+  _bioDiag=msg||"";
+  const hint=document.getElementById("lockModeHint");
+  if(hint && _bioDiag) hint.textContent=_bioDiag;
+}
 async function registerBio(){
-  if(!await bioAvailable()){toast("이 기기는 생체인증을 지원하지 않아요");return false;}
+  if(!await bioAvailable()){
+    const m="이 기기·브라우저에서는 지문·Face ID를 쓸 수 없어요 — 비밀번호로 사용하세요";
+    toast(m); setBioDiag(m); return false;
+  }
   try{
+    // iOS Safari/홈화면(standalone) 호환 보수 세팅:
+    //   · rp.id 미명시 → 현재 도메인(github.io 등 등록가능 도메인)을 기본 사용(명시 시 불일치로 실패 위험).
+    //   · residentKey/requireResidentKey 미요구(discoverable 강제 제거) — 구형 iOS 등록 실패 회피.
+    //   · userVerification "preferred"(플랫폼 인증기는 사실상 생체 수행) + attestation "none" + 넉넉한 timeout.
     const cred=await navigator.credentials.create({publicKey:{
       challenge:crypto.getRandomValues(new Uint8Array(32)),
       rp:{name:"5959"},
       user:{id:crypto.getRandomValues(new Uint8Array(16)),name:"oguogu-user",displayName:"5959"},
       pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
-      authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},
-      timeout:60000,attestation:"none"
+      authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"preferred"},
+      timeout:120000,attestation:"none"
     }});
     if(!cred)return false;
     localStorage.setItem("oguogu.lock.bio",_bufToB64u(cred.rawId));
+    setBioDiag("");
     return true;
   }catch(e){
     console.error(e);
-    toast(e && e.name==="NotAllowedError" ? "생체인증 등록이 취소됐어요" : "이 기기에서는 생체인증을 등록할 수 없어요 — 비밀번호로 사용하세요");
+    const name=(e&&e.name)||"Error", msg=(e&&e.message)||"";
+    toast(name==="NotAllowedError" ? "생체인증 등록이 취소됐어요 — 비밀번호로 사용하세요" : "지문·Face ID 등록 실패 — 비밀번호로 사용하세요");
+    setBioDiag("등록 실패: "+name+(msg?(" — "+msg):"")); // 다음 폰 테스트에서 원인 확인용
     return false;
   }
 }
@@ -805,20 +830,20 @@ async function bioUnlock(){
     const a=await navigator.credentials.get({publicKey:{
       challenge:crypto.getRandomValues(new Uint8Array(32)),
       allowCredentials:[{type:"public-key",id:_b64uToBuf(id)}],
-      userVerification:"required",timeout:60000
+      userVerification:"preferred",timeout:120000
     }});
     if(a) hideLock();
   }catch(e){
     console.error(e);
-    const name=e && e.name;
+    const name=(e && e.name)||"Error"; // 진단 채널: 실패 사유(name)를 잠금화면에 노출
     if(name==="NotAllowedError"){
-      msgEl.textContent="인증이 취소됐어요 — 다시 시도하거나 비밀번호로 해제하세요";
+      msgEl.textContent="인증 실패: NotAllowedError — 다시 시도하거나 비밀번호로 해제하세요";
     }else if(name==="SecurityError" || name==="InvalidStateError" || name==="NotSupportedError"){
       localStorage.setItem("oguogu.lock.mode","pin");
-      msgEl.textContent="이 기기에서는 지문·Face ID를 쓸 수 없어요 — 비밀번호로 전환했어요";
+      msgEl.textContent="인증 실패: "+name+" — 비밀번호로 전환했어요";
       showPinFallback();
     }else{
-      msgEl.textContent="지문·Face ID 인증에 실패했어요 — 비밀번호로 해제하세요";
+      msgEl.textContent="인증 실패: "+name+" — 비밀번호로 해제하세요";
     }
   }finally{
     _bioBusy=false;
@@ -908,7 +933,10 @@ async function renderLockModeUI(){
   bioBtn.classList.toggle("active",mode==="bio");
   const avail=await bioAvailable();
   bioBtn.disabled=!avail;
-  hint.textContent=avail?"":"이 기기는 지문·Face ID를 지원하지 않아요 — 비밀번호만 사용돼요";
+  // 진단 채널 우선: 마지막 지문·Face ID 사유가 있으면 그걸 유지 표시, 없으면 지원여부 안내.
+  hint.textContent = _bioDiag ? _bioDiag
+    : (avail ? "지문·Face ID를 켜면 이 기기에 등록돼요. 안 되면 아래에 사유가 표시돼요"
+             : "이 기기·브라우저는 지문·Face ID를 지원하지 않아요 — 비밀번호만 사용돼요");
 }
 async function chooseLockMode(target){
   if(!lockIsOn())return;
@@ -1010,18 +1038,19 @@ async function createSolo(){
   watchPair(); // 스냅샷이 solo를 관측 → enterChat
 }
 
-/* 짝 초대: 솔로 상태에서 언제든 새 코드 발급(만료 갱신) 후 초대 화면 표시. 기존 기록/꾸미기는 그대로 유지. */
-async function openInvite(){
+/* 짝 초대(원탭): 누르는 즉시 6자리 코드를 만들어 화면에 표시(복사/보내기 버튼 포함). 중간 화면 없음.
+   저장(만료 갱신)은 백그라운드로 처리 — 표시를 막지 않는다. 기존 기록/꾸미기는 그대로 유지. */
+function openInvite(){
   if(!pairId){ toast("먼저 공간을 만들어주세요"); return; }
   if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
   const code = genCode();
-  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+10*60*1000}); }
-  catch(e){ console.error(e); toast("코드를 만들지 못했어요"); return; }
   window._lastCode=code;
   fillCells("inviteCode", code);
   const shareChip=document.getElementById("shareChip");
   if(shareChip) shareChip.style.display = (typeof navigator!=="undefined" && navigator.share) ? "inline-flex" : "none";
-  show("screenInvite");
+  show("screenInvite"); // 즉시 표시(원탭) — 저장 완료를 기다리지 않음
+  M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+10*60*1000})
+    .catch(e=>{ console.error(e); toast("코드 저장에 실패했어요. 새로고침 후 다시 시도해주세요"); });
 }
 
 async function joinPair(){
