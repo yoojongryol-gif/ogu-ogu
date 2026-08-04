@@ -56,6 +56,17 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme","profile"]))
         ||
+        // 케이스 J: 사진 카운트(커플당 50장 캡 관리) — 멤버만, photoCount 필드만, 0~50 정수.
+        //   ⚠️정직한 한계: rules는 photos 서브컬렉션 문서 수를 셀 수 없어 "실제 사진 수 == photoCount"를
+        //   완전 강제하지 못한다(클라이언트가 카운트를 정직히 올린다는 전제). 다만 photoCount 자체의
+        //   상한(<=50)은 rules로 강제되어, 이 값을 근거로 한 캡 UX가 50을 넘겨 기록되는 일은 막는다.
+        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["photoCount"])
+          && request.resource.data.photoCount is int
+          && request.resource.data.photoCount >= 0
+          && request.resource.data.photoCount <= 50)
+        ||
         // 케이스 B: 솔로(또는 구 대기) 쌍에 초대코드로 새 멤버(본인)가 합류 → paired 승격.
         //   기존 1인은 그대로 보존(hasAll) + 본인 추가, 결과 정확히 2명. 상태만 paired로.
         //   코드 만료(codeExpiresAt)를 서버시간으로 강제 → 만료 코드로는 합류 불가(rules 레벨 방어).
@@ -127,6 +138,49 @@ service cloud.firestore {
         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
+      }
+
+      // ── 일정(events) ────────────────────────────────────────────────
+      //   읽기: 멤버(상태 무관 — 과거 기록 승계 열람). 생성: 멤버 & 본인 & dissolved 아님.
+      //   수정/삭제: 본인 것(일상적 일정 취소·오타 수정) 또는 이별(dissolved) 시 소거.
+      //   ⚠️ dissolved delete 허용이 "인질 방지 철학 구멍" 봉합 — messages와 동일하게 이별 시 서버 잔존 방지.
+      match /events/{eventId} {
+        allow read: if isMember(pairOf(pairId));
+        allow create: if isMember(pairOf(pairId))
+          && request.resource.data.createdBy == request.auth.uid
+          && pairOf(pairId).status != "dissolved";
+        allow update: if isMember(pairOf(pairId))
+          && resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdBy == resource.data.createdBy
+          && pairOf(pairId).status != "dissolved";
+        allow delete: if isMember(pairOf(pairId))
+          && (resource.data.createdBy == request.auth.uid || pairOf(pairId).status == "dissolved");
+      }
+
+      // ── 다이어리(diary) ─────────────────────────────────────────────
+      //   엔트리: 글 + 인라인 썸네일(thumbs[].bytes). 둘 다 작성·열람, 본인 것 수정/삭제.
+      match /diary/{entryId} {
+        allow read: if isMember(pairOf(pairId));
+        allow create: if isMember(pairOf(pairId))
+          && request.resource.data.authorUid == request.auth.uid
+          && pairOf(pairId).status != "dissolved";
+        allow update: if isMember(pairOf(pairId))
+          && resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorUid == resource.data.authorUid
+          && pairOf(pairId).status != "dissolved";
+        allow delete: if isMember(pairOf(pairId))
+          && (resource.data.authorUid == request.auth.uid || pairOf(pairId).status == "dissolved");
+
+        // 원본 사진(Bytes) — 탭할 때만 read. 문서 1MiB 상한은 Firestore가 자체 강제(초과 write 거부).
+        match /photos/{photoId} {
+          allow read: if isMember(pairOf(pairId));
+          allow create: if isMember(pairOf(pairId))
+            && request.resource.data.authorUid == request.auth.uid
+            && pairOf(pairId).status != "dissolved";
+          allow update: if false;
+          allow delete: if isMember(pairOf(pairId))
+            && (resource.data.authorUid == request.auth.uid || pairOf(pairId).status == "dissolved");
+        }
       }
     }
   }

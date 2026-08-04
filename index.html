@@ -13,10 +13,12 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
 <!--
 ================================================================================
-  5959 — 전면 리디자인(디자인 시스템 기반) + 둘이 함께 꾸미기 + 짝 도움 복귀
+  5959 (v0.5.0) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
   · 토큰 구조는 design/index.html 시안(2026-08-04, 사장님 ⓐ "따뜻한 감성" 확정)에서 이식.
   · 전 화면이 아래 토큰만 참조 → 레이아웃 기본기는 테마 무관 동일, 차이는 값(팔레트)으로만.
   · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
+  · v0.5.0: 하단 탭[채팅·일정·다이어리·설정] + events/diary/photos 서브컬렉션(사진=Bytes, 커플당 50장 캡)
+    + 초대코드 TTL 24h·저장 착지 후 코드 공개(v0.4.2 fire-and-forget 결함 수리).
 ================================================================================
 -->
 <style>
@@ -263,7 +265,6 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 
 .inbar{
   flex:none; display:flex; align-items:center; gap:var(--s2); padding:var(--s2) var(--s3);
-  padding-bottom:calc(var(--s2) + env(safe-area-inset-bottom,0px));
   background:var(--surface); border-top:1px solid var(--line);
 }
 #msgInput{
@@ -360,6 +361,89 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   opacity:0; pointer-events:none; transition:.25s; z-index:800; max-width:86%; text-align:center;
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+/* ═══════════════ 하단 탭 바 [채팅·일정·다이어리·설정] ═══════════════ */
+/* 기존 토큰만 사용(신규 토큰 없음). 앱 내부(채팅/일정/다이어리/설정)에서만 노출. */
+.tabbar{
+  display:none; flex:none; align-items:stretch; background:var(--surface);
+  border-top:1px solid var(--line); box-shadow:0 -1px 3px rgba(90,60,60,.05);
+  padding-bottom:env(safe-area-inset-bottom,0px); z-index:3;
+}
+.tabbar.on{display:flex}
+.tab{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 2px 6px; color:var(--muted); font-size:10.5px; font-weight:var(--w-med)}
+.tab .ti{font-size:20px; line-height:1}
+.tab.on{color:var(--accent)}
+
+/* ═══════════════ 일정·다이어리 공통 (스크롤 화면) ═══════════════ */
+.tabscreen{padding:0}
+.tabhead{
+  flex:none; display:flex; align-items:center; justify-content:space-between; gap:var(--s3);
+  padding:var(--s3) var(--s4); padding-top:calc(var(--s3) + env(safe-area-inset-top,0px));
+  background:var(--surface); border-bottom:1px solid var(--line); box-shadow:var(--shadow); z-index:2;
+}
+.tabhead .ttl{font-size:var(--t-title); font-weight:var(--w-bold)}
+.tabscroll{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:var(--s4) var(--s4) var(--s8); background:var(--bg)}
+
+/* D-day 카드 */
+.dday-card{background:var(--accent-soft); border-radius:var(--r-lg); padding:16px; text-align:center; margin-bottom:var(--s4)}
+.dday-card .big{font-size:var(--t-display); font-weight:var(--w-bold); color:var(--accent); line-height:1.1}
+.dday-card .cap{font-size:12.5px; color:var(--muted); margin-top:4px}
+
+/* 달력 */
+.cal{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:var(--s4); box-shadow:var(--shadow); margin-bottom:var(--s4)}
+.cal-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--s3)}
+.cal-nav .m{font-size:var(--t-body); font-weight:var(--w-bold)}
+.cal-nav button{width:34px; height:34px; border-radius:var(--r-full); color:var(--muted); font-size:16px; display:grid; place-items:center; background:var(--surface2)}
+.cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:2px}
+.cal-wd{text-align:center; font-size:11px; color:var(--muted); padding:4px 0}
+.cal-d{aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:var(--r-sm); font-size:13px; color:var(--text); position:relative}
+.cal-d.other{color:var(--muted); opacity:.35}
+.cal-d.today{background:var(--accent-soft); color:var(--accent); font-weight:var(--w-bold)}
+.cal-d.sel{outline:1.5px solid var(--accent); outline-offset:-1.5px}
+.cal-d .dot{position:absolute; bottom:5px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:var(--accent)}
+.cal-d .anv{position:absolute; top:2px; right:3px; font-size:9px}
+
+/* 이벤트 리스트 카드 */
+.evt{display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow); margin-bottom:8px}
+.evt .dd{flex:none; min-width:54px; text-align:center; font-size:12px; font-weight:var(--w-bold); color:var(--accent); background:var(--accent-soft); border-radius:var(--r-sm); padding:6px 4px}
+.evt .info{flex:1; min-width:0}
+.evt .info .t{font-size:14.5px; font-weight:var(--w-med); word-break:break-word}
+.evt .info .sub{font-size:12px; color:var(--muted); margin-top:2px; word-break:break-word}
+.evt .del{flex:none; color:var(--muted); font-size:15px; padding:4px 8px}
+.sec-label{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:var(--s5) 0 8px 4px}
+.empty-note{text-align:center; color:var(--muted); font-size:13px; line-height:1.8; padding:22px 12px}
+
+/* 입력 폼 카드 */
+.form-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:var(--s4); box-shadow:var(--shadow); margin-bottom:var(--s4)}
+.form-card .fi{width:100%; margin-bottom:10px; padding:11px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--text); font-size:var(--t-body)}
+.form-card .fi::placeholder{color:var(--muted)}
+textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1.5}
+
+/* 다이어리 */
+.diary-toggle{display:flex; gap:6px; margin-bottom:var(--s4)}
+.diary-toggle button{flex:1; padding:9px; border-radius:var(--r-md); border:1.5px solid var(--line); background:var(--surface2); color:var(--muted); font-size:13px; font-weight:var(--w-med)}
+.diary-toggle button.on{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.dentry{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:14px; box-shadow:var(--shadow); margin-bottom:var(--s3)}
+.dentry .top{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px}
+.dentry .dt{font-size:12.5px; color:var(--muted)}
+.dentry .au{font-size:11px; font-weight:var(--w-bold); color:var(--accent); background:var(--accent-soft); padding:2px 8px; border-radius:var(--r-full)}
+.dentry .tx{font-size:var(--t-body); line-height:1.5; word-break:break-word; white-space:pre-wrap}
+.dentry .thumbs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
+.dentry .thumbs img{width:76px; height:76px; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
+.dentry .acts{display:flex; gap:16px; margin-top:12px}
+.dentry .acts button{font-size:12.5px; font-weight:var(--w-med); color:var(--muted)}
+.dentry .acts button.dngr{color:var(--danger)}
+.grid-photos{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
+.grid-photos img{width:100%; aspect-ratio:1; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
+.cap-note{font-size:12.5px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.65; margin-bottom:var(--s4)}
+.photo-count{font-size:12px; color:var(--muted); font-weight:var(--w-med)}
+.file-btn{display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--w-med); color:var(--accent); background:var(--accent-soft); padding:10px 14px; border-radius:var(--r-md); cursor:pointer}
+
+/* 사진 라이트박스 */
+.photo-modal{position:fixed; inset:0; z-index:750; background:rgba(10,8,10,.92); display:none; align-items:center; justify-content:center; padding:20px}
+.photo-modal.show{display:flex}
+.photo-modal img{max-width:100%; max-height:100%; border-radius:var(--r-md); object-fit:contain}
+.photo-modal .close{position:absolute; top:calc(14px + env(safe-area-inset-top,0px)); right:18px; color:#fff; font-size:26px; width:40px; height:40px; display:grid; place-items:center}
 </style>
 </head>
 <body>
@@ -393,10 +477,12 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   <h1 class="h">초대코드를 짝에게 보내요</h1>
   <div class="sub">짝이 이 코드를 <b>받은 초대코드가 있어요</b>에 입력하면<br>둘만의 공간으로 이어져요</div>
   <div class="codebox" id="inviteCode"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+  <div id="inviteChips" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
     <div class="copychip" id="copyChip">⧉ 코드 복사</div>
     <div class="copychip" id="shareChip" style="display:none">↗ 코드 보내기</div>
   </div>
+  <div class="errline" id="inviteErr" style="min-height:16px"></div>
+  <button class="secondary-btn" id="btnInviteRetry" style="display:none;max-width:220px">🔄 다시 만들기</button>
   <div class="spring"></div>
   <div class="waiting">
     <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
@@ -452,6 +538,52 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
     <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
     <button id="sendBtn" type="submit">↑</button>
   </form>
+</div>
+
+<!-- 일정 -->
+<div class="screen tabscreen" id="screenSchedule">
+  <div class="tabhead"><div class="ttl">우리 일정</div><button class="hbtn" id="btnSchedRefresh" title="새로고침">🔄</button></div>
+  <div class="tabscroll">
+    <div id="ddayCard"></div>
+    <div class="cal" id="calBox"></div>
+    <button class="secondary-btn" id="btnToggleEvtForm" style="max-width:none;margin-bottom:var(--s4)">＋ 일정 추가</button>
+    <div class="form-card" id="evtForm" style="display:none">
+      <input class="fi" id="evtTitle" maxlength="40" placeholder="일정 제목 (예: 우리 여행)" autocomplete="off">
+      <input class="fi" id="evtDate" type="date">
+      <div class="diary-toggle" style="margin-bottom:10px">
+        <button type="button" class="on" id="evtTypeOnce" data-type="once">한 번</button>
+        <button type="button" id="evtTypeAnnual" data-type="annual">매년 반복(기념일)</button>
+      </div>
+      <input class="fi" id="evtMemo" maxlength="80" placeholder="메모 (선택)" autocomplete="off">
+      <button class="primary-btn" id="btnAddEvt" style="max-width:none">추가하기</button>
+    </div>
+    <div class="sec-label">다가오는 일정</div>
+    <div id="upcomingList"></div>
+  </div>
+</div>
+
+<!-- 다이어리 -->
+<div class="screen tabscreen" id="screenDiary">
+  <div class="tabhead"><div class="ttl">우리 다이어리</div><div class="photo-count" id="photoCountLbl"></div></div>
+  <div class="tabscroll">
+    <div class="diary-toggle">
+      <button class="on" id="diaryTabList" data-dview="list">기록</button>
+      <button id="diaryTabGrid" data-dview="grid">사진 모아보기</button>
+    </div>
+    <div id="diaryCapNote"></div>
+    <button class="secondary-btn" id="btnToggleDiaryForm" style="max-width:none;margin-bottom:var(--s4)">＋ 오늘의 기록</button>
+    <div class="form-card" id="diaryForm" style="display:none">
+      <input class="fi" id="diaryDate" type="date">
+      <textarea class="fi" id="diaryText" maxlength="2000" placeholder="오늘 우리 이야기를 적어봐요"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <label class="file-btn" id="diaryFileLabel">🖼️ 사진 담기<input type="file" id="diaryPhotos" accept="image/*" multiple style="display:none"></label>
+        <span class="photo-count" id="diarySelCount"></span>
+      </div>
+      <button class="primary-btn" id="btnAddDiary" style="max-width:none">저장하기</button>
+      <button class="ghost-btn" id="btnCancelDiaryEdit" style="display:none;width:100%">수정 취소</button>
+    </div>
+    <div id="diaryBody"></div>
+  </div>
 </div>
 
 <!-- 설정 -->
@@ -649,6 +781,20 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   <div class="lock-msg" id="lockMsg"></div>
 </div>
 
+<!-- 하단 탭 바 (앱 내부에서만 노출) -->
+<nav class="tabbar" id="tabbar">
+  <button class="tab" data-tab="chat"><span class="ti">💬</span><span>채팅</span></button>
+  <button class="tab" data-tab="schedule"><span class="ti">📅</span><span>일정</span></button>
+  <button class="tab" data-tab="diary"><span class="ti">📖</span><span>다이어리</span></button>
+  <button class="tab" data-tab="settings"><span class="ti">⚙️</span><span>설정</span></button>
+</nav>
+
+<!-- 사진 크게 보기 -->
+<div class="photo-modal" id="photoModal">
+  <button class="close" id="photoModalClose" aria-label="닫기">✕</button>
+  <img id="photoModalImg" alt="">
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -671,8 +817,14 @@ const firebaseConfig = {
 const USE_EMULATOR = (location.hostname==="localhost" || location.hostname==="127.0.0.1");
 
 let pairId = localStorage.getItem("oguogu.pairId") || null;
-let unsubPair=null, unsubMsgs=null;
+let unsubPair=null, unsubMsgs=null, unsubEvents=null, unsubDiary=null;
 let currentPairData = null;
+/* 일정·다이어리 상태 */
+const PHOTO_CAP=50;
+let _events=[], _diary=[];
+let _calY=null, _calM=null, _selDate=null;
+let _evtType="once", _diaryView="list", _diarySel=[], _editingDiaryId=null;
+const _thumbUrlCache={};
 let _lastAnimatedId=null;
 let _prevRejoinOpen=false;
 let _prevMemberCount=0;
@@ -685,7 +837,30 @@ function toast(msg){
 function show(id){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+  const tb=document.getElementById("tabbar"); if(tb) tb.classList.remove("on"); // 앱 밖 화면에선 탭 숨김
 }
+
+/* ===== 하단 탭 [채팅|일정|다이어리|설정] — 상태 유지 전환 ===== */
+const TAB_SCREEN={chat:"screenChat", schedule:"screenSchedule", diary:"screenDiary", settings:"screenSettings"};
+let currentTab="chat";
+function inAppTabs(){ return Object.values(TAB_SCREEN).some(id=>document.getElementById(id).classList.contains("active")); }
+function showTab(tab){
+  if(!TAB_SCREEN[tab]) tab="chat";
+  currentTab=tab;
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById(TAB_SCREEN[tab]).classList.add("active");
+  const tb=document.getElementById("tabbar"); if(tb) tb.classList.add("on");
+  document.querySelectorAll("#tabbar .tab").forEach(el=>el.classList.toggle("on", el.dataset.tab===tab));
+  if(tab==="chat"){ applyChatHeader(); if(!isLocked()) markRead(); }
+  else if(tab==="schedule"){ renderSchedule(); }
+  else if(tab==="diary"){ renderDiary(); }
+  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); }
+}
+document.getElementById("tabbar").addEventListener("click",e=>{
+  const b=e.target.closest("[data-tab]"); if(!b) return;
+  if(isLocked() && b.dataset.tab==="chat"){ showLock(); }
+  showTab(b.dataset.tab);
+});
 
 /* ===== 꾸미기: 테마/프로필 (pairs 문서 theme/profile 필드 동기화) ===== */
 const PALETTES={warm:"#fbf3ee",minimal:"#f6f6f7",lavender:"#f5f2fb",forest:"#eef4ef",sky:"#eef4fb",midnight:"#14151b",cocoa:"#1c1714"};
@@ -1030,7 +1205,7 @@ async function createSolo(){
   const code = genCode();
   const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
     code, memberUids:[fb.uid], status:"solo",
-    createdAt:M.serverTimestamp(), codeExpiresAt: Date.now()+10*60*1000
+    createdAt:M.serverTimestamp(), codeExpiresAt: Date.now()+24*60*60*1000
   });
   pairId = ref.id;
   localStorage.setItem("oguogu.pairId", pairId);
@@ -1040,17 +1215,35 @@ async function createSolo(){
 
 /* 짝 초대(원탭): 누르는 즉시 6자리 코드를 만들어 화면에 표시(복사/보내기 버튼 포함). 중간 화면 없음.
    저장(만료 갱신)은 백그라운드로 처리 — 표시를 막지 않는다. 기존 기록/꾸미기는 그대로 유지. */
-function openInvite(){
+/* 원탭 초대: 누르면 즉시 초대 화면으로 전환("코드 만드는 중…") → 저장이 서버에 착지한 뒤에
+   코드를 공개한다. (v0.4.2 fire-and-forget 결함 수리: 저장 전 상대가 입력하면 joinPair 쿼리가
+   빈 결과가 나 "코드를 찾을 수 없어요"로 이어지던 문제. 이제 저장 성공 후에만 코드 노출.)
+   TTL은 24시간(코드 전달~입력 지연으로 rules 서버시간 만료 403이 나던 결함 수리). */
+async function openInvite(){
   if(!pairId){ toast("먼저 공간을 만들어주세요"); return; }
   if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
   const code = genCode();
-  window._lastCode=code;
-  fillCells("inviteCode", code);
+  const chips=document.getElementById("inviteChips");
+  const err=document.getElementById("inviteErr");
+  const retry=document.getElementById("btnInviteRetry");
   const shareChip=document.getElementById("shareChip");
   if(shareChip) shareChip.style.display = (typeof navigator!=="undefined" && navigator.share) ? "inline-flex" : "none";
-  show("screenInvite"); // 즉시 표시(원탭) — 저장 완료를 기다리지 않음
-  M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+10*60*1000})
-    .catch(e=>{ console.error(e); toast("코드 저장에 실패했어요. 새로고침 후 다시 시도해주세요"); });
+  fillCells("inviteCode", "······"); // 생성 중 자리표시(아직 공개 아님)
+  if(chips) chips.style.display="none";
+  if(retry) retry.style.display="none";
+  if(err) err.textContent="코드 만드는 중…";
+  show("screenInvite"); // 원탭: 즉시 전환(코드는 저장 착지 후 공개)
+  try{
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+24*60*60*1000});
+    window._lastCode=code;
+    fillCells("inviteCode", code);
+    if(chips) chips.style.display="flex";
+    if(err) err.textContent="";
+  }catch(e){
+    console.error(e);
+    if(err) err.textContent="코드를 저장하지 못했어요. 잠시 후 다시 시도해주세요";
+    if(retry) retry.style.display="";
+  }
 }
 
 async function joinPair(){
@@ -1064,7 +1257,7 @@ async function joinPair(){
   if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 다시 확인해주세요"; return; }
   const d = snap.docs[0];
   if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){
-    msgEl.textContent="코드가 만료됐어요. 상대방에게 새 코드를 요청하세요"; return;
+    msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; // rules 거부 문구와 통일(시계 스큐 혼선 방지)
   }
   if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 내 공간의 코드예요. 짝의 기기에서 입력해주세요"; return; }
   try{
@@ -1100,10 +1293,12 @@ function watchPair(){
       if(document.getElementById("screenInvite").classList.contains("active")){
         toast("💞 짝이 들어왔어요"); enterChat(); return;
       }
-      if(document.getElementById("screenChat").classList.contains("active")){
+      if(inAppTabs()){
         if(justPaired) toast("💞 짝이 들어왔어요");
         updateSoloAffordances();
         renderMessages(); // 읽음표시 등 부가 필드 변경만 반영, 구독 유지
+        if(currentTab==="schedule") renderSchedule();
+        if(currentTab==="diary") renderDiary();
       } else if(document.getElementById("screenReinvite").classList.contains("active") && currentPairData.rejoinOpen===true){
         // 재초대 코드 대기 화면은 유지(상대가 아직 안 들어옴)
       } else {
@@ -1115,9 +1310,10 @@ function watchPair(){
       window._lastCode=currentPairData.code||window._lastCode||"";
       if(document.getElementById("screenInvite").classList.contains("active")){
         // 초대 코드 대기 유지(짝이 아직 안 들어옴)
-      } else if(document.getElementById("screenChat").classList.contains("active")
-             || document.getElementById("screenSettings").classList.contains("active")){
+      } else if(inAppTabs()){
         updateSoloAffordances(); renderMessages();
+        if(currentTab==="schedule") renderSchedule();
+        if(currentTab==="diary") renderDiary();
       } else {
         enterChat();
       }
@@ -1129,10 +1325,12 @@ function watchPair(){
 
 function enterChat(){
   showLock();
-  show("screenChat");
+  showTab("chat");
   applyChatHeader();
   updateSoloAffordances();
   watchMessages();
+  watchEvents();
+  watchDiary();
   if(!isLocked()) markRead();
   maybeShowInstallHint();
 }
@@ -1235,6 +1433,333 @@ async function sendMessage(){
   });
 }
 
+/* =========================================================================
+   일정 + 다이어리(사진) — pairs/{}/events, pairs/{}/diary, diary/{}/photos
+   · 전 화면 기존 디자인 토큰만 사용. 솔로 상태에서도 전부 사용 가능.
+   · 사진: 클라 압축(긴변1280 q75 + 썸네일320 q65) → 썸네일은 엔트리 thumbs[]에 인라인(Bytes),
+     원본은 photos 서브컬렉션(Bytes). 커플당 총 PHOTO_CAP(50)장, pair.photoCount로 카운트.
+   ========================================================================= */
+/* ---- 날짜 유틸 ---- */
+function isoDate(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function todayStr(){ return isoDate(new Date()); }
+function parseYMD(s){ if(!s) return null; const d=new Date(s+"T00:00:00"); return isNaN(d.getTime())?null:d; }
+function startOfDay(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
+function daysBetween(a,b){ return Math.round((startOfDay(b)-startOfDay(a))/86400000); }
+function fmtDateK(s){ const d=parseYMD(s); if(!d) return s||""; const w=["일","월","화","수","목","금","토"]; return d.getFullYear()+"년 "+(d.getMonth()+1)+"월 "+d.getDate()+"일 ("+w[d.getDay()]+")"; }
+function ddLabel(target){ const n=daysBetween(new Date(),target); if(n===0) return "오늘"; return n>0 ? "D-"+n : "D+"+(-n); }
+function nextOccurrence(ev){
+  const base=parseYMD(ev.date); if(!base) return null;
+  const today=startOfDay(new Date());
+  if(ev.type==="annual"){
+    let occ=startOfDay(new Date(today.getFullYear(), base.getMonth(), base.getDate()));
+    if(occ<today) occ=startOfDay(new Date(today.getFullYear()+1, base.getMonth(), base.getDate()));
+    return occ;
+  }
+  return startOfDay(base);
+}
+
+/* ---- 구독 ---- */
+function watchEvents(){
+  if(unsubEvents) unsubEvents();
+  const q=M.query(M.collection(fb.db,"pairs",pairId,"events"), M.orderBy("date","asc"));
+  unsubEvents=M.onSnapshot(q, snap=>{
+    _events=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+    if(currentTab==="schedule" && inAppTabs()) renderSchedule();
+  }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
+}
+function watchDiary(){
+  if(unsubDiary) unsubDiary();
+  const q=M.query(M.collection(fb.db,"pairs",pairId,"diary"), M.orderBy("date","desc"));
+  unsubDiary=M.onSnapshot(q, snap=>{
+    _diary=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+    if(currentTab==="diary" && inAppTabs()) renderDiary();
+  }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
+}
+
+/* ===== 일정 렌더 ===== */
+function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); }
+function renderDday(){
+  const el=document.getElementById("ddayCard"); if(!el) return;
+  const base=parseYMD(profileOf().anniversary);
+  if(!base){ el.innerHTML=""; return; }
+  const n=daysBetween(base,new Date())+1;
+  el.innerHTML='<div class="dday-card"><div class="big">D+'+n+'</div><div class="cap">'
+    +(base.getFullYear()+'.'+(base.getMonth()+1)+'.'+base.getDate())+' 부터 · 우리가 함께한 날</div></div>';
+}
+function eventsOnDay(dt){
+  const y=dt.getFullYear(), mo=dt.getMonth(), da=dt.getDate();
+  return _events.filter(ev=>{ const b=parseYMD(ev.date); if(!b) return false;
+    return ev.type==="annual" ? (b.getMonth()===mo && b.getDate()===da) : (b.getFullYear()===y && b.getMonth()===mo && b.getDate()===da); });
+}
+function renderCalendar(){
+  const box=document.getElementById("calBox"); if(!box) return;
+  if(_calY==null){ const n=new Date(); _calY=n.getFullYear(); _calM=n.getMonth(); }
+  const startWd=new Date(_calY,_calM,1).getDay();
+  const daysInMonth=new Date(_calY,_calM+1,0).getDate();
+  const today=startOfDay(new Date());
+  const anniv=parseYMD(profileOf().anniversary);
+  let html='<div class="cal-nav"><button id="calPrev" aria-label="이전 달">‹</button><span class="m">'+_calY+'년 '+(_calM+1)+'월</span><button id="calNext" aria-label="다음 달">›</button></div><div class="cal-grid">';
+  ["일","월","화","수","목","금","토"].forEach(w=>html+='<div class="cal-wd">'+w+'</div>');
+  for(let i=0;i<startWd;i++) html+='<div class="cal-d other"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(_calY,_calM,d), ds=isoDate(dt);
+    const isToday=startOfDay(dt).getTime()===today.getTime();
+    const isAnniv=anniv && anniv.getMonth()===_calM && anniv.getDate()===d;
+    const hasEvt=eventsOnDay(dt).length>0;
+    html+='<button class="cal-d'+(isToday?' today':'')+(_selDate===ds?' sel':'')+'" data-day="'+ds+'">'+d
+      +(isAnniv?'<span class="anv">🩷</span>':'')+(hasEvt?'<span class="dot"></span>':'')+'</button>';
+  }
+  box.innerHTML=html+'</div>';
+  document.getElementById("calPrev").onclick=()=>{ _calM--; if(_calM<0){_calM=11;_calY--;} renderCalendar(); };
+  document.getElementById("calNext").onclick=()=>{ _calM++; if(_calM>11){_calM=0;_calY++;} renderCalendar(); };
+  box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>{
+    _selDate=el.dataset.day;
+    const df=document.getElementById("evtDate"); if(df) df.value=_selDate;
+    document.getElementById("evtForm").style.display="block";
+    renderCalendar();
+  });
+}
+function renderUpcoming(){
+  const el=document.getElementById("upcomingList"); if(!el) return;
+  const today=startOfDay(new Date());
+  const items=[];
+  _events.forEach(ev=>{ const occ=nextOccurrence(ev); if(occ && daysBetween(today,occ)>=0) items.push({ev,occ}); });
+  anniversaryItems().forEach(it=>{ const occ=parseYMD(it.date); if(occ && daysBetween(today,occ)>=0) items.push({ev:it,occ}); });
+  items.sort((a,b)=>a.occ-b.occ);
+  if(!items.length){ el.innerHTML='<div class="empty-note">아직 다가오는 일정이 없어요.<br>위에서 우리 기념일을 더해봐요 🩷</div>'; return; }
+  el.innerHTML=items.slice(0,12).map(({ev,occ})=>{
+    const mine=ev.createdBy===fb.uid;
+    const typeLabel=ev._synthetic ? "기념일" : (ev.type==="annual"?"매년":"");
+    const sub=[isoDate(occ).replace(/-/g,"."), typeLabel, ev.memo].filter(Boolean).join(" · ");
+    const del=(!ev._synthetic && mine) ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
+    return '<div class="evt"><div class="dd">'+ddLabel(occ)+'</div><div class="info"><div class="t">'+esc(ev.title)+'</div>'
+      +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+del+'</div>';
+  }).join("");
+  el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
+}
+/* profile.anniversary 기반 합성 기념일(다음 100일 단위 + 다음 주년) — 저장 없이 표시만 */
+function anniversaryItems(){
+  const base=parseYMD(profileOf().anniversary); if(!base) return [];
+  const today=startOfDay(new Date());
+  const out=[];
+  const total=daysBetween(base,today);
+  const nextHundred=(Math.floor(total/100)+1)*100;
+  const h=new Date(base); h.setDate(h.getDate()+nextHundred);
+  out.push({title:nextHundred+"일", date:isoDate(h), _synthetic:true});
+  let years=today.getFullYear()-base.getFullYear();
+  let yAnn=startOfDay(new Date(today.getFullYear(), base.getMonth(), base.getDate()));
+  if(yAnn<today){ years+=1; yAnn=startOfDay(new Date(today.getFullYear()+1, base.getMonth(), base.getDate())); }
+  if(years>=1) out.push({title:years+"주년", date:isoDate(yAnn), _synthetic:true});
+  return out;
+}
+function setEvtType(t){ _evtType=t;
+  document.getElementById("evtTypeOnce").classList.toggle("on",t==="once");
+  document.getElementById("evtTypeAnnual").classList.toggle("on",t==="annual");
+}
+async function addEvent(){
+  if(!pairId){ toast("먼저 시작해주세요"); return; }
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  const title=document.getElementById("evtTitle").value.trim();
+  const date=document.getElementById("evtDate").value;
+  const memo=document.getElementById("evtMemo").value.trim();
+  if(!title){ toast("제목을 입력해주세요"); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast("날짜를 선택해주세요"); return; }
+  try{
+    await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), {
+      title, date, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() });
+    document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value="";
+    document.getElementById("evtForm").style.display="none";
+    toast("일정을 추가했어요");
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"추가 권한이 없어요":"추가하지 못했어요"); }
+}
+async function deleteEvent(id){
+  if(!confirm("이 일정을 지울까요?")) return;
+  try{ await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"events",id)); toast("일정을 지웠어요"); }
+  catch(e){ console.error(e); toast("지우지 못했어요"); }
+}
+
+/* ===== 다이어리 렌더 ===== */
+function photoCount(){ return (currentPairData && currentPairData.photoCount) || 0; }
+function setDiaryView(v){ _diaryView=v;
+  document.getElementById("diaryTabList").classList.toggle("on",v==="list");
+  document.getElementById("diaryTabGrid").classList.toggle("on",v==="grid");
+  renderDiary();
+}
+function thumbUrl(t){
+  if(_thumbUrlCache[t.photoId]) return _thumbUrlCache[t.photoId];
+  try{
+    const u8=(t.bytes && t.bytes.toUint8Array) ? t.bytes.toUint8Array() : t.bytes;
+    const url=URL.createObjectURL(new Blob([u8],{type:"image/jpeg"}));
+    _thumbUrlCache[t.photoId]=url; return url;
+  }catch(e){ return ""; }
+}
+function renderDiary(){
+  const cnt=photoCount();
+  const lbl=document.getElementById("photoCountLbl"); if(lbl) lbl.textContent="사진 "+cnt+"/"+PHOTO_CAP;
+  const note=document.getElementById("diaryCapNote");
+  if(note) note.innerHTML = cnt>=PHOTO_CAP
+    ? '<div class="cap-note">함께 담을 수 있는 사진은 '+PHOTO_CAP+'장까지예요. 오래된 기록의 사진을 정리하면 새 사진을 담을 수 있어요.</div>' : "";
+  const body=document.getElementById("diaryBody"); if(!body) return;
+  if(_diaryView==="grid") renderDiaryGrid(body); else renderDiaryList(body);
+}
+function renderDiaryList(body){
+  if(!_diary.length){ body.innerHTML='<div class="empty-note">아직 기록이 없어요.<br>오늘의 우리를 남겨봐요 📖</div>'; return; }
+  body.innerHTML=_diary.map(en=>{
+    const mine=en.authorUid===fb.uid;
+    const au = mine ? "내 기록" : ((partnerNick()||"상대")+" 기록");
+    const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
+    const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
+    return '<div class="dentry"><div class="top"><span class="dt">'+esc(fmtDateK(en.date))+'</span><span class="au">'+esc(au)+'</span></div>'
+      +(en.text?'<div class="tx">'+esc(en.text)+'</div>':"")
+      +(thumbs?'<div class="thumbs">'+thumbs+'</div>':"")+acts+'</div>';
+  }).join("");
+  wireDiaryBody(body);
+}
+function renderDiaryGrid(body){
+  const all=[];
+  _diary.forEach(en=>(en.thumbs||[]).forEach(t=>all.push({t, entry:en.id})));
+  if(!all.length){ body.innerHTML='<div class="empty-note">아직 사진이 없어요.<br>기록에 사진을 담으면 여기 모여요 🖼️</div>'; return; }
+  body.innerHTML='<div class="grid-photos">'+all.map(x=>'<img loading="lazy" data-photo="'+x.t.photoId+'" data-entry="'+x.entry+'" src="'+thumbUrl(x.t)+'">').join("")+'</div>';
+  wireDiaryBody(body);
+}
+function wireDiaryBody(body){
+  body.querySelectorAll("[data-photo]").forEach(im=>im.onclick=()=>openPhoto(im.dataset.entry, im.dataset.photo));
+  body.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>startEditDiary(b.dataset.edit));
+  body.querySelectorAll("[data-deldiary]").forEach(b=>b.onclick=()=>deleteDiaryEntry(b.dataset.deldiary));
+}
+async function openPhoto(entryId, photoId){
+  const modal=document.getElementById("photoModal"), img=document.getElementById("photoModalImg");
+  img.src=""; modal.classList.add("show");
+  try{
+    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"photos",photoId));
+    if(snap.exists()){
+      const data=snap.data();
+      const u8=(data.bytes && data.bytes.toUint8Array) ? data.bytes.toUint8Array() : data.bytes;
+      img.src=URL.createObjectURL(new Blob([u8],{type:data.mime||"image/jpeg"}));
+    } else { toast("사진을 찾을 수 없어요"); modal.classList.remove("show"); }
+  }catch(e){ console.error(e); toast("사진을 불러오지 못했어요"); modal.classList.remove("show"); }
+}
+
+/* ---- 사진 압축(캔버스): 긴변 maxDim으로 축소 → JPEG. Uint8Array 반환(Bytes 저장용) ---- */
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=async ()=>{
+      URL.revokeObjectURL(url);
+      let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+      const scale=Math.min(1, maxDim/Math.max(w,h));
+      w=Math.max(1,Math.round(w*scale)); h=Math.max(1,Math.round(h*scale));
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      c.toBlob(async blob=>{
+        if(!blob){ reject(new Error("compress_failed")); return; }
+        try{ resolve({bytes:new Uint8Array(await blob.arrayBuffer()), w, h}); }
+        catch(err){ reject(err); }
+      }, "image/jpeg", quality);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("load_failed")); };
+    img.src=url;
+  });
+}
+function onDiaryFileSelect(e){
+  const files=[...e.target.files];
+  const remaining=PHOTO_CAP-photoCount();
+  _diarySel=files.slice(0, Math.max(0,remaining));
+  if(files.length>remaining) toast("이번에 담을 수 있는 사진은 "+Math.max(0,remaining)+"장이에요");
+  const c=document.getElementById("diarySelCount");
+  if(c) c.textContent=_diarySel.length ? _diarySel.length+"장 선택됨" : "";
+}
+function closeDiaryForm(){
+  document.getElementById("diaryForm").style.display="none";
+  document.getElementById("diaryText").value="";
+  document.getElementById("diaryPhotos").value="";
+  document.getElementById("diarySelCount").textContent="";
+  document.getElementById("diaryFileLabel").style.display="";
+  document.getElementById("btnCancelDiaryEdit").style.display="none";
+  document.getElementById("btnAddDiary").textContent="저장하기";
+  _diarySel=[]; _editingDiaryId=null;
+}
+function startEditDiary(id){
+  const en=_diary.find(e=>e.id===id); if(!en) return;
+  _editingDiaryId=id;
+  document.getElementById("diaryDate").value=en.date||todayStr();
+  document.getElementById("diaryText").value=en.text||"";
+  document.getElementById("diaryFileLabel").style.display="none"; // 이번 라운드: 텍스트만 수정, 사진은 유지
+  document.getElementById("diarySelCount").textContent="사진은 그대로 유지돼요";
+  document.getElementById("btnAddDiary").textContent="수정하기";
+  document.getElementById("btnCancelDiaryEdit").style.display="";
+  const f=document.getElementById("diaryForm"); f.style.display="block";
+  f.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+async function saveDiary(){
+  if(!pairId){ toast("먼저 시작해주세요"); return; }
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  const date=document.getElementById("diaryDate").value || todayStr();
+  const text=document.getElementById("diaryText").value.trim();
+  if(_editingDiaryId){
+    try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",_editingDiaryId), {text, date, updatedAt:M.serverTimestamp()}); toast("수정했어요"); }
+    catch(e){ console.error(e); toast(isDeniedErr(e)?"수정 권한이 없어요":"수정하지 못했어요"); return; }
+    closeDiaryForm(); return;
+  }
+  if(!text && !_diarySel.length){ toast("내용이나 사진을 담아주세요"); return; }
+  const remaining=PHOTO_CAP-photoCount();
+  if(_diarySel.length>remaining){ toast("사진 용량이 가득 찼어요"); return; }
+  const btn=document.getElementById("btnAddDiary"); btn.disabled=true; btn.textContent="저장 중...";
+  try{
+    const entryRef=M.doc(M.collection(fb.db,"pairs",pairId,"diary"));
+    const thumbs=[], fulls=[];
+    for(const f of _diarySel){
+      let full, thumb;
+      try{ full=await compressImage(f,1280,0.75); thumb=await compressImage(f,320,0.65); }
+      catch(err){ console.error(err); toast("일부 사진을 처리하지 못했어요"); continue; }
+      if(full.bytes.length>950000){ toast("너무 큰 사진은 건너뛰었어요"); continue; } // 1MiB 문서 상한 방어
+      const photoId=M.doc(M.collection(fb.db,"pairs",pairId,"diary",entryRef.id,"photos")).id;
+      thumbs.push({photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes)});
+      fulls.push({photoId, bytes:M.Bytes.fromUint8Array(full.bytes), w:full.w, h:full.h});
+    }
+    await M.setDoc(entryRef, {date, text, authorUid:fb.uid, thumbs, photoCount:fulls.length, createdAt:M.serverTimestamp(), updatedAt:M.serverTimestamp()});
+    for(const p of fulls){
+      await M.setDoc(M.doc(fb.db,"pairs",pairId,"diary",entryRef.id,"photos",p.photoId),
+        {bytes:p.bytes, mime:"image/jpeg", w:p.w, h:p.h, authorUid:fb.uid, createdAt:M.serverTimestamp()});
+    }
+    if(fulls.length){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {photoCount: photoCount()+fulls.length}); }
+    toast("기록을 저장했어요");
+    closeDiaryForm();
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"저장 권한이 없어요":"저장하지 못했어요"); }
+  finally{ btn.disabled=false; if(!_editingDiaryId) btn.textContent="저장하기"; }
+}
+async function deleteDiaryEntry(id){
+  if(!confirm("이 기록을 지울까요? 담긴 사진도 함께 지워져요")) return;
+  const en=_diary.find(e=>e.id===id);
+  const pc=(en && (en.photoCount!=null ? en.photoCount : (en.thumbs?en.thumbs.length:0))) || 0;
+  try{
+    await purgeCollection(["pairs",pairId,"diary",id,"photos"]);
+    await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"diary",id));
+    if(pc>0){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {photoCount: Math.max(0, photoCount()-pc)}).catch(()=>{}); }
+    toast("기록을 지웠어요");
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"삭제 권한이 없어요":"지우지 못했어요"); }
+}
+
+/* ---- 소거 유틸(이별 프로토콜 확장) ---- */
+async function purgeCollection(pathSegs){
+  const PAGE=200;
+  const colRef=M.collection(fb.db, ...pathSegs);
+  while(true){
+    const snap=await M.getDocs(M.query(colRef, M.limit(PAGE)));
+    if(snap.empty) break;
+    const batch=M.writeBatch(fb.db);
+    snap.docs.forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+    if(snap.docs.length<PAGE) break;
+  }
+}
+async function purgeDiaryAll(id){
+  const snap=await M.getDocs(M.collection(fb.db,"pairs",id,"diary"));
+  for(const d of snap.docs){ await purgeCollection(["pairs",id,"diary",d.id,"photos"]); }
+  await purgeCollection(["pairs",id,"diary"]);
+}
+
 /* ===== 짝 도움 복귀 (partner re-invite) — 시뮬 권고안 B ===== */
 async function openReinvite(){
   if(!pairId || !currentPairData){ return; }
@@ -1249,7 +1774,7 @@ async function openReinvite(){
 }
 async function cancelReinvite(){
   if(pairId){ try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {rejoinOpen:false}); }catch(e){ console.error(e); } }
-  show("screenChat");
+  showTab("chat");
 }
 async function submitRejoin(){
   const code=document.getElementById("rejoinInput").value.trim();
@@ -1341,7 +1866,10 @@ async function dissolvePair(){
   await M.updateDoc(M.doc(fb.db,"pairs",id), {
     status:"dissolved", dissolvedAt:M.serverTimestamp(), dissolvedBy:myUid
   });
+  // 이별 소거: 메시지 + 일정 + 다이어리(사진 포함) 전량 삭제(rules는 dissolved 시 삭제 허용).
   await purgeAllMessages(id);
+  await purgeCollection(["pairs",id,"events"]);
+  await purgeDiaryAll(id);
   closeBreakup();
   handleDissolved();
 }
@@ -1356,6 +1884,9 @@ function handleDissolved(){
     : "함께한 공간은 안전하게 삭제되었어요.<br>그동안 이 공간을 지켜줘서 고마웠어요.";
   if(unsubPair) unsubPair();
   if(unsubMsgs) unsubMsgs();
+  if(unsubEvents) unsubEvents();
+  if(unsubDiary) unsubDiary();
+  _events=[]; _diary=[];
   closeBreakup();
   hideLock();
   localStorage.removeItem("oguogu.pairId");
@@ -1373,6 +1904,9 @@ function recoverFromDeadPair(){
   if(_recovering) return; _recovering=true;
   if(unsubPair) unsubPair();
   if(unsubMsgs) unsubMsgs();
+  if(unsubEvents) unsubEvents();
+  if(unsubDiary) unsubDiary();
+  _events=[]; _diary=[];
   localStorage.removeItem("oguogu.pairId");
   pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
   hideLock();
@@ -1394,6 +1928,7 @@ document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key=
 document.getElementById("btnRejoinCancel").onclick=()=>show("screenStart");
 document.getElementById("btnInviteBack").onclick=()=>{ if(pairId) enterChat(); else show("screenStart"); };
 document.getElementById("btnInvite").onclick=()=>openInvite();
+document.getElementById("btnInviteRetry").onclick=()=>openInvite();
 document.getElementById("soloBanner").onclick=()=>openInvite();
 document.getElementById("copyChip").onclick=async ()=>{
   const c=window._lastCode||""; if(!c) return;
@@ -1410,7 +1945,7 @@ document.getElementById("shareChip").onclick=async ()=>{
   document.getElementById("sendBtn").addEventListener(ev, e=>{ e.preventDefault(); }, {passive:false});
 });
 document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); });
-document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); renderNotifyUI(); renderDecorUI(); show("screenSettings"); };
+document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 async function refreshApp(){
   try{
     if("serviceWorker" in navigator){
@@ -1424,7 +1959,7 @@ async function refreshApp(){
   const el=document.getElementById(id);
   if(el) el.onclick=refreshApp;
 });
-document.getElementById("btnBackFromSettings").onclick=()=>show("screenChat");
+document.getElementById("btnBackFromSettings").onclick=()=>showTab("chat");
 document.getElementById("btnBreakup").onclick=openBreakup;
 document.getElementById("breakupStep1Cancel").onclick=closeBreakup;
 document.getElementById("breakupStep1Confirm").onclick=openBreakupStep2;
@@ -1442,6 +1977,31 @@ document.getElementById("bubblePicker").addEventListener("click",e=>{ const b=e.
 document.getElementById("myEmojiPicker").addEventListener("click",e=>{ const b=e.target.closest("[data-emo]"); if(b) setProfile({emojis:{[fb.uid]:b.dataset.emo}}); });
 document.getElementById("myNickInput").addEventListener("change",e=>{ setProfile({nicks:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
 document.getElementById("annivInput").addEventListener("change",e=>{ setProfile({anniversary:e.target.value}); });
+
+/* 일정 컨트롤 */
+document.getElementById("btnSchedRefresh").onclick=refreshApp;
+document.getElementById("btnToggleEvtForm").onclick=()=>{
+  const f=document.getElementById("evtForm"); const open=f.style.display==="none";
+  f.style.display=open?"block":"none";
+  if(open && !document.getElementById("evtDate").value) document.getElementById("evtDate").value=_selDate||todayStr();
+};
+document.getElementById("evtTypeOnce").onclick=()=>setEvtType("once");
+document.getElementById("evtTypeAnnual").onclick=()=>setEvtType("annual");
+document.getElementById("btnAddEvt").onclick=addEvent;
+
+/* 다이어리 컨트롤 */
+document.getElementById("diaryTabList").onclick=()=>setDiaryView("list");
+document.getElementById("diaryTabGrid").onclick=()=>setDiaryView("grid");
+document.getElementById("btnToggleDiaryForm").onclick=()=>{
+  const f=document.getElementById("diaryForm"); const open=f.style.display==="none";
+  if(open){ closeDiaryForm(); if(!document.getElementById("diaryDate").value) document.getElementById("diaryDate").value=todayStr(); f.style.display="block"; }
+  else { f.style.display="none"; }
+};
+document.getElementById("diaryPhotos").addEventListener("change", onDiaryFileSelect);
+document.getElementById("btnAddDiary").onclick=saveDiary;
+document.getElementById("btnCancelDiaryEdit").onclick=()=>closeDiaryForm();
+document.getElementById("photoModalClose").onclick=()=>document.getElementById("photoModal").classList.remove("show");
+document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") e.currentTarget.classList.remove("show"); });
 
 /* ===== 홈 화면 추가(설치) 안내 배너 ===== */
 function isStandalone(){ return matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
