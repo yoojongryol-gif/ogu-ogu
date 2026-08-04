@@ -134,6 +134,11 @@ body{
 }
 .center.mid{justify-content:center}
 .spring{flex:1 0 var(--s5)}
+/* 스크롤 화면(.center)의 직계 자식은 압축 금지. flex-shrink 기본값(1)이면 콘텐츠가 컨테이너 높이를
+   넘을 때 스크롤되는 대신 자식이 찌그러지고, .set-group의 overflow:hidden에 글자가 세로로 잘린다.
+   v0.5.0 하단 탭이 세로 여백을 줄여 이 잠재 결함이 설정 화면에서 표면화 — "글자 짤림" 2차 재발의 진짜 원인.
+   전 .center 화면(시작·초대·재합류·정리 안내 등)에 일괄 적용해 3차 재발을 구조적으로 차단. */
+.center > *{flex-shrink:0}
 
 /* 브랜드마크 / 로고 */
 .brandmark{display:flex; flex-direction:column; align-items:center; gap:var(--s3); margin-top:var(--s5)}
@@ -281,6 +286,9 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 /* ═══════════════ 설정 ═══════════════ */
 #screenSettings{padding-top:calc(var(--s5) + env(safe-area-inset-top,0px))}
 .set-title{font-size:var(--t-h); font-weight:var(--w-bold); align-self:flex-start; max-width:340px; width:100%; margin:0 auto var(--s2)}
+/* #decorSection(display:contents) 내부 그룹은 .center의 손자라 위 `.center > *` 규칙이 못 잡는다.
+   설정 구성요소에 직접 flex-shrink:0을 걸어 압축(→글자 짤림)을 원천 차단. */
+.set-title, .set-label, .set-group{flex-shrink:0}
 .set-group{width:100%; max-width:340px; margin:0 auto var(--s4); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow)}
 .set-group.danger{border-color:color-mix(in srgb,var(--danger) 45%, var(--line))}
 .set-label{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); align-self:flex-start; max-width:340px; width:100%; margin:0 auto 6px; padding-left:4px}
@@ -292,8 +300,10 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .set-row:not(.set-col) > .toggle,
 .set-row:not(.set-col) > .link-btn{flex:none; white-space:nowrap}
 .set-row .label{font-size:14.5px; font-weight:var(--w-med)}
-/* 긴 라벨은 한 줄 말줄임(2단 행에서만) */
-.set-row:not(.set-col) .label{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+/* 라벨은 사용자가 읽어야 하는 텍스트 → 말줄임(잘림) 금지. 폭이 모자라면 한글 어절 단위로 줄바꿈.
+   (v0.4.2가 넣은 nowrap+ellipsis는 폰트 폴백/큰 글꼴에서 라벨을 잘라먹을 잠재 위험 → 제거.)
+   우측 컨트롤(토글·링크버튼)은 아래 규칙대로 고정폭 nowrap 유지 — 말줄임은 값 표시류(코드·애칭)에만. */
+.set-row:not(.set-col) .label{word-break:keep-all; overflow-wrap:anywhere}
 .set-row .desc{font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5; word-break:keep-all; overflow-wrap:anywhere}
 .set-col{display:block}
 .toggle{width:46px; height:28px; border-radius:20px; background:var(--surface2); position:relative; border:1px solid var(--line); flex:none}
@@ -1215,34 +1225,46 @@ async function createSolo(){
 
 /* 짝 초대(원탭): 누르는 즉시 6자리 코드를 만들어 화면에 표시(복사/보내기 버튼 포함). 중간 화면 없음.
    저장(만료 갱신)은 백그라운드로 처리 — 표시를 막지 않는다. 기존 기록/꾸미기는 그대로 유지. */
-/* 원탭 초대: 누르면 즉시 초대 화면으로 전환("코드 만드는 중…") → 저장이 서버에 착지한 뒤에
-   코드를 공개한다. (v0.4.2 fire-and-forget 결함 수리: 저장 전 상대가 입력하면 joinPair 쿼리가
-   빈 결과가 나 "코드를 찾을 수 없어요"로 이어지던 문제. 이제 저장 성공 후에만 코드 노출.)
-   TTL은 24시간(코드 전달~입력 지연으로 rules 서버시간 만료 403이 나던 결함 수리). */
-async function openInvite(){
-  if(!pairId){ toast("먼저 공간을 만들어주세요"); return; }
-  if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
-  const code = genCode();
-  const chips=document.getElementById("inviteChips");
-  const err=document.getElementById("inviteErr");
-  const retry=document.getElementById("btnInviteRetry");
-  const shareChip=document.getElementById("shareChip");
+/* 초대 코드 발급 — "코드가 안 나온다" 근본 수리.
+   핵심: createSolo가 만들 때 이미 유효한 code(+24h TTL)를 서버에 저장해 둔다. 따라서 초대 시엔
+   그 "이미 저장된 코드"를 즉시 표시하면 된다 — 쓰기(updateDoc) 자체가 없으니 폰의 느린/끊긴
+   네트워크에서도 절대 blank로 걸리지 않는다.
+   (v0.5.0 회귀 수리: v0.5.0은 코드 노출을 `await updateDoc` 뒤로 미뤄, 모바일에서 쓰기가 지연/오프라인이면
+    "코드 만드는 중…"에 멈춰 코드가 안 뜨는 문제가 있었다. 데스크톱·라이브 REST는 200으로 정상 → 원인은
+    네트워크 의존적 await-게이팅. 이제 이미 저장된 코드를 무쓰기로 즉시 표시.)
+   새 코드는 만료됐거나(24h 경과) 사용자가 "다시 만들기"를 눌렀을 때만 발급하며, 이때도 즉시 표시하되
+   저장 상태를 문구로 구분해 안내한다. */
+function _renderInviteScreen(code, statusText, isErr){
+  window._lastCode=code;
+  const chips=document.getElementById("inviteChips"), err=document.getElementById("inviteErr"), retry=document.getElementById("btnInviteRetry"), shareChip=document.getElementById("shareChip");
   if(shareChip) shareChip.style.display = (typeof navigator!=="undefined" && navigator.share) ? "inline-flex" : "none";
-  fillCells("inviteCode", "······"); // 생성 중 자리표시(아직 공개 아님)
-  if(chips) chips.style.display="none";
-  if(retry) retry.style.display="none";
-  if(err) err.textContent="코드 만드는 중…";
-  show("screenInvite"); // 원탭: 즉시 전환(코드는 저장 착지 후 공개)
+  fillCells("inviteCode", code);
+  if(chips) chips.style.display="flex";
+  if(retry) retry.style.display=isErr?"":"none";
+  if(err){ err.style.color=isErr?"var(--danger)":"var(--muted)"; err.textContent=statusText||""; }
+}
+async function openInvite(force){
+  if(!pairId || !currentPairData){ toast("먼저 공간을 만들어주세요"); return; }
+  if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
+  const existing=currentPairData.code;
+  const valid = existing && currentPairData.codeExpiresAt && currentPairData.codeExpiresAt > Date.now();
+  if(!force && valid){
+    // 이미 서버에 저장된 유효 코드 → 즉시 표시(쓰기 없음·네트워크 무관·경쟁 없음). "코드 안 나옴" 원천 차단.
+    _renderInviteScreen(existing, "짝이 이 코드를 입력하면 바로 이어져요");
+    show("screenInvite");
+    return;
+  }
+  // 만료됐거나 강제 재발급 — 새 코드 즉시 표시(blank 방지) + 저장 병행, 상태 문구로 구분.
+  const code=genCode();
+  _renderInviteScreen(code, "코드를 저장하는 중이에요…");
+  show("screenInvite");
   try{
     await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+24*60*60*1000});
-    window._lastCode=code;
-    fillCells("inviteCode", code);
-    if(chips) chips.style.display="flex";
-    if(err) err.textContent="";
+    const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--muted)"; err.textContent="짝이 이 코드를 입력하면 바로 이어져요"; }
   }catch(e){
     console.error(e);
-    if(err) err.textContent="코드를 저장하지 못했어요. 잠시 후 다시 시도해주세요";
-    if(retry) retry.style.display="";
+    const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--danger)"; err.textContent="저장이 지연되고 있어요 — 연결을 확인하고 ‘다시 만들기’를 눌러주세요"; }
+    const retry=document.getElementById("btnInviteRetry"); if(retry) retry.style.display="";
   }
 }
 
@@ -1928,7 +1950,7 @@ document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key=
 document.getElementById("btnRejoinCancel").onclick=()=>show("screenStart");
 document.getElementById("btnInviteBack").onclick=()=>{ if(pairId) enterChat(); else show("screenStart"); };
 document.getElementById("btnInvite").onclick=()=>openInvite();
-document.getElementById("btnInviteRetry").onclick=()=>openInvite();
+document.getElementById("btnInviteRetry").onclick=()=>openInvite(true); // 강제 새 코드 발급
 document.getElementById("soloBanner").onclick=()=>openInvite();
 document.getElementById("copyChip").onclick=async ()=>{
   const c=window._lastCode||""; if(!c) return;
