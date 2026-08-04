@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="warm" data-bubble="round" data-chatbg="none">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -9,119 +9,343 @@
 <meta name="description" content="단둘이 쓰는 우리만의 공간">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-512.png">
-<meta name="theme-color" content="#ff8ea8">
+<meta name="theme-color" content="#fbf3ee">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
+<!--
+================================================================================
+  5959 — 전면 리디자인(디자인 시스템 기반) + 둘이 함께 꾸미기 + 짝 도움 복귀
+  · 토큰 구조는 design/index.html 시안(2026-08-04, 사장님 ⓐ "따뜻한 감성" 확정)에서 이식.
+  · 전 화면이 아래 토큰만 참조 → 레이아웃 기본기는 테마 무관 동일, 차이는 값(팔레트)으로만.
+  · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
+================================================================================
+-->
 <style>
+/* ── reset ─────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none;touch-action:manipulation}
+input{font:inherit}
+
+/* ── 공통 토큰(테마 무관) ─────────────────────────── */
 :root{
-  --bg:#fff2f0; --card:#fffaf7; --accent:#ff8ea8; --accent-d:#f2678f;
-  --beige:#ffe9d6; --beige-d:#f4c9a0; --text:#4a3b3b; --muted:#a68f8f; --red:#e0577a;
-  --bubble-me:#ff8ea8; --bubble-you:#ffe9d6;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  --r-sm:10px; --r-md:16px; --r-lg:22px; --r-xl:30px; --r-full:999px;
+  --t-cap:12.5px; --t-body:15.5px; --t-title:17px; --t-h:22px; --t-display:34px;
+  --lh:1.5; --bubble-r:18px;
+  --font:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
 }
-*{box-sizing:border-box}
-/* ===== 앱 프레임 고정 (iOS "화면이 밀린다" 실기 피드백 수리) =====
-   원칙: html은 뷰포트에 완전히 고정, body는 position:fixed 앱 셸.
-   내부 스크롤은 msgList 등 지정된 요소만 담당 — body/html 자체는 절대 스크롤되지 않는다. */
+[data-bubble="soft"]{--bubble-r:22px}
+[data-bubble="sharp"]{--bubble-r:9px}
+[data-bubble="round"]{--bubble-r:18px}
+
+/* ══ 팔레트(꾸미기 테마) — 값만 교체. ⓐ warm = 기본 ══════════ */
+[data-theme="warm"]{
+  --bg:#fbf3ee; --surface:#ffffff; --surface2:#f6ece5; --line:#efe2d9;
+  --text:#3a3133; --muted:#ab9a95; --tracking:0;
+  --accent:#ec7f9b; --accent-ink:#ffffff; --accent-soft:#fbe6ec; --danger:#e0577a;
+  --me-bg:linear-gradient(135deg,#f18ba4,#ec7f9b); --me-ink:#ffffff;
+  --you-bg:#f4ebe4; --you-ink:#42383a;
+  --read:#ec7f9b; --pattern:rgba(236,127,155,.10);
+  --shadow:0 1px 2px rgba(90,60,60,.05); --shadow-lg:0 12px 34px rgba(150,90,100,.16);
+  --w-reg:420; --w-med:560; --w-bold:720;
+}
+[data-theme="minimal"]{
+  --bg:#f6f6f7; --surface:#ffffff; --surface2:#efeff1; --line:#e8e8eb;
+  --text:#17181c; --muted:#9a9ba3; --tracking:-.01em;
+  --accent:#17181c; --accent-ink:#ffffff; --accent-soft:#ecedf0; --danger:#d8375a;
+  --me-bg:#17181c; --me-ink:#ffffff;
+  --you-bg:#ececed; --you-ink:#26272c;
+  --read:#17181c; --pattern:rgba(20,20,25,.06);
+  --shadow:0 1px 2px rgba(20,20,25,.05); --shadow-lg:0 14px 40px rgba(20,20,30,.12);
+  --w-reg:380; --w-med:520; --w-bold:640;
+}
+[data-theme="lavender"]{
+  --bg:#f5f2fb; --surface:#ffffff; --surface2:#efeafa; --line:#e6def5;
+  --text:#39324a; --muted:#a49bbd; --tracking:0;
+  --accent:#9b8cff; --accent-ink:#ffffff; --accent-soft:#eee9ff; --danger:#d8558a;
+  --me-bg:linear-gradient(135deg,#a99bff,#9b8cff); --me-ink:#ffffff;
+  --you-bg:#efeafa; --you-ink:#413a54;
+  --read:#9b8cff; --pattern:rgba(155,140,255,.10);
+  --shadow:0 1px 2px rgba(70,60,110,.05); --shadow-lg:0 12px 34px rgba(110,90,180,.16);
+  --w-reg:420; --w-med:560; --w-bold:720;
+}
+[data-theme="forest"]{
+  --bg:#eef4ef; --surface:#ffffff; --surface2:#e4efe6; --line:#d8e7db;
+  --text:#2f3d34; --muted:#93a898; --tracking:0;
+  --accent:#5aa06f; --accent-ink:#ffffff; --accent-soft:#e2f1e6; --danger:#d16a5e;
+  --me-bg:linear-gradient(135deg,#68ac7c,#5aa06f); --me-ink:#ffffff;
+  --you-bg:#e4efe6; --you-ink:#354a3c;
+  --read:#5aa06f; --pattern:rgba(90,160,111,.10);
+  --shadow:0 1px 2px rgba(50,80,60,.05); --shadow-lg:0 12px 34px rgba(70,130,90,.16);
+  --w-reg:420; --w-med:560; --w-bold:720;
+}
+[data-theme="sky"]{
+  --bg:#eef4fb; --surface:#ffffff; --surface2:#e4eef8; --line:#d7e5f3;
+  --text:#2e3947; --muted:#93a3b8; --tracking:0;
+  --accent:#5b9bd8; --accent-ink:#ffffff; --accent-soft:#e3eefa; --danger:#dc6a86;
+  --me-bg:linear-gradient(135deg,#69a6de,#5b9bd8); --me-ink:#ffffff;
+  --you-bg:#e4eef8; --you-ink:#33424f;
+  --read:#5b9bd8; --pattern:rgba(91,155,216,.10);
+  --shadow:0 1px 2px rgba(50,70,100,.05); --shadow-lg:0 12px 34px rgba(70,110,170,.16);
+  --w-reg:420; --w-med:560; --w-bold:720;
+}
+/* 다크 테마 2종 (꾸미기 = 다크모드 연동) */
+[data-theme="midnight"]{
+  --bg:#14151b; --surface:#1c1e26; --surface2:#242732; --line:#2b2e3a;
+  --text:#e9eaf0; --muted:#8b8fa0; --tracking:0;
+  --accent:#8b8fff; --accent-ink:#12131c; --accent-soft:#23253a; --danger:#ff7a9c;
+  --me-bg:linear-gradient(135deg,#8b8fff,#7a7ef0); --me-ink:#12131c;
+  --you-bg:#262a36; --you-ink:#e4e6ef;
+  --read:#8b8fff; --pattern:rgba(139,143,255,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 16px 44px rgba(0,0,0,.5);
+  --w-reg:400; --w-med:540; --w-bold:680;
+}
+[data-theme="cocoa"]{
+  --bg:#1c1714; --surface:#25201c; --surface2:#2e2823; --line:#39322c;
+  --text:#efe7df; --muted:#a8998c; --tracking:0;
+  --accent:#e59a76; --accent-ink:#221812; --accent-soft:#352a22; --danger:#ec8a86;
+  --me-bg:linear-gradient(135deg,#eaa583,#e59a76); --me-ink:#221812;
+  --you-bg:#2e2823; --you-ink:#ece3d9;
+  --read:#e59a76; --pattern:rgba(229,154,118,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 16px 44px rgba(0,0,0,.5);
+  --w-reg:400; --w-med:540; --w-bold:680;
+}
+
+/* ── 앱 셸 고정 (iOS "화면 밀림" 실기 수리) — html 뷰포트 완전 고정, body는 fixed 셸 ── */
 html{height:100%; overflow:hidden; overscroll-behavior:none}
-html,body{margin:0;padding:0}
 body{
-  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-  background:var(--bg); color:var(--text);
+  font-family:var(--font); background:var(--bg); color:var(--text);
+  letter-spacing:var(--tracking);
   position:fixed; inset:0; height:100vh; height:100dvh; width:100%;
   overflow:hidden; overscroll-behavior:none;
   display:flex; flex-direction:column;
-  touch-action:manipulation; /* 더블탭 확대·핀치줌 방지, 내부 요소 세로 스크롤은 유지됨 */
-  -webkit-text-size-adjust:100%;
+  touch-action:manipulation; -webkit-text-size-adjust:100%;
 }
-button{font-family:inherit; cursor:pointer; touch-action:manipulation}
-.screen{display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden}
+
+/* ── 화면 공통 ─────────────────────────────────────── */
+.screen{display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden; background:var(--bg)}
 .screen.active{display:flex}
-.center{align-items:center; justify-content:center; text-align:center; padding:32px 24px; gap:14px; overflow-y:auto;
-  padding-top:calc(32px + env(safe-area-inset-top,0px)); padding-bottom:calc(32px + env(safe-area-inset-bottom,0px));}
-.logo{font-size:44px}
-.title{font-size:26px; font-weight:800; color:var(--accent-d)}
-.tagline{font-size:14px; color:var(--muted); margin-bottom:18px}
+.center{
+  align-items:center; justify-content:flex-start; text-align:center; gap:var(--s3); overflow-y:auto;
+  padding:var(--s8) var(--s6);
+  padding-top:calc(var(--s8) + env(safe-area-inset-top,0px));
+  padding-bottom:calc(var(--s6) + env(safe-area-inset-bottom,0px));
+}
+.center.mid{justify-content:center}
+.spring{flex:1 0 var(--s5)}
+
+/* 브랜드마크 / 로고 */
+.brandmark{display:flex; flex-direction:column; align-items:center; gap:var(--s3); margin-top:var(--s5)}
+.logo{
+  font-size:30px; font-weight:800; letter-spacing:.05em; color:var(--accent);
+  display:grid; place-items:center; width:74px; height:74px; border-radius:24px;
+  background:var(--accent-soft); box-shadow:var(--shadow);
+}
+.logo-sub{font-size:11px; color:var(--muted); margin-top:2px}
+h1.h{font-size:var(--t-h); font-weight:var(--w-bold); line-height:1.35; margin-top:var(--s5)}
+.sub{font-size:var(--t-body); color:var(--muted); line-height:var(--lh); margin-top:var(--s2); max-width:300px}
+.tagline{font-size:var(--t-body); color:var(--muted)}
+
+/* 버튼 */
 .primary-btn{
-  width:100%; max-width:280px; padding:14px; border:none; border-radius:16px;
-  background:var(--accent); color:#fff; font-size:16px; font-weight:700;
-  box-shadow:0 4px 14px rgba(255,142,168,.35);
+  width:100%; max-width:300px; padding:15px; border-radius:var(--r-md);
+  background:var(--accent); color:var(--accent-ink); font-size:var(--t-body); font-weight:var(--w-bold);
+  box-shadow:var(--shadow-lg);
 }
 .primary-btn:disabled{opacity:.5}
 .secondary-btn{
-  width:100%; max-width:280px; padding:14px; border-radius:16px;
-  background:var(--card); color:var(--accent-d); font-size:16px; font-weight:700;
-  border:2px solid var(--beige-d);
+  width:100%; max-width:300px; padding:15px; border-radius:var(--r-md);
+  background:var(--surface); color:var(--accent); font-size:var(--t-body); font-weight:var(--w-bold);
+  border:1.5px solid var(--line); box-shadow:var(--shadow);
 }
-.ghost-btn{background:none;border:none;color:var(--muted);font-size:13px;text-decoration:underline;padding:8px}
-.code-box{
-  font-size:40px; letter-spacing:10px; font-weight:800; color:var(--accent-d);
-  background:var(--card); border:2px dashed var(--beige-d); border-radius:18px;
-  padding:18px 14px; margin:10px 0;
+.ghost-btn{background:none; color:var(--muted); font-size:13px; font-weight:var(--w-med); padding:10px 8px}
+.hint{font-size:12.5px; color:var(--muted); line-height:1.7; max-width:300px}
+.notice{
+  font-size:12.5px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md);
+  padding:12px 14px; max-width:300px; line-height:1.7;
 }
-.hint{font-size:12.5px; color:var(--muted); line-height:1.6; max-width:280px}
-.warn{font-size:12.5px; color:var(--red); background:#fff0f3; border-radius:10px; padding:10px 12px; max-width:280px; line-height:1.6}
+
+/* 코드 셀 6칸(생성/재초대 표시) */
+.codebox{display:flex; gap:var(--s2); margin:var(--s3) 0}
+.codebox .d{
+  width:44px; height:56px; border-radius:var(--r-md); background:var(--surface);
+  border:1.5px solid var(--accent); display:grid; place-items:center;
+  font-size:26px; font-weight:var(--w-bold); color:var(--accent); box-shadow:var(--shadow);
+}
+.copychip{
+  display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--w-med);
+  color:var(--accent); background:var(--accent-soft); padding:9px 16px; border-radius:var(--r-full);
+}
+/* 코드 입력창 */
 input.code-input{
-  width:220px; text-align:center; font-size:26px; letter-spacing:8px; padding:12px;
-  border:2px solid var(--beige-d); border-radius:14px; background:var(--card); color:var(--text);
+  width:240px; text-align:center; font-size:26px; letter-spacing:8px; padding:14px;
+  border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface); color:var(--text);
 }
-.spinner{width:26px;height:26px;border:3px solid var(--beige); border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite}
+input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
+.errline{font-size:12.5px; color:var(--danger); min-height:16px}
+
+/* 연결 대기 연출 */
+.waiting{display:flex; flex-direction:column; align-items:center; gap:var(--s3)}
+.merge{display:flex; align-items:center; gap:2px}
+.merge .h{
+  width:36px; height:36px; border-radius:var(--r-full); display:grid; place-items:center; font-size:18px;
+  background:var(--surface); border:1.5px solid var(--line); animation:breathe 2.4s ease-in-out infinite;
+}
+.merge .h:last-child{animation-delay:1.2s}
+.merge .link{width:26px; height:2px; background:var(--accent); opacity:.5; margin:0 -3px}
+@keyframes breathe{0%,100%{transform:scale(1);border-color:var(--line)}50%{transform:scale(1.12);border-color:var(--accent)}}
+.spinner{width:26px;height:26px;border:3px solid var(--surface2); border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* 채팅 화면 */
+/* ═══════════════ 채팅 ═══════════════ */
 #screenChat{padding:0}
-.chat-header{
-  display:flex; align-items:center; justify-content:space-between; padding:12px 16px;
-  padding-top:calc(12px + env(safe-area-inset-top,0px));
-  background:var(--card); border-bottom:1px solid var(--beige); flex:none;
+.chead{
+  flex:none; display:flex; align-items:center; gap:var(--s3);
+  padding:var(--s2) var(--s3);
+  padding-top:calc(var(--s2) + env(safe-area-inset-top,0px));
+  background:var(--surface); border-bottom:1px solid var(--line); box-shadow:var(--shadow); z-index:2;
 }
-.chat-header .h-title{font-weight:800; color:var(--accent-d); font-size:17px}
-.icon-btn{background:none;border:none;font-size:20px;color:var(--muted); padding:6px}
-#msgList{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:14px; display:flex; flex-direction:column; gap:8px}
-.bubble{max-width:72%; padding:10px 13px; border-radius:16px; font-size:15px; line-height:1.45; word-break:break-word; position:relative}
-.bubble.me{align-self:flex-end; background:var(--bubble-me); color:#fff; border-bottom-right-radius:4px}
-.bubble.you{align-self:flex-start; background:var(--bubble-you); color:var(--text); border-bottom-left-radius:4px}
-.unread-dot{align-self:flex-end; font-size:10.5px; color:var(--accent-d); margin:-4px 3px 0 0}
-.msg-empty{margin:auto; text-align:center; color:var(--muted); font-size:13.5px; line-height:1.7}
-.chat-input-row{display:flex; gap:8px; padding:10px 12px; background:var(--card); border-top:1px solid var(--beige); flex:none;
-  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));}
-#msgInput{
-  flex:1; border:1.5px solid var(--beige-d); border-radius:20px; padding:11px 16px;
-  font-size:15px; background:#fff; color:var(--text);
-}
-#sendBtn{width:44px; height:44px; border-radius:50%; background:var(--accent); color:#fff; border:none; font-size:18px; flex:none}
-#sendBtn:disabled{opacity:.4}
+.avatar{width:40px;height:40px;border-radius:var(--r-full);flex:none;background:var(--accent-soft);display:grid;place-items:center;font-size:20px}
+.chead .who{flex:1;min-width:0}
+.chead .who .nm{font-size:var(--t-title);font-weight:var(--w-bold);display:flex;align-items:center;gap:6px}
+.chead .who .nm .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dday{font-size:11px;font-weight:var(--w-bold);color:var(--accent);background:var(--accent-soft);padding:2px 8px;border-radius:var(--r-full);flex:none}
+.chead .who .st{font-size:12px;color:var(--muted);margin-top:1px}
+.chead .hbtn{font-size:19px;color:var(--muted);width:36px;height:36px;display:grid;place-items:center;border-radius:var(--r-full)}
+
 .install-hint{
   display:none; align-items:center; justify-content:space-between; gap:8px; flex:none;
-  background:var(--beige); color:var(--text); font-size:12px; line-height:1.5; padding:8px 12px;
+  background:var(--accent-soft); color:var(--text); font-size:12px; line-height:1.5; padding:9px 14px;
 }
-.install-hint button{background:none;border:none;color:var(--muted);font-size:15px;padding:2px 4px}
-.seg-row{display:flex; gap:6px; margin-top:8px; width:100%; max-width:320px}
-.seg-btn{flex:1; padding:8px 4px; border-radius:10px; border:1.5px solid var(--beige-d); background:var(--card); color:var(--muted); font-size:12.5px; font-weight:600}
-.seg-btn.active{background:var(--accent); border-color:var(--accent); color:#fff}
-.seg-btn:disabled{opacity:.45}
+.install-hint button{color:var(--muted); font-size:15px; padding:2px 6px}
 
-/* 설정 */
-.settings-row{
-  display:flex; align-items:center; justify-content:space-between; width:100%; max-width:320px;
-  background:var(--card); border-radius:14px; padding:14px 16px; margin-bottom:10px; border:1px solid var(--beige);
+#msgList{
+  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  padding:var(--s4) var(--s3) var(--s3); display:flex; flex-direction:column; gap:var(--s1);
+  scroll-behavior:smooth; background:var(--bg);
 }
-.settings-row .label{font-size:14.5px; font-weight:600}
-.toggle{
-  width:46px; height:26px; border-radius:20px; background:var(--beige-d); position:relative; border:none; flex:none;
+/* 채팅 배경 패턴(꾸미기) */
+[data-chatbg="dots"] #msgList{background-image:radial-gradient(var(--pattern) 1.6px, transparent 1.7px); background-size:18px 18px}
+[data-chatbg="grid"] #msgList{background-image:linear-gradient(var(--pattern) 1px,transparent 1px),linear-gradient(90deg,var(--pattern) 1px,transparent 1px); background-size:22px 22px}
+[data-chatbg="hearts"] #msgList{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'><path d='M15 22 L7 14 A4.4 4.4 0 0 1 15 8 A4.4 4.4 0 0 1 23 14 Z' fill='%23e07d99' fill-opacity='0.12'/></svg>");
+  background-size:30px 30px;
 }
-.toggle.on{background:var(--accent)}
-.toggle .knob{position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .15s}
+.daysep{align-self:center; margin:var(--s3) 0; font-size:11.5px; color:var(--muted); background:var(--surface2); padding:4px 12px; border-radius:var(--r-full)}
+.row{display:flex; align-items:flex-end; gap:6px; max-width:100%}
+.row.me{justify-content:flex-end}
+.row.you{justify-content:flex-start}
+.row.grp{margin-top:2px}
+.row.newgrp{margin-top:var(--s3)}
+.row.just .bubble{animation:pop .22s ease-out}
+@keyframes pop{from{transform:translateY(6px) scale(.97);opacity:.4}to{transform:none;opacity:1}}
+.bubble{
+  max-width:76%; padding:9px 13px; font-size:var(--t-body); line-height:1.42; font-weight:var(--w-reg);
+  word-break:break-word; border-radius:var(--bubble-r); box-shadow:var(--shadow);
+}
+.me .bubble{background:var(--me-bg); color:var(--me-ink)}
+.you .bubble{background:var(--you-bg); color:var(--you-ink)}
+.me.tail .bubble{border-bottom-right-radius:6px}
+.you.tail .bubble{border-bottom-left-radius:6px}
+.me.grp .bubble{border-top-right-radius:8px}
+.you.grp .bubble{border-top-left-radius:8px}
+.meta{display:flex; flex-direction:column; font-size:10.5px; color:var(--muted); line-height:1.3; padding-bottom:2px}
+.me .meta{align-items:flex-end; order:-1}
+.you .meta{align-items:flex-start}
+.meta .rd{color:var(--read); font-weight:700}
+.meta .rd::before{content:"● "; font-size:8px; vertical-align:1px}
+.msg-empty{margin:auto; text-align:center; color:var(--muted); font-size:13.5px; line-height:1.8}
+.msg-empty .empty-emoji{font-size:40px; margin-bottom:10px}
+
+.inbar{
+  flex:none; display:flex; align-items:center; gap:var(--s2); padding:var(--s2) var(--s3);
+  padding-bottom:calc(var(--s2) + env(safe-area-inset-bottom,0px));
+  background:var(--surface); border-top:1px solid var(--line);
+}
+#msgInput{
+  flex:1; background:var(--surface2); border:none; border-radius:var(--r-full);
+  padding:11px 16px; font-size:var(--t-body); color:var(--text);
+}
+#msgInput::placeholder{color:var(--muted)}
+#sendBtn{
+  width:42px; height:42px; border-radius:var(--r-full); flex:none;
+  background:var(--accent); color:var(--accent-ink); font-size:17px; display:grid; place-items:center; box-shadow:var(--shadow);
+}
+#sendBtn:disabled{opacity:.4}
+
+/* ═══════════════ 설정 ═══════════════ */
+#screenSettings{padding-top:calc(var(--s5) + env(safe-area-inset-top,0px))}
+.set-title{font-size:var(--t-h); font-weight:var(--w-bold); align-self:flex-start; max-width:340px; width:100%; margin:0 auto var(--s2)}
+.set-group{width:100%; max-width:340px; margin:0 auto var(--s4); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow)}
+.set-group.danger{border-color:color-mix(in srgb,var(--danger) 45%, var(--line))}
+.set-label{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); align-self:flex-start; max-width:340px; width:100%; margin:0 auto 6px; padding-left:4px}
+.set-row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; text-align:left}
+.set-row + .set-row{border-top:1px solid var(--line)}
+.set-row .label{font-size:14.5px; font-weight:var(--w-med)}
+.set-row .desc{font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5}
+.set-col{display:block}
+.toggle{width:46px; height:28px; border-radius:20px; background:var(--surface2); position:relative; border:1px solid var(--line); flex:none}
+.toggle.on{background:var(--accent); border-color:var(--accent)}
+.toggle .knob{position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .toggle.on .knob{left:23px}
+.seg-row{display:flex; gap:6px; margin-top:10px; width:100%}
+.seg-btn{flex:1; padding:9px 4px; border-radius:var(--r-sm); border:1.5px solid var(--line); background:var(--surface2); color:var(--muted); font-size:12.5px; font-weight:var(--w-med)}
+.seg-btn.active{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.seg-btn:disabled{opacity:.45}
+.link-btn{font-size:13.5px; font-weight:var(--w-bold); color:var(--accent)}
+.link-btn.danger{color:var(--danger)}
 
-/* 잠금화면 — 잠금 화면엔 5959 로고 외 대화·상대 정보를 절대 노출하지 않는다 */
+/* 꾸미기 위젯 */
+.swatches{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px}
+.swatch{width:44px; text-align:center; font-size:10px; color:var(--muted)}
+.swatch .chip{width:44px; height:44px; border-radius:14px; border:2px solid var(--line); box-shadow:var(--shadow); margin-bottom:4px; position:relative}
+.swatch.on .chip{border-color:var(--accent)}
+.swatch.on .chip::after{content:"✓"; position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:15px; text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.chip.p-warm{background:linear-gradient(135deg,#f18ba4,#ec7f9b)}
+.chip.p-minimal{background:linear-gradient(135deg,#3a3b42,#17181c)}
+.chip.p-lavender{background:linear-gradient(135deg,#a99bff,#9b8cff)}
+.chip.p-forest{background:linear-gradient(135deg,#68ac7c,#5aa06f)}
+.chip.p-sky{background:linear-gradient(135deg,#69a6de,#5b9bd8)}
+.chip.p-midnight{background:linear-gradient(135deg,#8b8fff,#2b2e3a)}
+.chip.p-cocoa{background:linear-gradient(135deg,#e59a76,#2e2823)}
+.pill-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+.pill{padding:8px 14px; border-radius:var(--r-full); border:1.5px solid var(--line); background:var(--surface2); color:var(--muted); font-size:12.5px; font-weight:var(--w-med)}
+.pill.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+.emoji-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+.emoji-pick{width:40px; height:40px; border-radius:var(--r-full); border:1.5px solid var(--line); background:var(--surface2); font-size:20px; display:grid; place-items:center}
+.emoji-pick.on{border-color:var(--accent); background:var(--accent-soft)}
+.field-input{width:100%; margin-top:10px; padding:11px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--text); font-size:var(--t-body)}
+
+/* ═══════════════ 잠금 ═══════════════ */
 #lockScreen{
   position:fixed; inset:0; z-index:500; background:var(--bg); overscroll-behavior:none;
-  display:none; flex-direction:column; align-items:center; justify-content:center;
-  padding:24px; padding-top:calc(24px + env(safe-area-inset-top,0px)); padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
-  text-align:center; gap:6px;
+  display:none; flex-direction:column; align-items:center;
+  padding:var(--s8) var(--s6) calc(var(--s6) + env(safe-area-inset-bottom,0px));
+  padding-top:calc(var(--s8) + env(safe-area-inset-top,0px)); text-align:center;
 }
+#lockScreen .logo{margin-top:var(--s5)}
+.lock-h{font-size:var(--t-title); font-weight:var(--w-med); margin-top:var(--s5)}
+.lock-hi{font-size:13px; color:var(--muted); margin-top:var(--s1)}
+.pindots{display:flex; gap:var(--s4); margin-top:var(--s6)}
+.pindots i{width:12px; height:12px; border-radius:var(--r-full); border:1.6px solid var(--accent); display:block; transition:.12s}
+.pindots i.f{background:var(--accent); transform:scale(1.05)}
+.pad{margin-top:auto; display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s4) var(--s5); width:100%; max-width:280px}
+.key{height:62px; border-radius:var(--r-full); font-size:25px; font-weight:var(--w-med); color:var(--text); background:var(--surface); box-shadow:var(--shadow); display:grid; place-items:center}
+.key.util{background:none; box-shadow:none; font-size:14px; color:var(--muted)}
+.lock-msg{font-size:12px; color:var(--danger); margin-top:14px; min-height:16px}
+#lockInput{position:absolute; opacity:0; pointer-events:none; width:1px; height:1px}
+#lockBioBtn{margin-top:var(--s5); max-width:280px}
+#lockPinFallback{margin-top:4px}
+
+/* 모달 / 토스트 */
+.modal{position:fixed; inset:0; z-index:700; background:rgba(20,15,18,.55); display:none; align-items:center; justify-content:center; padding:20px}
+.modal-card{background:var(--surface); border-radius:var(--r-xl); padding:26px 22px; max-width:320px; width:100%; text-align:center; box-shadow:var(--shadow-lg)}
+.modal-emoji{font-size:34px; margin-bottom:8px}
+.modal-h{font-weight:var(--w-bold); font-size:16px; margin-bottom:10px}
+.modal-desc{font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:18px}
 .toast{
-  position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
-  background:rgba(74,59,59,.92); color:#fff; padding:10px 18px; border-radius:20px; font-size:13.5px;
-  opacity:0; pointer-events:none; transition:.25s; z-index:600; max-width:86%; text-align:center;
+  position:fixed; left:50%; bottom:calc(26px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%) translateY(20px);
+  background:rgba(40,30,34,.94); color:#fff; padding:11px 18px; border-radius:var(--r-full); font-size:13.5px;
+  opacity:0; pointer-events:none; transition:.25s; z-index:800; max-width:86%; text-align:center;
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 </style>
@@ -129,177 +353,290 @@ input.code-input{
 <body>
 
 <!-- 로딩 -->
-<div class="screen active center" id="screenLoading">
+<div class="screen active center mid" id="screenLoading">
   <div class="spinner" id="loadingSpinner"></div>
-  <div id="loadingPendingMsg" style="display:none; margin-top:18px; text-align:center; color:#a8798a; font-size:14px; line-height:1.6; padding:0 32px;">
+  <div id="loadingPendingMsg" style="display:none; margin-top:18px; color:var(--muted); font-size:14px; line-height:1.7">
     서버 연결 준비 중이에요.<br>잠시 후 새로고침 해주세요.
-    <div style="margin-top:14px"><button class="secondary-btn" id="btnRefreshLoading" style="max-width:200px;margin:0 auto">🔄 새로고침</button></div>
+    <div style="margin-top:16px"><button class="secondary-btn" id="btnRefreshLoading" style="max-width:200px;margin:0 auto">🔄 새로고침</button></div>
   </div>
 </div>
 
 <!-- 시작 화면 -->
-<div class="screen center" id="screenStart">
-  <div class="logo">🩷</div>
-  <div class="title">5959</div>
-  <div style="font-size:11px;color:var(--muted);margin-top:-8px">오구오구라고 읽어요</div>
-  <div class="tagline">단둘이 쓰는 우리만의 공간</div>
+<div class="screen center mid" id="screenStart">
+  <div class="brandmark">
+    <div class="logo">5959</div>
+    <div class="logo-sub">오구오구라고 읽어요</div>
+  </div>
+  <h1 class="h">우리 둘만의 공간을<br>함께 열어요</h1>
+  <div class="sub">이메일이나 전화번호 없이,<br>6자리 코드로 상대방과 연결해요</div>
+  <div class="spring"></div>
   <button class="primary-btn" id="btnCreate">코드 만들기</button>
   <button class="secondary-btn" id="btnJoin">코드로 들어가기</button>
-  <div class="hint">이메일이나 전화번호 없이, 6자리 코드로 상대방과 이 공간을 연결해요.</div>
+  <button class="ghost-btn" id="btnRejoin">예전에 쓰던 공간이 있나요? · 다시 연결 코드 입력</button>
 </div>
 
 <!-- 코드 생성 후 대기 -->
 <div class="screen center" id="screenWaiting">
-  <div class="tagline" style="margin-bottom:0">이 코드를 상대방에게 알려주세요</div>
-  <div class="code-box" id="waitCode">------</div>
-  <div class="spinner"></div>
-  <div class="hint">상대방이 코드를 입력하면 자동으로 연결돼요.</div>
-  <div class="warn">⚠️ 코드는 10분 후 사라져요. 계정이 없어서, 이 코드를 잃어버리면 기기를 바꿨을 때 이 공간을 다시 열 수 없어요. 어딘가에 꼭 저장해두세요.</div>
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h">코드를 상대에게 보내요</h1>
+  <div class="sub">짝이 이 코드를 입력하면 자동으로 이어져요</div>
+  <div class="codebox" id="waitCode"></div>
+  <div class="copychip" id="copyChip">⧉ 초대코드 복사</div>
+  <div class="spring"></div>
+  <div class="waiting">
+    <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
+    <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">연결을 기다리는 중</b></div>
+  </div>
+  <div class="notice">이 코드는 지금 연결용이에요. 나중에 폰을 바꾸거나 앱을 지워도, 상대방이 설정에서 <b>다시 연결 코드</b>를 만들어주면 우리 공간이 그대로 이어져요.</div>
   <button class="ghost-btn" id="btnCancelWait">취소하고 처음으로</button>
 </div>
 
 <!-- 코드 입력 -->
-<div class="screen center" id="screenJoin">
-  <div class="tagline" style="margin-bottom:0">상대방이 알려준 6자리 코드를 입력하세요</div>
+<div class="screen center mid" id="screenJoin">
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h">받은 코드를 입력해요</h1>
+  <div class="sub">상대방이 알려준 6자리 코드를 입력하세요</div>
   <input class="code-input" id="joinInput" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="off">
-  <div id="joinMsg" style="font-size:12.5px; color:var(--red); min-height:16px"></div>
+  <div class="errline" id="joinMsg"></div>
   <button class="primary-btn" id="btnJoinSubmit">들어가기</button>
   <button class="ghost-btn" id="btnJoinCancel">뒤로</button>
 </div>
 
+<!-- 재합류 코드 입력(짝 도움 복귀) -->
+<div class="screen center mid" id="screenRejoin">
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h">우리 공간 다시 잇기</h1>
+  <div class="sub">상대방에게 <b>다시 연결 코드</b>를 받아 입력하면<br>지금까지의 대화 그대로 이어져요</div>
+  <input class="code-input" id="rejoinInput" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="off">
+  <div class="errline" id="rejoinMsg"></div>
+  <button class="primary-btn" id="btnRejoinSubmit">이어받기</button>
+  <button class="ghost-btn" id="btnRejoinCancel">뒤로</button>
+</div>
+
 <!-- 채팅 -->
 <div class="screen" id="screenChat">
-  <div class="chat-header">
-    <div class="h-title">🩷 5959</div>
-    <div>
-      <button class="icon-btn" id="btnRefreshChat" title="새로고침">🔄</button>
-      <button class="icon-btn" id="btnSettings" title="설정">⚙️</button>
+  <div class="chead">
+    <div class="avatar" id="chatAvatar">🩷</div>
+    <div class="who">
+      <div class="nm"><span class="txt" id="chatNick">우리 공간</span><span class="dday" id="chatDday" style="display:none"></span></div>
+      <div class="st" id="chatStatus">단둘이 쓰는 우리만의 공간</div>
     </div>
+    <button class="hbtn" id="btnRefreshChat" title="새로고침">🔄</button>
+    <button class="hbtn" id="btnSettings" title="설정">⚙️</button>
   </div>
   <div class="install-hint" id="installHint">
     <span>📲 홈 화면에 추가하면 전체 화면 앱처럼 쓸 수 있어요</span>
     <button id="installHintClose" aria-label="닫기">✕</button>
   </div>
-  <div id="msgList"><div class="msg-empty">아직 대화가 없어요.<br>첫 인사를 건네보세요 🩷</div></div>
-  <form class="chat-input-row" id="chatForm">
+  <div id="msgList"><div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div></div>
+  <form class="inbar" id="chatForm">
     <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
-    <button id="sendBtn" type="submit">➤</button>
+    <button id="sendBtn" type="submit">↑</button>
   </form>
 </div>
 
 <!-- 설정 -->
-<div class="screen center" id="screenSettings" style="justify-content:flex-start; padding-top:26px">
-  <div class="title" style="font-size:19px">설정</div>
-  <div class="settings-row">
-    <div>
-      <div class="label">암호 잠금</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px" id="lockStatusLabel">꺼짐</div>
+<div class="screen center" id="screenSettings">
+  <div class="set-title">설정</div>
+
+  <!-- 꾸미기 -->
+  <div id="decorSection" style="width:100%;display:contents">
+    <div class="set-label">우리 공간 꾸미기</div>
+    <div class="set-group">
+      <div class="set-row set-col">
+        <div class="label">테마 색</div>
+        <div class="desc">한 명이 바꾸면 상대 화면도 같이 바뀌어요</div>
+        <div class="swatches" id="themeSwatches">
+          <button class="swatch" data-pal="warm"><span class="chip p-warm"></span>따뜻</button>
+          <button class="swatch" data-pal="minimal"><span class="chip p-minimal"></span>미니멀</button>
+          <button class="swatch" data-pal="lavender"><span class="chip p-lavender"></span>라벤더</button>
+          <button class="swatch" data-pal="forest"><span class="chip p-forest"></span>포레스트</button>
+          <button class="swatch" data-pal="sky"><span class="chip p-sky"></span>스카이</button>
+          <button class="swatch" data-pal="midnight"><span class="chip p-midnight"></span>미드나잇</button>
+          <button class="swatch" data-pal="cocoa"><span class="chip p-cocoa"></span>코코아</button>
+        </div>
+      </div>
+      <div class="set-row set-col">
+        <div class="label">채팅 배경</div>
+        <div class="pill-row" id="bgPicker">
+          <button class="pill" data-bg="none">기본</button>
+          <button class="pill" data-bg="dots">도트</button>
+          <button class="pill" data-bg="grid">그리드</button>
+          <button class="pill" data-bg="hearts">하트</button>
+        </div>
+      </div>
+      <div class="set-row set-col">
+        <div class="label">말풍선 모양</div>
+        <div class="pill-row" id="bubblePicker">
+          <button class="pill" data-bub="round">기본</button>
+          <button class="pill" data-bub="soft">둥글</button>
+          <button class="pill" data-bub="sharp">각짐</button>
+        </div>
+      </div>
     </div>
-    <button class="toggle" id="lockToggle"><span class="knob"></span></button>
+
+    <div class="set-label">우리 프로필</div>
+    <div class="set-group">
+      <div class="set-row set-col">
+        <div class="label">내 아이콘</div>
+        <div class="emoji-row" id="myEmojiPicker">
+          <button class="emoji-pick" data-emo="🩷">🩷</button>
+          <button class="emoji-pick" data-emo="🐰">🐰</button>
+          <button class="emoji-pick" data-emo="🐻">🐻</button>
+          <button class="emoji-pick" data-emo="🐱">🐱</button>
+          <button class="emoji-pick" data-emo="🐶">🐶</button>
+          <button class="emoji-pick" data-emo="🐨">🐨</button>
+          <button class="emoji-pick" data-emo="🦊">🦊</button>
+          <button class="emoji-pick" data-emo="🐧">🐧</button>
+          <button class="emoji-pick" data-emo="🌙">🌙</button>
+          <button class="emoji-pick" data-emo="⭐">⭐</button>
+          <button class="emoji-pick" data-emo="🌷">🌷</button>
+          <button class="emoji-pick" data-emo="🍓">🍓</button>
+        </div>
+      </div>
+      <div class="set-row set-col">
+        <div class="label">서로 부르는 애칭</div>
+        <div class="desc">상대 화면 상단에 이렇게 보여요</div>
+        <input class="field-input" id="myNickInput" maxlength="12" placeholder="예) 자기, 여봉" autocomplete="off">
+      </div>
+      <div class="set-row set-col">
+        <div class="label">사귄 날 (D-day)</div>
+        <input class="field-input" id="annivInput" type="date">
+      </div>
+    </div>
   </div>
-  <div class="settings-row" id="lockModeRow" style="display:none; flex-direction:column; align-items:stretch">
-    <div style="display:flex;justify-content:space-between;width:100%">
+
+  <!-- 잠금 -->
+  <div class="set-label">잠금 · 알림</div>
+  <div class="set-group">
+    <div class="set-row">
+      <div><div class="label">암호 잠금</div><div class="desc" id="lockStatusLabel">꺼짐</div></div>
+      <button class="toggle" id="lockToggle"><span class="knob"></span></button>
+    </div>
+    <div class="set-row set-col" id="lockModeRow" style="display:none">
       <div class="label">잠금 해제 방식</div>
+      <div class="seg-row">
+        <button class="seg-btn" id="lockModePinBtn">🔢 비밀번호</button>
+        <button class="seg-btn" id="lockModeBioBtn">🙂 지문·Face ID</button>
+      </div>
+      <div class="desc" id="lockModeHint" style="margin-top:8px"></div>
     </div>
-    <div class="seg-row" style="max-width:none">
-      <button class="seg-btn" id="lockModePinBtn">🔢 비밀번호</button>
-      <button class="seg-btn" id="lockModeBioBtn">🙂 지문·Face ID</button>
+    <div class="set-row set-col" id="autoLockRow" style="display:none">
+      <div class="label">자동 잠금</div>
+      <div class="desc">화면을 벗어났다 돌아오면 다시 잠가요</div>
+      <div class="seg-row">
+        <button class="seg-btn" id="autoLock0Btn">즉시</button>
+        <button class="seg-btn" id="autoLock1Btn">1분</button>
+        <button class="seg-btn" id="autoLock5Btn">5분</button>
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px" id="lockModeHint"></div>
+    <div class="set-row">
+      <div><div class="label">알림</div><div class="desc" id="notifyStatusLabel">꺼짐 — 내용은 절대 표시되지 않아요</div></div>
+      <button class="toggle" id="notifyToggle"><span class="knob"></span></button>
+    </div>
   </div>
-  <div class="settings-row" id="autoLockRow" style="display:none; flex-direction:column; align-items:stretch">
-    <div class="label">자동 잠금</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:2px">화면을 벗어났다 돌아오면 다시 잠가요</div>
-    <div class="seg-row" style="max-width:none">
-      <button class="seg-btn" id="autoLock0Btn">즉시</button>
-      <button class="seg-btn" id="autoLock1Btn">1분</button>
-      <button class="seg-btn" id="autoLock5Btn">5분</button>
+
+  <!-- 복구 · 앱 -->
+  <div class="set-label">공간 관리</div>
+  <div class="set-group">
+    <div class="set-row" id="reinviteRow">
+      <div><div class="label">상대방 다시 초대</div><div class="desc">상대가 폰을 바꾸거나 앱을 지웠어도, 여기서 만든 코드를 입력하면 지금까지의 대화 그대로 이어져요</div></div>
+      <button class="link-btn" id="btnReinvite">코드 만들기</button>
+    </div>
+    <div class="set-row">
+      <div><div class="label">앱 새로고침</div><div class="desc">최신 버전 확인 후 다시 불러와요</div></div>
+      <button class="link-btn" id="btnRefreshSettings">🔄</button>
     </div>
   </div>
-  <div class="settings-row">
-    <div>
-      <div class="label">알림</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px" id="notifyStatusLabel">꺼짐 — 내용은 절대 표시되지 않아요</div>
+
+  <div class="set-group danger">
+    <div class="set-row">
+      <div><div class="label" style="color:var(--danger)">관계 정리</div><div class="desc">이 공간을 정리하고 기록을 삭제해요</div></div>
+      <button class="link-btn danger" id="btnBreakup">정리하기</button>
     </div>
-    <button class="toggle" id="notifyToggle"><span class="knob"></span></button>
   </div>
-  <div class="settings-row">
-    <div>
-      <div class="label">앱 새로고침</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">최신 버전 확인 후 다시 불러와요</div>
-    </div>
-    <button class="ghost-btn" id="btnRefreshSettings" style="text-decoration:none;font-weight:700">🔄 새로고침</button>
-  </div>
-  <div class="settings-row" style="border-color:#f4c9c9">
-    <div>
-      <div class="label" style="color:var(--red)">관계 정리</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">이 공간을 정리하고 기록을 삭제해요</div>
-    </div>
-    <button class="ghost-btn" id="btnBreakup" style="color:var(--red);text-decoration:none;font-weight:700">정리하기</button>
-  </div>
+
   <button class="ghost-btn" id="btnBackFromSettings">← 대화로 돌아가기</button>
 </div>
 
+<!-- 재초대 코드 표시(살아있는 멤버가 발급) -->
+<div class="screen center" id="screenReinvite">
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h">다시 연결 코드</h1>
+  <div class="sub">상대방이 <b>코드로 들어가기 → 다시 연결 코드 입력</b>에<br>이 코드를 넣으면 그대로 이어져요</div>
+  <div class="codebox" id="reinviteCode"></div>
+  <div class="spring"></div>
+  <div class="waiting">
+    <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
+    <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">상대 연결을 기다리는 중</b></div>
+  </div>
+  <div class="notice">이 코드는 10분 뒤 자동으로 닫혀요. 살아있는 대화·꾸미기는 그대로 유지돼요.</div>
+  <button class="ghost-btn" id="btnReinviteCancel">닫고 대화로</button>
+</div>
+
 <!-- 관계가 정리된 뒤 안내 화면 -->
-<div class="screen center" id="screenDissolved">
-  <div class="logo">🕊️</div>
-  <div class="title" style="font-size:20px">관계가 정리되었습니다</div>
-  <div class="hint">함께한 공간은 안전하게 삭제되었어요.<br>그동안 이 공간을 지켜줘서 고마웠어요.</div>
+<div class="screen center mid" id="screenDissolved">
+  <div class="logo" style="background:var(--surface2);color:var(--muted)">🕊️</div>
+  <h1 class="h">관계가 정리되었습니다</h1>
+  <div class="sub">함께한 공간은 안전하게 삭제되었어요.<br>그동안 이 공간을 지켜줘서 고마웠어요.</div>
+  <div class="spring"></div>
   <button class="primary-btn" id="btnDissolvedHome">처음으로</button>
 </div>
 
-<!-- 관계 정리 확인 모달(2단계 확인: 확인 버튼 → 암호/문구 재입력) -->
-<div id="breakupModal" style="position:fixed;inset:0;z-index:700;background:rgba(74,59,59,.55);display:none;align-items:center;justify-content:center;padding:20px">
-  <div style="background:var(--card);border-radius:20px;padding:26px 22px;max-width:320px;width:100%;text-align:center">
+<!-- 관계 정리 확인 모달(2단계) -->
+<div class="modal" id="breakupModal">
+  <div class="modal-card">
     <div id="breakupStep1">
-      <div style="font-size:34px;margin-bottom:8px">🕊️</div>
-      <div style="font-weight:800;font-size:16px;margin-bottom:10px">관계를 정리할까요?</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">
-        정말 정리하시겠어요? 두 사람의 대화와 기록이 모두 삭제되며 되돌릴 수 없습니다.<br>
-        상대방에게도 똑같이 안내돼요.
-      </div>
-      <button class="primary-btn" id="breakupStep1Confirm" style="background:var(--red);max-width:none">정리할게요</button>
+      <div class="modal-emoji">🕊️</div>
+      <div class="modal-h">관계를 정리할까요?</div>
+      <div class="modal-desc">정말 정리하시겠어요? 두 사람의 대화와 기록이 모두 삭제되며 되돌릴 수 없습니다.<br>상대방에게도 똑같이 안내돼요.</div>
+      <button class="primary-btn" id="breakupStep1Confirm" style="background:var(--danger);color:#fff;max-width:none">정리할게요</button>
       <button class="ghost-btn" id="breakupStep1Cancel">취소</button>
     </div>
     <div id="breakupStep2" style="display:none">
-      <div style="font-weight:800;font-size:15px;margin-bottom:10px">마지막 확인이에요</div>
-      <div id="breakupStep2Desc" style="font-size:12.5px;color:var(--muted);margin-bottom:14px">암호를 다시 입력해주세요</div>
-      <input id="breakupPinInput" type="password" inputmode="numeric" maxlength="6" class="code-input" style="width:150px;font-size:22px;margin:0 auto" autocomplete="off">
-      <div id="breakupMsg" style="font-size:12px;color:var(--red);min-height:16px;margin-top:8px"></div>
-      <button class="primary-btn" id="breakupStep2Confirm" style="background:var(--red);max-width:none;margin-top:10px">완전히 정리하기</button>
+      <div class="modal-h">마지막 확인이에요</div>
+      <div class="modal-desc" id="breakupStep2Desc">암호를 다시 입력해주세요</div>
+      <input id="breakupPinInput" type="password" inputmode="numeric" maxlength="6" class="code-input" style="width:160px;font-size:22px;margin:0 auto" autocomplete="off">
+      <div class="errline" id="breakupMsg" style="margin-top:8px"></div>
+      <button class="primary-btn" id="breakupStep2Confirm" style="background:var(--danger);color:#fff;max-width:none;margin-top:10px">완전히 정리하기</button>
       <button class="ghost-btn" id="breakupStep2Cancel">취소</button>
     </div>
     <div id="breakupStep3" style="display:none">
       <div class="spinner" style="margin:10px auto"></div>
-      <div style="font-size:13px;color:var(--muted);margin-top:10px">정리하는 중이에요...</div>
+      <div class="modal-desc" style="margin:10px 0 0">정리하는 중이에요...</div>
     </div>
   </div>
 </div>
 
 <!-- 잠금화면: 5959 로고·암호창 외 어떤 정보도 표시하지 않는다(대화 미리보기·상대 이름 절대 금지) -->
 <div id="lockScreen">
-  <div style="font-size:48px">🔒</div>
-  <div style="font-size:15.5px;font-weight:700;margin:10px 0 16px">암호를 입력하세요</div>
-  <input id="lockInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off"
-    style="width:170px;text-align:center;font-size:24px;letter-spacing:8px;padding:12px;border:2px solid var(--beige-d);border-radius:14px;background:var(--card);color:var(--text)">
-  <button class="secondary-btn" id="lockBioBtn" style="display:none;margin-top:14px">🙂 지문·Face ID로 해제</button>
+  <div class="logo">5959</div>
+  <div class="lock-h">우리 공간 잠금 해제</div>
+  <div class="lock-hi" id="lockHi">암호를 입력하세요</div>
+  <div class="pindots" id="lockDots"></div>
+  <input id="lockInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+  <div class="pad" id="lockKeypad">
+    <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button>
+    <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button>
+    <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button>
+    <button class="key util" data-k="bio" id="keyBio">Face ID</button><button class="key" data-k="0">0</button><button class="key util" data-k="del">⌫</button>
+  </div>
+  <button class="secondary-btn" id="lockBioBtn" style="display:none">🙂 지문·Face ID로 해제</button>
   <button class="ghost-btn" id="lockPinFallback" style="display:none">비밀번호로 잠금 해제</button>
-  <div id="lockMsg" style="font-size:12px;color:var(--red);margin-top:10px;min-height:16px"></div>
+  <div class="lock-msg" id="lockMsg"></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 /* =========================================================
-   오구오구 v0 — 페어링 + 채팅 + PIN 잠금
-   회사 패턴 재사용: team-messenger(채팅/Firestore 구조), my-planner(PIN 잠금)
+   오구오구(5959) — 페어링 + 채팅 + PIN 잠금 + 꾸미기(테마/프로필) + 짝 도움 복귀
+   회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
-// 프로덕션 전환 시 이 값을 실제 Firebase 프로젝트 설정으로 교체하세요.
-// (팀톡과 분리된 신규 프로젝트 권장 — 데이터 격리. 현재는 로컬 에뮬레이터용 demo 설정)
 const firebaseConfig = {
   apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
   authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
@@ -313,6 +650,8 @@ const USE_EMULATOR = (location.hostname==="localhost" || location.hostname==="12
 let pairId = localStorage.getItem("oguogu.pairId") || null;
 let unsubPair=null, unsubMsgs=null;
 let currentPairData = null;
+let _lastAnimatedId=null;
+let _prevRejoinOpen=false;
 
 function toast(msg){
   const t=document.getElementById("toast");
@@ -324,16 +663,84 @@ function show(id){
   document.getElementById(id).classList.add("active");
 }
 
+/* ===== 꾸미기: 테마/프로필 (pairs 문서 theme/profile 필드 동기화) ===== */
+const PALETTES={warm:"#fbf3ee",minimal:"#f6f6f7",lavender:"#f5f2fb",forest:"#eef4ef",sky:"#eef4fb",midnight:"#14151b",cocoa:"#1c1714"};
+function themeOf(){ return (currentPairData && currentPairData.theme) || {}; }
+function profileOf(){ return (currentPairData && currentPairData.profile) || {}; }
+function currentPalette(){
+  const p=themeOf().palette;
+  if(p && PALETTES[p]) return p;
+  const pref=localStorage.getItem("oguogu.pref.palette");
+  return (pref && PALETTES[pref]) ? pref : "warm";
+}
+function applyThemeFromData(){
+  const t=themeOf();
+  const pal=currentPalette();
+  const root=document.documentElement;
+  root.setAttribute("data-theme", pal);
+  root.setAttribute("data-bubble", t.bubble || "round");
+  root.setAttribute("data-chatbg", t.chatbg || "none");
+  const meta=document.querySelector('meta[name=theme-color]'); if(meta) meta.setAttribute("content", PALETTES[pal]);
+  if(t.palette) localStorage.setItem("oguogu.pref.palette", t.palette);
+  renderDecorUI();
+}
+function myEmoji(){ const p=profileOf(); return (p.emojis && p.emojis[fb.uid]) || ""; }
+function myNick(){ const p=profileOf(); return (p.nicks && p.nicks[fb.uid]) || ""; }
+function partnerNick(){ const p=profileOf(); const o=otherUid(); return (o && p.nicks && p.nicks[o]) || ""; }
+function partnerEmoji(){ const p=profileOf(); const o=otherUid(); return (o && p.emojis && p.emojis[o]) || "🩷"; }
+function ddayText(){
+  const a=profileOf().anniversary; if(!a) return "";
+  const start=new Date(a+"T00:00:00"); if(isNaN(start.getTime())) return "";
+  const now=new Date();
+  const days=Math.floor((new Date(now.getFullYear(),now.getMonth(),now.getDate()) - new Date(start.getFullYear(),start.getMonth(),start.getDate()))/86400000)+1;
+  return days>=1 ? "D+"+days : "";
+}
+function applyChatHeader(){
+  const av=document.getElementById("chatAvatar"), nk=document.getElementById("chatNick"), dd=document.getElementById("chatDday");
+  if(!nk) return;
+  av.textContent=partnerEmoji();
+  nk.textContent=partnerNick() || "우리 공간";
+  const t=ddayText();
+  if(t){ dd.textContent=t; dd.style.display=""; } else { dd.style.display="none"; }
+}
+async function setTheme(patch){
+  if(!pairId){ if(patch.palette) localStorage.setItem("oguogu.pref.palette",patch.palette); applyThemeFromData(); return; }
+  const theme=Object.assign({}, themeOf(), patch);
+  if(currentPairData) currentPairData.theme=theme;   // 낙관적 반영(즉시 피드백) — 스냅샷이 곧 확정
+  applyThemeFromData();
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {theme}); }
+  catch(e){ console.error(e); toast("바꾸지 못했어요"); }
+}
+async function setProfile(patch){
+  if(!pairId){ toast("연결된 뒤에 꾸밀 수 있어요"); return; }
+  const cur=profileOf();
+  const prof=Object.assign({}, cur, patch);
+  if(patch.nicks) prof.nicks=Object.assign({}, cur.nicks||{}, patch.nicks);
+  if(patch.emojis) prof.emojis=Object.assign({}, cur.emojis||{}, patch.emojis);
+  if(currentPairData) currentPairData.profile=prof;  // 낙관적 반영
+  applyChatHeader(); renderDecorUI();
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {profile:prof}); }
+  catch(e){ console.error(e); toast("바꾸지 못했어요"); }
+}
+function renderDecorUI(){
+  const sec=document.getElementById("decorSection"); if(sec) sec.style.display = pairId ? "contents" : "none";
+  const pal=currentPalette(); const t=themeOf();
+  document.querySelectorAll("#themeSwatches [data-pal]").forEach(el=>el.classList.toggle("on", el.dataset.pal===pal));
+  document.querySelectorAll("#bgPicker [data-bg]").forEach(el=>el.classList.toggle("on", (t.chatbg||"none")===el.dataset.bg));
+  document.querySelectorAll("#bubblePicker [data-bub]").forEach(el=>el.classList.toggle("on", (t.bubble||"round")===el.dataset.bub));
+  document.querySelectorAll("#myEmojiPicker [data-emo]").forEach(el=>el.classList.toggle("on", (myEmoji()||"🩷")===el.dataset.emo));
+  const nick=document.getElementById("myNickInput"); if(nick && document.activeElement!==nick) nick.value=myNick();
+  const anniv=document.getElementById("annivInput"); if(anniv && document.activeElement!==anniv) anniv.value=(profileOf().anniversary||"");
+  const rr=document.getElementById("reinviteRow"); if(rr) rr.style.display = (pairId && otherUid()) ? "flex" : "none";
+}
+
 /* ===== PIN 잠금 (마이플래너 패턴 재사용: SHA-256 해시, 평문 미저장) ===== */
 async function hashPin(pin){const b=new TextEncoder().encode("oguogu-lock|"+pin);const h=await crypto.subtle.digest("SHA-256",b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,"0")).join("");}
 function lockIsOn(){return !!localStorage.getItem("oguogu.lock");}
 let _unlockedThisSession=false;
 function isLocked(){return lockIsOn() && !_unlockedThisSession;}
 
-/* ----- 지문/Face ID (WebAuthn 플랫폼 인증 — 마이플래너 패턴 그대로 이식) -----
-   함정(마이플래너 실측): Playwright는 실제 생체센서를 트리거할 수 없어 자동검증 불가.
-   이 파일의 e2e 검증은 navigator.credentials.create/get을 모킹한 로직 경로 테스트까지만 커버하며,
-   실기기(지문/Face ID 실사용)는 사장님 확인이 필요하다. */
+/* ----- 지문/Face ID (WebAuthn 플랫폼 인증) — 실기(지문/Face ID 실사용)는 사장님 확인 필요 ----- */
 function _bufToB64u(buf){const b=new Uint8Array(buf);let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
 function _b64uToBuf(s){s=s.replace(/-/g,"+").replace(/_/g,"/");const pad=s.length%4?4-(s.length%4):0;s+="=".repeat(pad);const bin=atob(s);const b=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return b.buffer;}
 function bioIsOn(){return !!localStorage.getItem("oguogu.lock.bio");}
@@ -354,22 +761,16 @@ async function registerBio(){
     return true;
   }catch(e){
     console.error(e);
-    // 등록 단계는 항상 버튼 탭(chooseLockMode) 안에서만 호출되므로 제스처 문제는 없다 —
-    // 실패는 사용자 취소이거나 기기 자체가 지원하지 않는 경우.
     toast(e && e.name==="NotAllowedError" ? "생체인증 등록이 취소됐어요" : "이 기기에서는 생체인증을 등록할 수 없어요 — 비밀번호로 사용하세요");
     return false;
   }
 }
-/* 폰 실기 피드백("일부 기종에서 Face ID가 안 됨") 근본원인 판정:
-   WebAuthn get()은 스펙상 사용자 제스처(transient activation) 없이 호출되면 브라우저가
-   조용히 NotAllowedError로 거부할 수 있다(특히 iOS Safari가 엄격). 구버전 코드는 showLock()이
-   화면 진입/포그라운드 복귀(visibilitychange, 스냅샷 콜백, 앱 부팅 — 전부 제스처 아님) 시점에
-   setTimeout으로 bioUnlock()을 "자동" 호출했다 — 이게 기기별로 갈리는 실패의 유력 원인이다.
-   수리: 자동 호출 전부 제거, lockBioBtn 탭(진짜 사용자 제스처)에서만 호출되게 한다. */
+/* 실기 수리: WebAuthn get()은 사용자 제스처 없이 호출되면 iOS/Safari가 조용히 NotAllowedError로 거부.
+   자동 호출 전부 제거, lockBioBtn/키패드 Face ID 탭(진짜 제스처)에서만 호출. */
 let _bioBusy=false;
 async function bioUnlock(){
   const id=localStorage.getItem("oguogu.lock.bio");if(!id)return;
-  if(_bioBusy)return; // 연타로 인한 "operation already pending" 방지
+  if(_bioBusy)return;
   _bioBusy=true;
   const msgEl=document.getElementById("lockMsg");
   msgEl.textContent="";
@@ -384,11 +785,8 @@ async function bioUnlock(){
     console.error(e);
     const name=e && e.name;
     if(name==="NotAllowedError"){
-      // 정상 취소/얼굴·지문 불일치 — 재시도하거나 비밀번호로 넘어가면 됨
       msgEl.textContent="인증이 취소됐어요 — 다시 시도하거나 비밀번호로 해제하세요";
     }else if(name==="SecurityError" || name==="InvalidStateError" || name==="NotSupportedError"){
-      // 저장된 인증정보를 이 기기에서 더 이상 쓸 수 없는 상태 — 매번 실패를 반복하지 않도록
-      // 생체 옵션을 자동으로 끄고 비밀번호 모드로 전환(요구사항: 실패 기기는 생체 옵션 자동 비활성).
       localStorage.setItem("oguogu.lock.mode","pin");
       msgEl.textContent="이 기기에서는 지문·Face ID를 쓸 수 없어요 — 비밀번호로 전환했어요";
       showPinFallback();
@@ -411,28 +809,30 @@ function renderAutoLockUI(){
     const el=document.getElementById(id); if(el) el.classList.toggle("active",ms===v);
   });
 }
-
+function renderLockDots(){
+  const dots=document.getElementById("lockDots"); if(!dots) return;
+  const n=(document.getElementById("lockInput").value||"").length;
+  dots.innerHTML="";
+  for(let i=0;i<6;i++){ const s=document.createElement("i"); if(i<n) s.className="f"; dots.appendChild(s); }
+}
 function showLock(){
   if(!lockIsOn()){_unlockedThisSession=true;return;}
   if(_unlockedThisSession)return;
   document.getElementById("lockScreen").style.display="flex";
-  const pin=document.getElementById("lockInput"), bb=document.getElementById("lockBioBtn"), fbk=document.getElementById("lockPinFallback");
-  pin.value=""; document.getElementById("lockMsg").textContent="";
-  lockContentNow(); // 잠기는 즉시 대화 DOM에서 실제 내용 제거(시각적 가림만이 아니라 실제 비노출)
+  const pin=document.getElementById("lockInput"), bb=document.getElementById("lockBioBtn"), fbk=document.getElementById("lockPinFallback"), pad=document.getElementById("lockKeypad");
+  pin.value=""; renderLockDots(); document.getElementById("lockMsg").textContent="";
+  const hi=document.getElementById("lockHi"); if(hi) hi.textContent="암호를 입력하세요";
+  lockContentNow(); // 잠기는 즉시 대화 DOM에서 실제 내용 제거(진짜 비노출)
   if(lockMode()==="bio" && bioIsOn()){
-    // 자동 트리거 없음(실기 수리 — 위 bioUnlock 주석 참고): lockBioBtn 탭이 유일한 진입점.
-    // 사용자 제스처 안에서 호출돼야 iOS/Android가 생체인증 프롬프트를 신뢰성 있게 띄운다.
-    pin.style.display="none"; bb.style.display="block"; fbk.style.display="block";
+    pad.style.display="none"; bb.style.display="block"; fbk.style.display="block";
   }else{
-    pin.style.display="block"; bb.style.display="none"; fbk.style.display="none";
-    setTimeout(()=>{try{pin.focus();}catch(e){}},150);
+    pad.style.display="grid"; bb.style.display="none"; fbk.style.display="none";
   }
 }
 function showPinFallback(){
-  document.getElementById("lockInput").style.display="block";
+  document.getElementById("lockKeypad").style.display="grid";
   document.getElementById("lockBioBtn").style.display="none";
   document.getElementById("lockPinFallback").style.display="none";
-  setTimeout(()=>{try{document.getElementById("lockInput").focus();}catch(e){}},100);
 }
 function hideLock(){
   _unlockedThisSession=true;
@@ -444,7 +844,7 @@ async function autoUnlockCheck(){
   const pin=document.getElementById("lockInput").value;
   if(pin.length<4)return;
   if(await hashPin(pin)===localStorage.getItem("oguogu.lock")){hideLock();}
-  else if(pin.length>=6){document.getElementById("lockMsg").textContent="암호가 틀렸어요";document.getElementById("lockInput").value="";}
+  else if(pin.length>=6){document.getElementById("lockMsg").textContent="암호가 틀렸어요";document.getElementById("lockInput").value="";renderLockDots();}
 }
 async function setupPin(){
   const pin=prompt("설정할 암호 (4~6자리 숫자)");
@@ -508,11 +908,20 @@ document.getElementById("autoLock5Btn").onclick=()=>setAutoLockMs(300000);
 document.getElementById("lockBioBtn").onclick=bioUnlock;
 document.getElementById("lockPinFallback").onclick=showPinFallback;
 document.getElementById("lockInput").addEventListener("input",autoUnlockCheck);
+/* 잠금 키패드: lockInput 값에 반영 후 input 이벤트로 기존 해제 로직 재사용 */
+document.getElementById("lockKeypad").addEventListener("click",e=>{
+  const b=e.target.closest("[data-k]"); if(!b) return;
+  const k=b.dataset.k, inp=document.getElementById("lockInput");
+  if(k==="bio"){ bioUnlock(); return; }
+  if(k==="del"){ inp.value=inp.value.slice(0,-1); }
+  else if(inp.value.length<6){ inp.value+=k; }
+  inp.dispatchEvent(new Event("input"));
+  renderLockDots();
+});
 document.addEventListener("visibilitychange",()=>{
   if(!lockIsOn())return;
   if(document.hidden){
     _hiddenAt=Date.now();
-    // 백그라운드로 나가는 즉시 대화 DOM 내용 제거(잠금 오버레이를 다시 그리기 전이라도 콘텐츠는 비노출)
     if(autoLockMs()===0){_unlockedThisSession=false; lockContentNow();}
   }else{
     const elapsed=_hiddenAt?Date.now()-_hiddenAt:Infinity;
@@ -526,8 +935,6 @@ document.addEventListener("visibilitychange",()=>{
 
 /* ===== Firebase 초기화 ===== */
 async function initFirebase(){
-  // 로컬 e2e 테스트 전용 훅: window.__OGUOGU_MOCK__이 설정된 경우에만 목 SDK 사용.
-  // 프로덕션에서는 이 전역이 절대 설정되지 않으므로 항상 아래 else(실제 CDN Firebase SDK) 경로를 탄다.
   if (window.__OGUOGU_MOCK__){
     Object.assign(M, window.__OGUOGU_MOCK__);
   } else {
@@ -556,9 +963,14 @@ async function initFirebase(){
 
 /* ===== 페어링 ===== */
 function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
+function fillCells(elId,code){
+  const el=document.getElementById(elId); if(!el) return;
+  el.innerHTML="";
+  String(code).split("").forEach(c=>{ const d=document.createElement("div"); d.className="d"; d.textContent=c; el.appendChild(d); });
+}
 
 async function createPair(){
-  _dissolvedHandled=false; // 새 페어링 시작 — 이전 관계 정리 가드 해제(재페어링 가능해야 함)
+  _dissolvedHandled=false;
   const code = genCode();
   const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
     code, memberUids:[fb.uid], status:"waiting",
@@ -566,13 +978,14 @@ async function createPair(){
   });
   pairId = ref.id;
   localStorage.setItem("oguogu.pairId", pairId);
-  document.getElementById("waitCode").textContent = code.slice(0,3)+" "+code.slice(3);
+  fillCells("waitCode", code);
+  window._lastCode=code;
   show("screenWaiting");
   watchPair();
 }
 
 async function joinPair(){
-  _dissolvedHandled=false; // 새 페어링 시작 — 이전 관계 정리 가드 해제(재페어링 가능해야 함)
+  _dissolvedHandled=false;
   const code = document.getElementById("joinInput").value.trim();
   const msgEl = document.getElementById("joinMsg");
   msgEl.textContent="";
@@ -597,44 +1010,45 @@ function watchPair(){
   if(unsubPair) unsubPair();
   unsubPair = M.onSnapshot(M.doc(fb.db,"pairs",pairId), snap=>{
     if(!snap.exists()){
-      // 상대 없이 만료/삭제된 경우 처음으로
       localStorage.removeItem("oguogu.pairId"); pairId=null;
       show("screenStart"); return;
     }
     currentPairData = snap.data();
-    // 이별 프로토콜: 내가 실행했든(즉시 반영) 상대가 실행했든(실시간 수신), 감지 즉시 동일하게 처리.
+    applyThemeFromData(); // 꾸미기 실시간 동기화(테마/배경/말풍선)
     if(currentPairData.status==="dissolved"){ handleDissolved(); return; }
     if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
-      // 이미 채팅 화면이면 재입장(재구독) 하지 않는다 — lastReadAt/fcmTokens 자가갱신도 이 스냅샷을
-      // 다시 태우므로, 매번 enterChat()을 반복하면 markRead()→갱신→스냅샷→enterChat()의 무한
-      // 재구독 루프가 생겨 메시지 리스너가 계속 끊겼다 붙었다 하며 수신을 놓친다(실측으로 발견).
+      // 짝 도움 복귀: 상대가 방금 승계(재연결)했으면 안내
+      if(_prevRejoinOpen && currentPairData.rejoinOpen!==true){ toast("💞 상대가 다시 연결됐어요"); }
+      _prevRejoinOpen = currentPairData.rejoinOpen===true;
       if(document.getElementById("screenChat").classList.contains("active")){
-        renderMessages(); // 읽음표시 등 부가 필드 변경만 화면에 반영, 구독은 그대로 유지
+        renderMessages(); // 읽음표시 등 부가 필드 변경만 반영, 구독 유지
+      } else if(document.getElementById("screenReinvite").classList.contains("active") && currentPairData.rejoinOpen===true){
+        // 재초대 코드 대기 화면은 유지(상대가 아직 안 들어옴)
       } else {
         enterChat();
       }
     } else {
-      document.getElementById("waitCode").textContent = (currentPairData.code||"------").replace(/(\d{3})(\d{3})/,"$1 $2");
+      fillCells("waitCode", currentPairData.code||"------");
+      window._lastCode=currentPairData.code||"";
       show("screenWaiting");
     }
   }, err=>{ console.error(err);
-    if(isDeniedErr(err)){ recoverFromDeadPair(); return; } // pair 읽기 거부 = 더는 이 pair의 멤버가 아님
+    if(isDeniedErr(err)){ recoverFromDeadPair(); return; }
     toast("연결 상태를 확인할 수 없어요"); });
 }
 
 function enterChat(){
   showLock();
   show("screenChat");
+  applyChatHeader();
   watchMessages();
   if(!isLocked()) markRead();
   maybeShowInstallHint();
 }
 
-/* ===== 채팅 =====
-   렌더링은 항상 renderMessages()를 통해서만 이뤄진다 — 잠금 중엔 실제 대화 텍스트를
-   DOM에 절대 넣지 않는다(시각적 가림이 아니라 진짜 비노출. "알림 내용 숨김" 훅의 연장선). */
+/* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
 let _lastMsgSnapshotDocs=null;
-function tsMillis(v){ // Firestore Timestamp(.toMillis()) / 목서버 raw 숫자 모두 대응
+function tsMillis(v){
   if(v==null) return 0;
   if(typeof v==="number") return v;
   if(typeof v.toMillis==="function") return v.toMillis();
@@ -645,31 +1059,47 @@ function otherUid(){ return (currentPairData && currentPairData.memberUids || []
 function lockContentNow(){
   const list=document.getElementById("msgList");
   if(!list) return;
-  list.innerHTML = '<div class="msg-empty">🔒</div>'; // 잠금 상태 — 대화 내용 DOM에 없음
+  list.innerHTML = '<div class="msg-empty"><div class="empty-emoji">🔒</div></div>';
 }
+function fmtTime(ms){ const d=new Date(ms); let h=d.getHours(); const m=d.getMinutes(); const ap=h<12?"오전":"오후"; h=h%12||12; return ap+" "+h+":"+(m<10?"0"+m:m); }
+function fmtDay(ms){ const d=new Date(ms); const w=["일","월","화","수","목","금","토"]; return d.getFullYear()+"년 "+(d.getMonth()+1)+"월 "+d.getDate()+"일 "+w[d.getDay()]+"요일"; }
+function sameDay(a,b){ const x=new Date(a),y=new Date(b); return x.getFullYear()===y.getFullYear()&&x.getMonth()===y.getMonth()&&x.getDate()===y.getDate(); }
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function renderMessages(){
   const list=document.getElementById("msgList");
   if(!list) return;
   if(isLocked()){ lockContentNow(); return; }
+  applyChatHeader();
   if(!_lastMsgSnapshotDocs || _lastMsgSnapshotDocs.length===0){
-    list.innerHTML = '<div class="msg-empty">아직 대화가 없어요.<br>첫 인사를 건네보세요 🩷</div>';
+    list.innerHTML='<div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div>';
     return;
   }
   const otherRead = currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[otherUid()]) : 0;
+  const msgs=_lastMsgSnapshotDocs.map(d=>({id:d.id, data:d.data()}));
   list.innerHTML="";
-  _lastMsgSnapshotDocs.forEach(d=>{
-    const m=d.data();
-    const b=document.createElement("div");
-    b.className="bubble "+(m.sender===fb.uid?"me":"you");
-    b.textContent=m.text||"";
-    list.appendChild(b);
-    // 읽음 확인: 내가 보낸 메시지 중 상대가 아직 안 읽은(lastReadAt 이전) 것만 작은 점 표시
-    if(m.sender===fb.uid && tsMillis(m.ts) > otherRead){
-      const dot=document.createElement("div");
-      dot.className="unread-dot"; dot.textContent="●"; dot.title="상대가 아직 안 읽었어요";
-      list.appendChild(dot);
+  let lastDay=null;
+  for(let i=0;i<msgs.length;i++){
+    const m=msgs[i].data, mine=m.sender===fb.uid, ms=tsMillis(m.ts)||Date.now();
+    if(lastDay===null || !sameDay(lastDay,ms)){
+      const sep=document.createElement("div"); sep.className="daysep"; sep.textContent=fmtDay(ms); list.appendChild(sep); lastDay=ms;
     }
-  });
+    const prev=msgs[i-1] && msgs[i-1].data, next=msgs[i+1] && msgs[i+1].data;
+    const prevSame = prev && prev.sender===m.sender && sameDay(tsMillis(prev.ts)||ms, ms) && (ms-(tsMillis(prev.ts)||ms))<300000;
+    const nextSame = next && next.sender===m.sender && sameDay(tsMillis(next.ts)||ms, ms) && ((tsMillis(next.ts)||ms)-ms)<300000;
+    const row=document.createElement("div");
+    row.className="row "+(mine?"me":"you")+(prevSame?" grp":" newgrp")+(nextSame?"":" tail");
+    let metaHtml="";
+    if(!nextSame){
+      const time=fmtTime(ms);
+      metaHtml = mine
+        ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
+        : '<div class="meta"><span>'+time+'</span></div>';
+    }
+    const bubbleHtml='<div class="bubble">'+esc(m.text)+'</div>';
+    row.innerHTML = mine ? (metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
+    if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
+    list.appendChild(row);
+  }
   list.scrollTop = list.scrollHeight;
 }
 function watchMessages(){
@@ -690,7 +1120,7 @@ async function markRead(){
   if(!document.getElementById("screenChat").classList.contains("active")) return;
   try{
     await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["lastReadAt."+fb.uid]: M.serverTimestamp()});
-  }catch(e){ /* 조용히 무시 — 읽음확인 실패가 채팅 자체를 막으면 안 됨 */ }
+  }catch(e){ /* 조용히 무시 */ }
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) markRead(); });
 
@@ -699,38 +1129,70 @@ async function sendMessage(){
   const text=input.value.trim();
   if(!text || !pairId) return;
   input.value="";
-  try{ input.focus(); }catch(e){} // iOS: 전송 직후 동기적으로 refocus해야 키보드가 안 내려감
+  try{ input.focus(); }catch(e){}
   await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
     sender: fb.uid, text, ts: M.serverTimestamp()
   }).catch(err=>{
     console.error(err);
-    input.value=text; // 실패 시 입력 복원(어느 경로든 사용자가 문구를 잃지 않도록)
-    if(isDeniedErr(err)){ recoverFromDeadPair(); return; } // 죽은 페어/신원 불일치 → 페어링 화면 복귀
+    input.value=text;
+    if(isDeniedErr(err)){ recoverFromDeadPair(); return; }
     toast("전송에 실패했어요");
   });
 }
 
+/* ===== 짝 도움 복귀 (partner re-invite) — 시뮬 권고안 B ===== */
+async function openReinvite(){
+  if(!pairId || !currentPairData){ return; }
+  const other=otherUid();
+  if(!other){ toast("아직 상대가 연결되지 않았어요"); return; }
+  const code=genCode();
+  const patch={ rejoinOpen:true, rejoinCode:code, rejoinExpiresAt:Date.now()+10*60*1000, rejoinReplaces:other };
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), patch); }
+  catch(e){ console.error(e); toast("코드를 만들지 못했어요"); return; }
+  fillCells("reinviteCode", code);
+  show("screenReinvite");
+}
+async function cancelReinvite(){
+  if(pairId){ try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {rejoinOpen:false}); }catch(e){ console.error(e); } }
+  show("screenChat");
+}
+async function submitRejoin(){
+  const code=document.getElementById("rejoinInput").value.trim();
+  const msgEl=document.getElementById("rejoinMsg"); msgEl.textContent="";
+  if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
+  const q=M.query(M.collection(fb.db,"pairs"), M.where("rejoinOpen","==",true), M.where("rejoinCode","==",code));
+  const snap=await M.getDocs(q).catch(()=>null);
+  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 상대방에게 다시 연결 코드를 받아주세요"; return; }
+  const d=snap.docs[0], data=d.data();
+  if(data.rejoinExpiresAt && data.rejoinExpiresAt < Date.now()){ msgEl.textContent="코드가 만료됐어요. 새 코드를 받아주세요"; return; }
+  const replaces=data.rejoinReplaces;
+  const survivors=(data.memberUids||[]).filter(u=>u!==replaces);
+  if((data.memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 이 공간의 멤버예요"; return; }
+  const newMembers=[...survivors, fb.uid];
+  _dissolvedHandled=false;
+  try{
+    await M.updateDoc(d.ref, { memberUids:newMembers, rejoinOpen:false });
+  }catch(err){
+    console.error(err);
+    msgEl.textContent = isDeniedErr(err) ? "연결 권한이 없어요. 코드를 다시 확인해주세요" : "이어받지 못했어요. 다시 시도해주세요";
+    return;
+  }
+  pairId=d.id;
+  localStorage.setItem("oguogu.pairId", pairId);
+  watchPair();
+}
+
 /* =====================================================================
-   이별 프로토콜 v1 — 핵심 철학: 어느 한쪽도 상대 동의 없이 기록을 인질로 잡을 수 없다.
-   ①pairs/{id} 문서에 dissolved 마킹(툼스톤, 삭제 아님 — 양쪽이 실시간으로 관측 가능해야 함)
-   ②messages 하위컬렉션 배치 삭제(페이지네이션, 대량 대비)
-   ③양쪽 클라이언트는 dissolved 감지 즉시 로컬 상태 소거 후 안내 화면
-   ④초기 화면 복귀(새 페어링 가능) — 즉시 삭제만 v1(유예 모드는 v1.1)
+   이별 프로토콜 v1 — 어느 한쪽도 상대 동의 없이 기록을 인질로 잡을 수 없다.
    ===================================================================== */
 let _dissolvedHandled=false;
-
 function openBreakup(){
   document.getElementById("breakupModal").style.display="flex";
   document.getElementById("breakupStep1").style.display="block";
   document.getElementById("breakupStep2").style.display="none";
   document.getElementById("breakupStep3").style.display="none";
 }
-function closeBreakup(){
-  document.getElementById("breakupModal").style.display="none";
-}
-
-// 2단계 확인 진입: PIN 잠금이 켜져 있으면 PIN 재입력, 꺼져 있으면(재입력할 PIN 자체가 없으므로)
-// "정리"라는 문구를 그대로 입력하는 동등한 강도의 2차 확인으로 대체한다.
+function closeBreakup(){ document.getElementById("breakupModal").style.display="none"; }
 function openBreakupStep2(){
   document.getElementById("breakupStep1").style.display="none";
   document.getElementById("breakupStep2").style.display="block";
@@ -746,7 +1208,6 @@ function openBreakupStep2(){
   }
   setTimeout(()=>{try{input.focus();}catch(e){}},100);
 }
-
 async function verifyBreakupStep2(){
   const val=document.getElementById("breakupPinInput").value;
   const msgEl=document.getElementById("breakupMsg");
@@ -757,17 +1218,9 @@ async function verifyBreakupStep2(){
   }
   document.getElementById("breakupStep2").style.display="none";
   document.getElementById("breakupStep3").style.display="block";
-  try{
-    await dissolvePair();
-  }catch(err){
-    console.error(err);
-    closeBreakup();
-    toast("정리하지 못했어요. 다시 시도해주세요");
-  }
+  try{ await dissolvePair(); }
+  catch(err){ console.error(err); closeBreakup(); toast("정리하지 못했어요. 다시 시도해주세요"); }
 }
-
-// 하위컬렉션(messages) 전체 삭제 — Firestore 대량 삭제 표준 패턴: limit 페이지 조회 + writeBatch,
-// 페이지가 빌 때까지 반복(메시지가 아무리 많아도 한 번에 다 못 지우는 상황을 방지).
 async function purgeAllMessages(id){
   const PAGE=300;
   const colRef=M.collection(fb.db,"pairs",id,"messages");
@@ -781,21 +1234,15 @@ async function purgeAllMessages(id){
     if(snap.docs.length<PAGE) break;
   }
 }
-
 async function dissolvePair(){
   const id=pairId, myUid=fb.uid;
-  // ① dissolved 마킹 — 상대 동의/승인 절차 없음(단독 실행 가능이 이 기능의 핵심)
   await M.updateDoc(M.doc(fb.db,"pairs",id), {
     status:"dissolved", dissolvedAt:M.serverTimestamp(), dissolvedBy:myUid
   });
-  // ② 하위 데이터(대화) 영구 삭제
   await purgeAllMessages(id);
   closeBreakup();
-  // ③ 로컬 정리 + 안내 화면 (내 쪽은 여기서 즉시 반영. onSnapshot으로도 동일 함수가 호출되므로 멱등 처리됨)
   handleDissolved();
 }
-
-// 내가 정리를 실행했든, 상대가 정리를 실행해 실시간으로 감지했든 동일하게 처리한다.
 function handleDissolved(){
   if(_dissolvedHandled) return;
   _dissolvedHandled=true;
@@ -803,32 +1250,25 @@ function handleDissolved(){
   if(unsubMsgs) unsubMsgs();
   closeBreakup();
   hideLock();
-  // 로컬 상태 전부 소거(v1 기준 앱이 실제로 쓰는 로컬 저장 키). 향후 사진 등 IndexedDB 캐시가
-  // 생기면(2단계) 여기서 함께 지워야 한다.
   localStorage.removeItem("oguogu.pairId");
   localStorage.removeItem("oguogu.lock");
   localStorage.removeItem("oguogu.lock.bio");
   localStorage.removeItem("oguogu.lock.mode");
   localStorage.removeItem("oguogu.lock.autoLockMs");
-  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null;
+  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
   show("screenDissolved");
 }
 
-/* 죽은 페어/신원 불일치 방어(2026-08-04): 테스트 데이터 정리·익명 계정 삭제 등으로 폰의
-   localStorage pairId가 가리키는 pair가 "현재 uid"를 더는 멤버로 인정하지 않으면, 모든
-   읽기/쓰기가 permission-denied로 실패한다(rules상 정상 거부). 이때 채팅 화면에 갇힌 채
-   전송만 반복 실패하지 않도록, 감지 즉시 stale 로컬을 비우고 안내 후 페어링 화면으로
-   돌려보낸다 — "조용한 실패 금지" 원칙의 구현체. permission-denied만 트리거로 삼는다
-   (오프라인은 code="unavailable"이라 캐시로 계속 동작하므로 여기서 걸리지 않는다). */
+/* 죽은 페어/신원 불일치 방어 — permission-denied 감지 시 stale 로컬 비우고 시작화면 복귀 */
 let _recovering=false;
 function recoverFromDeadPair(){
   if(_recovering) return; _recovering=true;
   if(unsubPair) unsubPair();
   if(unsubMsgs) unsubMsgs();
   localStorage.removeItem("oguogu.pairId");
-  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null;
+  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
   hideLock();
-  toast("연결이 만료됐어요. 다시 연결해주세요");
+  toast("연결이 만료됐어요. 다시 연결하거나 재합류 코드를 입력해주세요");
   show("screenStart");
   setTimeout(()=>{ _recovering=false; }, 1500);
 }
@@ -840,24 +1280,25 @@ document.getElementById("btnJoin").onclick=()=>{ document.getElementById("joinIn
 document.getElementById("btnJoinSubmit").onclick=()=>joinPair();
 document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") joinPair(); });
 document.getElementById("btnJoinCancel").onclick=()=>show("screenStart");
+document.getElementById("btnRejoin").onclick=()=>{ document.getElementById("rejoinInput").value=""; document.getElementById("rejoinMsg").textContent=""; show("screenRejoin"); };
+document.getElementById("btnRejoinSubmit").onclick=()=>submitRejoin();
+document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitRejoin(); });
+document.getElementById("btnRejoinCancel").onclick=()=>show("screenStart");
 document.getElementById("btnCancelWait").onclick=()=>{
   if(unsubPair) unsubPair();
   localStorage.removeItem("oguogu.pairId"); pairId=null;
   show("screenStart");
 };
-/* iOS 키보드 유지: 버튼 탭의 기본 동작(입력창 blur)을 pointerdown 단계에서 막고,
-   실제 전송은 form submit(엔터 전송과 동일 경로)에서 처리 — 동기 핸들러 안에서 즉시 refocus */
+document.getElementById("copyChip").onclick=async ()=>{
+  const c=window._lastCode||""; if(!c) return;
+  try{ await navigator.clipboard.writeText(c); toast("코드를 복사했어요"); }catch(e){ toast("복사를 지원하지 않는 기기예요"); }
+};
+/* iOS 키보드 유지: 전송 버튼 기본 blur 차단 + form submit 경로로 전송 */
 ["mousedown","touchstart"].forEach(ev=>{
   document.getElementById("sendBtn").addEventListener(ev, e=>{ e.preventDefault(); }, {passive:false});
 });
-document.getElementById("chatForm").addEventListener("submit", e=>{
-  e.preventDefault();
-  sendMessage();
-});
-document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); renderNotifyUI(); show("screenSettings"); };
-/* ----- 새로고침 (standalone PWA엔 브라우저 새로고침 버튼이 없어 실기 피드백으로 추가됨) -----
-   단순 location.reload()가 아니라 서비스워커 업데이트를 먼저 확인시켜, 새 배포분이 있으면
-   그걸 반영한 채로 다시 불러온다. update() 실패해도 새로고침 자체는 항상 진행. */
+document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); });
+document.getElementById("btnSettings").onclick=()=>{ renderLockToggle(); renderNotifyUI(); renderDecorUI(); show("screenSettings"); };
 async function refreshApp(){
   try{
     if("serviceWorker" in navigator){
@@ -879,10 +1320,18 @@ document.getElementById("breakupStep2Cancel").onclick=closeBreakup;
 document.getElementById("breakupStep2Confirm").onclick=()=>verifyBreakupStep2();
 document.getElementById("breakupPinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") verifyBreakupStep2(); });
 document.getElementById("btnDissolvedHome").onclick=()=>show("screenStart");
+document.getElementById("btnReinvite").onclick=()=>openReinvite();
+document.getElementById("btnReinviteCancel").onclick=()=>cancelReinvite();
 
-/* ===== 홈 화면 추가(설치) 안내 배너 — standalone 아닐 때만, 닫으면 다시 안 뜸 =====
-   iOS PWA 푸시(웹푸시)는 16.4+에서도 "홈 화면에 추가" 상태(standalone)에서만 수신되므로
-   설치 유도는 UX 편의를 넘어 알림 기능의 전제조건이다. */
+/* 꾸미기 컨트롤 */
+document.getElementById("themeSwatches").addEventListener("click",e=>{ const b=e.target.closest("[data-pal]"); if(b) setTheme({palette:b.dataset.pal}); });
+document.getElementById("bgPicker").addEventListener("click",e=>{ const b=e.target.closest("[data-bg]"); if(b) setTheme({chatbg:b.dataset.bg}); });
+document.getElementById("bubblePicker").addEventListener("click",e=>{ const b=e.target.closest("[data-bub]"); if(b) setTheme({bubble:b.dataset.bub}); });
+document.getElementById("myEmojiPicker").addEventListener("click",e=>{ const b=e.target.closest("[data-emo]"); if(b) setProfile({emojis:{[fb.uid]:b.dataset.emo}}); });
+document.getElementById("myNickInput").addEventListener("change",e=>{ setProfile({nicks:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
+document.getElementById("annivInput").addEventListener("change",e=>{ setProfile({anniversary:e.target.value}); });
+
+/* ===== 홈 화면 추가(설치) 안내 배너 ===== */
 function isStandalone(){ return matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
 function maybeShowInstallHint(){
   const el=document.getElementById("installHint");
@@ -895,33 +1344,20 @@ document.getElementById("installHintClose").onclick=()=>{
   document.getElementById("installHint").style.display="none";
 };
 
-/* ===== iOS 키보드 대응: visualViewport로 실제 보이는 높이에 앱 셸을 맞춰
-   입력창이 키보드에 가리지 않게 한다(주소창 변동과는 별개 이슈 — dvh만으론 안 잡힘) ===== */
+/* ===== iOS 키보드 대응: visualViewport로 실제 보이는 높이에 앱 셸을 맞춤 ===== */
 if(window.visualViewport){
   const vv=window.visualViewport;
-  const applyVV=()=>{
-    document.body.style.height = vv.height+"px";
-    window.scrollTo(0,0);
-  };
+  const applyVV=()=>{ document.body.style.height = vv.height+"px"; window.scrollTo(0,0); };
   vv.addEventListener("resize", applyVV);
   vv.addEventListener("scroll", applyVV);
 }
 
 /* =========================================================================
-   알림(웹푸시, FCM) — 2단계 A 범위: 클라이언트 통합 + 내용 완전 숨김 payload.
-   ⚠️정직한 범위 표기: 이 코드는 "권한요청→토큰발급→Firestore 저장→포그라운드 인앱표시→
-   백그라운드 OS알림 수신" 클라이언트 경로까지 완성이다. 그러나 실제 발송 인프라는:
-     ① VAPID 웹푸시 인증서 — Firebase 콘솔에서만 생성 가능(CLI로 자동화 불가, 사장님 클릭 1회
-        필요: 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 구성 → "웹 푸시 인증서 생성").
-        발급된 공개키를 아래 VAPID_KEY 상수에 채워야 getToken()이 동작한다(현재 placeholder).
-     ② 발송 릴레이(ogu_push_relay.py, C:/종합상사/scripts/) — Blaze 없이 PC 상주로 발송하는
-        팀톡 fcm_relay.py 패턴 포팅. 서비스 계정 키 발급도 콘솔 전용(IAM → 서비스 계정 → 키 생성).
-   즉 "실제로 상대 폰에 OS 알림이 뜨는 것"은 위 두 콘솔 작업 이후에만 검증 가능 — 이번 커밋은
-   그 전 단계까지의 클라이언트 코드이며, e2e 발송 미검증 상태임을 숨기지 않는다.
+   알림(웹푸시, FCM) — 2단계 A: 클라이언트 통합 + 내용 완전 숨김. 실제 발송 인프라(VAPID·릴레이)는
+   콘솔 작업(사장님) 이후에만 e2e 검증 가능 — 이 코드는 그 전 단계까지의 클라이언트 경로.
    ========================================================================= */
-const VAPID_KEY = ""; // TODO(사장님): Firebase 콘솔에서 발급한 웹 푸시 인증서 공개키로 교체
+const VAPID_KEY = ""; // TODO(사장님): Firebase 콘솔 웹 푸시 인증서 공개키로 교체
 let fcmMessaging=null;
-
 function notifyIsOn(){ return !!localStorage.getItem("oguogu.notify.on"); }
 function renderNotifyUI(){
   const t=document.getElementById("notifyToggle"), lbl=document.getElementById("notifyStatusLabel");
@@ -930,17 +1366,9 @@ function renderNotifyUI(){
   else{ t.classList.remove("on"); lbl.textContent="꺼짐 — 내용은 절대 표시되지 않아요"; }
 }
 async function enableNotify(){
-  if(!("Notification" in window) || !("serviceWorker" in navigator)){
-    toast("이 브라우저는 알림을 지원하지 않아요"); return;
-  }
-  if(!isStandalone() && /iPad|iPhone|iPod/.test(navigator.userAgent)){
-    toast("아이폰은 홈 화면에 추가한 뒤(iOS 16.4+) 그 앱에서 켜야 알림이 와요"); return;
-  }
-  if(!VAPID_KEY){
-    toast("알림 발송 준비가 아직 안 됐어요 — 콘솔에서 발급 필요(사장님 확인 필요)");
-    // 준비 전에도 UI 흐름은 정직하게 안내만 하고 실제로 켜지지는 않게 한다(허구 완성 방지).
-    return;
-  }
+  if(!("Notification" in window) || !("serviceWorker" in navigator)){ toast("이 브라우저는 알림을 지원하지 않아요"); return; }
+  if(!isStandalone() && /iPad|iPhone|iPod/.test(navigator.userAgent)){ toast("아이폰은 홈 화면에 추가한 뒤(iOS 16.4+) 그 앱에서 켜야 알림이 와요"); return; }
+  if(!VAPID_KEY){ toast("알림 발송 준비가 아직 안 됐어요 — 콘솔에서 발급 필요(사장님 확인 필요)"); return; }
   try{
     const perm = await Notification.requestPermission();
     if(perm!=="granted"){ toast("알림 권한이 거부됐어요"); return; }
@@ -948,25 +1376,14 @@ async function enableNotify(){
     if(!fcmMessaging) fcmMessaging = messagingMod.getMessaging(fb.app);
     const token = await messagingMod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await navigator.serviceWorker.ready});
     if(!token){ toast("토큰 발급에 실패했어요"); return; }
-    if(pairId){
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token}).catch(()=>{});
-    }
+    if(pairId){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token}).catch(()=>{}); }
     localStorage.setItem("oguogu.notify.on","1");
     renderNotifyUI();
     toast("🔔 알림을 켰어요 — 내용은 절대 표시되지 않아요");
-    // 포그라운드(앱을 보고 있는 중) 수신 — OS 알림 대신 앱 내부 토스트로만. 이때도 payload에
-    // 메시지 본문이 실려 오더라도(릴레이 버그 대비 방어선) 절대 그 값을 쓰지 않고 고정 문구만 쓴다.
     messagingMod.onMessage(fcmMessaging, ()=>{ toast("🩷 5959 · 새 소식이 있어요"); });
-  }catch(err){
-    console.error(err);
-    toast("알림 설정에 실패했어요");
-  }
+  }catch(err){ console.error(err); toast("알림 설정에 실패했어요"); }
 }
-function disableNotify(){
-  localStorage.removeItem("oguogu.notify.on");
-  renderNotifyUI();
-  toast("알림을 껐어요");
-}
+function disableNotify(){ localStorage.removeItem("oguogu.notify.on"); renderNotifyUI(); toast("알림을 껐어요"); }
 document.getElementById("notifyToggle").onclick=()=>{ notifyIsOn()?disableNotify():enableNotify(); };
 
 /* ===== 시작 ===== */
@@ -976,18 +1393,13 @@ function showConnectionPending(){
   toast("연결에 실패했어요. 새로고침 해주세요");
 }
 (async function boot(){
-  document.title="5959"; // 탭 타이틀 불변 원칙(재확인) — 이후 어떤 코드도 이 값을 바꾸지 않는다
+  document.title="5959"; // 탭 타이틀 불변 원칙
+  applyThemeFromData(); // 페어링 전에도 마지막 팔레트 취향 반영
   try{
     await initFirebase();
-    if(pairId){
-      watchPair();
-    } else {
-      show("screenStart");
-    }
-  }catch(err){
-    console.error(err);
-    showConnectionPending();
-  }
+    if(pairId){ watchPair(); }
+    else { show("screenStart"); }
+  }catch(err){ console.error(err); showConnectionPending(); }
 })();
 
 /* ===== SW 등록 ===== */

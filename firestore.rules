@@ -2,8 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 오구오구: 계정 없음(익명 auth uid만). pairs/{pairId} = 커플 한 쌍.
-    //   status: "waiting"(1명, 코드로 상대 대기) -> "paired"(2명 완료)
+    // 오구오구(5959): 계정 없음(익명 auth uid만). pairs/{pairId} = 커플 한 쌍.
+    //   status: "waiting"(1명, 코드로 상대 대기) -> "paired"(2명 완료) -> "dissolved"(관계 정리, 툼스톤)
+    //   theme/profile: "둘이 함께 꾸미기" 동기화 필드(멤버만 갱신, 값은 취향 데이터).
+    //   rejoin*: 짝 도움 복귀(partner re-invite) — 저장소를 잃은 쪽이 기존 자리를 승계하기 위한 1회용 코드.
     function signedIn() { return request.auth != null; }
     function isMember(pairData) {
       return signedIn() && pairData.memberUids.hasAny([request.auth.uid]);
@@ -13,9 +15,12 @@ service cloud.firestore {
     }
 
     match /pairs/{pairId} {
-      // 읽기: 이미 멤버이거나, 아직 대기중(waiting)인 쌍은 코드 입력을 위해 조회 가능
-      //   (코드 자체는 6자리 랜덤이라 추측 난이도로 방어 + TTL로 창을 좁힘)
-      allow read: if isMember(resource.data) || resource.data.status == "waiting";
+      // 읽기: 이미 멤버이거나, 아직 대기중(waiting)이거나, 재합류 초대(rejoinOpen)가 열려 있는 쌍은
+      //   코드 입력을 위해 조회 가능. (코드 자체는 6자리 랜덤이라 추측 난이도로 방어 + 짧은 TTL로 창을 좁힘.
+      //   rejoinOpen==true 는 등가(equality) 조건이라 쿼리 where("rejoinOpen","==",true)로 규칙 증명이 성립한다.)
+      allow read: if isMember(resource.data)
+        || resource.data.status == "waiting"
+        || (("rejoinOpen" in resource.data) && resource.data.rejoinOpen == true);
 
       // 생성: 본인 uid 1명으로만 시작 가능 (초대자)
       allow create: if signedIn()
@@ -23,10 +28,9 @@ service cloud.firestore {
         && request.resource.data.memberUids[0] == request.auth.uid
         && request.resource.data.status == "waiting";
 
-      // 참여(코드 입력): waiting 상태에서 본인 uid를 추가하며 paired로 전환할 때만 허용.
-      //   생성자 본인이 자기 문서를 갱신하는 것도 허용(코드 재생성 등)하되 멤버 변경은 위 규칙으로 제한.
       // 이별 프로토콜(v1): 일단 dissolved로 전환된 문서는 그 무엇으로도 되돌리거나 추가 수정할 수 없다(툼스톤 고정).
       //   → 전체 allow update에 "현재 상태가 dissolved가 아닐 것"을 선행 조건으로 건다.
+      //   이 선행 조건 덕분에 dissolved 페어에는 재합류 승계(케이스 G)도 원천 차단된다(이별 프로토콜 유지).
       allow update: if signedIn() && resource.data.status != "dissolved" && (
         // 케이스 D: 읽음 확인(lastReadAt) — 본인 uid 키만 갱신 가능, 상대 값은 건드릴 수 없다.
         (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
@@ -42,6 +46,11 @@ service cloud.firestore {
           && (!("fcmTokens" in resource.data)
               || resource.data.fcmTokens.diff(request.resource.data.fcmTokens).affectedKeys().hasOnly([request.auth.uid])))
         ||
+        // 케이스 E: 꾸미기(테마/프로필) — 멤버만, theme/profile 필드만 갱신. 멤버·상태 불변.
+        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme","profile"]))
+        ||
         // 케이스 B: 대기중인 쌍에 새 멤버(본인)가 합류
         (resource.data.status == "waiting"
           && resource.data.memberUids.size() == 1
@@ -56,13 +65,45 @@ service cloud.firestore {
           && request.resource.data.memberUids == resource.data.memberUids
           && request.resource.data.status == "dissolved"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status","dissolvedAt","dissolvedBy"]))
+        ||
+        // 케이스 F: 짝 도움 복귀 — 재초대 열기/취소. 살아있는 멤버(현재 멤버)만, paired 상태에서.
+        //   rejoin* 필드만 갱신하며 멤버·상태는 불변. rejoinReplaces(승계될 잃은 자리)는 반드시 현재 멤버 uid여야 한다.
+        //   → 초대를 여는 주체가 "잃은 자리"를 지목하므로, 뒤의 케이스 G에서 제3자는 그 자리 외엔 손댈 수 없다.
+        (isMember(resource.data)
+          && resource.data.status == "paired"
+          && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(["rejoinOpen","rejoinCode","rejoinExpiresAt","rejoinReplaces"])
+          && (!("rejoinReplaces" in request.resource.data)
+              || (request.resource.data.rejoinReplaces in resource.data.memberUids)))
+        ||
+        // 케이스 G: 새 기기(새 uid)가 "잃은 자리"를 승계. 서버 0줄, rules만으로 안전 구현.
+        //   - rejoinOpen==true + 미만료(TTL)일 때만.
+        //   - 나는 진짜 새 uid(기존 멤버가 아님)여야 하고, 결과 멤버는 정확히 2명.
+        //   - 살아있는 멤버(=rejoinReplaces 제외한 기존 멤버)는 반드시 보존 → 활성 자리 탈취 불가.
+        //   - 잃은 자리(rejoinReplaces)는 결과에서 비워짐 → 딱 그 자리만 교체.
+        //   - 초대는 즉시 소비(rejoinOpen=false)되어 1회용. 잃은 uid의 stale lastReadAt/fcmTokens 정리 허용.
+        (("rejoinOpen" in resource.data) && resource.data.rejoinOpen == true
+          && resource.data.rejoinExpiresAt > request.time.toMillis()
+          && resource.data.status == "paired"
+          && request.resource.data.status == "paired"
+          && request.resource.data.memberUids.size() == 2
+          && request.resource.data.memberUids.hasAny([request.auth.uid])
+          && !(request.auth.uid in resource.data.memberUids)
+          && request.resource.data.memberUids.hasAll(
+               resource.data.memberUids.removeAll([resource.data.rejoinReplaces]))
+          && !(resource.data.rejoinReplaces in request.resource.data.memberUids)
+          && request.resource.data.rejoinOpen == false
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(["memberUids","rejoinOpen","rejoinCode","rejoinExpiresAt","rejoinReplaces","lastReadAt","fcmTokens"]))
       );
       // pairs 문서 자체는 삭제하지 않는다(툼스톤 유지) — 양쪽 클라이언트가 실시간으로 "dissolved"
       // 상태를 관측해 각자 로컬 정리를 마칠 수 있어야 하므로, 문서가 통째로 사라지면 그 관측이 불가능해진다.
-      // 문서에는 멤버 uid 2개와 상태값만 남고, 대화·사진 등 실제 "기록"은 아래 하위컬렉션 삭제로 전부 제거된다.
       allow delete: if false;
 
       match /messages/{msgId} {
+        // 승계(케이스 G) 즉시 새 uid가 memberUids에 들어가므로, 과거 메시지 전체를 삭제·복사 없이 그대로 읽는다.
         allow read: if isMember(pairOf(pairId));
         allow create: if isMember(pairOf(pairId)) && request.resource.data.sender == request.auth.uid
           && pairOf(pairId).status != "dissolved";
