@@ -28,9 +28,19 @@ service cloud.firestore {
       // 이별 프로토콜(v1): 일단 dissolved로 전환된 문서는 그 무엇으로도 되돌리거나 추가 수정할 수 없다(툼스톤 고정).
       //   → 전체 allow update에 "현재 상태가 dissolved가 아닐 것"을 선행 조건으로 건다.
       allow update: if signedIn() && resource.data.status != "dissolved" && (
-        // 케이스 A: 이미 멤버인 사람의 일반 갱신(멤버 목록 변경 없음). dissolved로의 전환은 케이스 C 전용 통로로만 허용.
+        // 케이스 D: 읽음 확인(lastReadAt) — 본인 uid 키만 갱신 가능, 상대 값은 건드릴 수 없다.
         (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
-          && request.resource.data.status != "dissolved")
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["lastReadAt"])
+          && (!("lastReadAt" in resource.data)
+              || resource.data.lastReadAt.diff(request.resource.data.lastReadAt).affectedKeys().hasOnly([request.auth.uid])))
+        ||
+        // 케이스 D': 알림용 FCM 토큰 등록 — 본인 uid 키만 갱신 가능(2단계 A, 알림 내용 숨김 훅의 전제).
+        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["fcmTokens"])
+          && (!("fcmTokens" in resource.data)
+              || resource.data.fcmTokens.diff(request.resource.data.fcmTokens).affectedKeys().hasOnly([request.auth.uid])))
         ||
         // 케이스 B: 대기중인 쌍에 새 멤버(본인)가 합류
         (resource.data.status == "waiting"

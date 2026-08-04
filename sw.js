@@ -1,5 +1,9 @@
-/* 오구오구 PWA 서비스워커 — 앱 셸 캐시 + 자동 업데이트 (팀톡 sw.js 패턴 재사용) */
-const VER = "oguogu-v0.2.0";
+/* 오구오구(5959) PWA 서비스워커 — 앱 셸 캐시 + 자동 업데이트 (팀톡 sw.js 패턴 재사용)
+   2단계 A: FCM 백그라운드 알림 핸들러 추가 — 알림 내용 완전 숨김 훅.
+   ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
+   화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
+   주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
+const VER = "oguogu-v0.3.0";
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
@@ -20,4 +24,36 @@ self.addEventListener("fetch", e=>{
     return;
   }
   e.respondWith(caches.match(req).then(m=>m||fetch(req).then(r=>{const cp=r.clone();caches.open(VER).then(c=>c.put(req,cp));return r;})));
+});
+
+/* ----- FCM 백그라운드 알림: 내용 절대 미노출 (payload와 무관하게 고정 문구) ----- */
+try{
+  importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+  importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
+  firebase.initializeApp({
+    apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
+    authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
+    projectId: "ogu-ogu-app-e4193",
+    storageBucket: "ogu-ogu-app-e4193.firebasestorage.app",
+    messagingSenderId: "663259886074",
+    appId: "1:663259886074:web:dfa2eecf74034bfe923443"
+  });
+  const messaging = firebase.messaging();
+  messaging.onBackgroundMessage(() => {
+    // 발신자·본문 절대 미노출 — payload 값은 의도적으로 읽지 않는다.
+    self.registration.showNotification("5959", {
+      body: "새 소식이 있어요",
+      icon: "./icon-512.png",
+      badge: "./icon-512.png",
+      tag: "oguogu-msg", // 여러 건이 와도 알림 1개로 합쳐 대화 볼륨 노출 방지
+    });
+  });
+}catch(e){ /* 구형 브라우저 등 importScripts 실패 시 캐시 SW 동작만 유지 */ }
+
+self.addEventListener("notificationclick", e=>{
+  e.notification.close();
+  e.waitUntil(clients.matchAll({type:"window"}).then(list=>{
+    for(const c of list){ if("focus" in c) return c.focus(); }
+    return clients.openWindow("./");
+  }));
 });
