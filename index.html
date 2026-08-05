@@ -441,6 +441,12 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .form-card .fi{width:100%; margin-bottom:10px; padding:11px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--text); font-size:var(--t-body)}
 .form-card .fi::placeholder{color:var(--muted)}
 textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1.5}
+/* 일정 날짜 선택 — iOS 홈화면 PWA에서 native date picker가 안 열리는 경우 대비:
+   달력 탭 + ‹ › 하루 이동 버튼으로 항상 날짜 변경 가능(picker는 되는 환경에서 보조). */
+.daterow{display:flex; align-items:stretch; gap:6px; margin-bottom:6px}
+.daterow .datepick{flex:1; min-width:0; text-align:center; padding:11px 8px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--text); font-size:var(--t-body)}
+.daynav{flex:none; width:46px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--accent); font-size:20px; font-weight:var(--w-bold); display:grid; place-items:center}
+.daynav:active{background:var(--accent-soft)}
 
 /* 다이어리 */
 .diary-toggle{display:flex; gap:6px; margin-bottom:var(--s4)}
@@ -477,7 +483,11 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 /* 사진 라이트박스 */
 .photo-modal{position:fixed; inset:0; z-index:750; background:rgba(10,8,10,.92); display:none; align-items:center; justify-content:center; padding:20px}
 .photo-modal.show{display:flex}
-.photo-modal img{max-width:100%; max-height:100%; border-radius:var(--r-md); object-fit:contain; transition:opacity .12s; touch-action:pan-y}
+.pv-viewport{position:absolute; inset:0; overflow:hidden; touch-action:none}
+.pv-track{position:absolute; top:0; left:0; width:300%; height:100%; display:flex; will-change:transform}
+.pv-track.anim{transition:transform .28s cubic-bezier(.22,.61,.36,1)}
+.pv-slide{width:33.3333%; height:100%; display:flex; align-items:center; justify-content:center; padding:18px}
+.pv-slide img{max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--r-md); pointer-events:none; -webkit-user-select:none; user-select:none}
 .photo-modal .close{position:absolute; top:calc(14px + env(safe-area-inset-top,0px)); right:18px; color:#fff; font-size:26px; width:40px; height:40px; display:grid; place-items:center; z-index:2}
 .photo-modal .pv-arrow{position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; display:none; place-items:center; color:#fff; font-size:34px; background:rgba(255,255,255,.14); border-radius:var(--r-full); z-index:2}
 .photo-modal .pv-prev{left:12px}
@@ -637,7 +647,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <button class="secondary-btn" id="btnToggleEvtForm" style="max-width:none;margin-bottom:var(--s4)">＋ 일정 추가</button>
     <div class="form-card" id="evtForm" style="display:none">
       <input class="fi" id="evtTitle" maxlength="40" placeholder="일정 제목 (예: 우리 여행)" autocomplete="off">
-      <input class="fi" id="evtDate" type="date">
+      <div class="daterow">
+        <button type="button" class="daynav" id="evtDatePrev" aria-label="하루 전">‹</button>
+        <input class="datepick" id="evtDate" type="date">
+        <button type="button" class="daynav" id="evtDateNext" aria-label="하루 후">›</button>
+      </div>
+      <div class="hint" id="evtDateLabel" style="text-align:center; margin:-4px 0 10px"></div>
       <div class="diary-toggle" style="margin-bottom:10px">
         <button type="button" class="on" id="evtTypeOnce" data-type="once">한 번</button>
         <button type="button" id="evtTypeAnnual" data-type="annual">매년 반복(기념일)</button>
@@ -900,7 +915,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 <div class="photo-modal" id="photoModal">
   <button class="close" id="photoModalClose" aria-label="닫기">✕</button>
   <button class="pv-arrow pv-prev" id="photoPrev" aria-label="이전 사진">‹</button>
-  <img id="photoModalImg" alt="">
+  <div class="pv-viewport" id="pvViewport">
+    <div class="pv-track" id="pvTrack">
+      <div class="pv-slide"><img id="pvPrev" alt=""></div>
+      <div class="pv-slide"><img id="pvCur" alt=""></div>
+      <div class="pv-slide"><img id="pvNext" alt=""></div>
+    </div>
+  </div>
   <button class="pv-arrow pv-next" id="photoNext" aria-label="다음 사진">›</button>
   <div class="pv-indicator" id="photoModalIndicator"></div>
 </div>
@@ -913,7 +934,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.2"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.3"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1864,11 +1885,24 @@ function renderCalendar(){
   document.getElementById("calPrev").onclick=()=>{ _calM--; if(_calM<0){_calM=11;_calY--;} renderCalendar(); };
   document.getElementById("calNext").onclick=()=>{ _calM++; if(_calM>11){_calM=0;_calY++;} renderCalendar(); };
   box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>{
+    // 달력 날짜 탭 = 그 날짜로 일정 추가 폼 열기(자연스러운 기대 동작). 날짜는 native picker 없이도 확정됨.
     _selDate=el.dataset.day;
-    const df=document.getElementById("evtDate"); if(df) df.value=_selDate;
+    setEvtDate(_selDate);
     document.getElementById("evtForm").style.display="block";
     renderCalendar();
+    const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
+    const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
   });
+}
+/* 일정 날짜 = native date picker에 의존하지 않는 단일 출처. 달력 탭·‹ ›·(되면)picker 모두 이 값을 갱신. */
+function setEvtDate(dateStr){
+  const inp=document.getElementById("evtDate"); if(inp && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) inp.value=dateStr;
+  const lbl=document.getElementById("evtDateLabel"); if(lbl) lbl.textContent = dateStr ? fmtDateK(dateStr) : "";
+}
+function shiftEvtDate(delta){
+  const cur = parseYMD(document.getElementById("evtDate").value) || new Date();
+  cur.setDate(cur.getDate()+delta);
+  setEvtDate(isoDate(cur));
 }
 function renderUpcoming(){
   const el=document.getElementById("upcomingList"); if(!el) return;
@@ -1882,11 +1916,14 @@ function renderUpcoming(){
     const mine=ev.createdBy===fb.uid;
     const typeLabel=ev._synthetic ? "기념일" : (ev.type==="annual"?"매년":"");
     const sub=[isoDate(occ).replace(/-/g,"."), typeLabel, ev.memo].filter(Boolean).join(" · ");
-    const del=(!ev._synthetic && mine) ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
-    return '<div class="evt"><div class="dd">'+ddLabel(occ)+'</div><div class="info"><div class="t">'+esc(ev.title)+'</div>'
-      +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+del+'</div>';
+    const editable = (!ev._synthetic && mine);
+    const del= editable ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
+    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+esc(ev.title)+'</div>'
+      +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
+    return '<div class="evt"><div class="dd">'+ddLabel(occ)+'</div>'+info+del+'</div>';
   }).join("");
   el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
+  el.querySelectorAll("[data-edit-evt]").forEach(b=>b.onclick=()=>startEditEvent(b.dataset.editEvt)); // 탭=수정(날짜 변경 가능)
 }
 /* profile.anniversary 기반 합성 기념일(다음 100일 단위 + 다음 주년) — 저장 없이 표시만 */
 function anniversaryItems(){
@@ -1907,6 +1944,7 @@ function setEvtType(t){ _evtType=t;
   document.getElementById("evtTypeOnce").classList.toggle("on",t==="once");
   document.getElementById("evtTypeAnnual").classList.toggle("on",t==="annual");
 }
+let _editingEvtId=null;
 async function addEvent(){
   if(!pairId){ toast("먼저 시작해주세요"); return; }
   if(currentPairData && currentPairData.status==="dissolved") return;
@@ -1914,14 +1952,31 @@ async function addEvent(){
   const date=document.getElementById("evtDate").value;
   const memo=document.getElementById("evtMemo").value.trim();
   if(!title){ toast("제목을 입력해주세요"); return; }
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast("날짜를 선택해주세요"); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast("날짜를 선택해주세요"); return; } // 과거·미래 모두 허용(기념일 소급 등)
   try{
-    await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), {
-      title, date, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() });
+    if(_editingEvtId){
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date, type:_evtType, memo });
+      toast("일정을 수정했어요");
+    } else {
+      await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), {
+        title, date, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() });
+      toast("일정을 추가했어요");
+    }
     document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value="";
     document.getElementById("evtForm").style.display="none";
-    toast("일정을 추가했어요");
-  }catch(e){ console.error(e); toast(isDeniedErr(e)?"추가 권한이 없어요":"추가하지 못했어요"); }
+    _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?(_editingEvtId?"수정 권한이 없어요":"추가 권한이 없어요"):(_editingEvtId?"수정하지 못했어요":"추가하지 못했어요")); }
+}
+/* 일정 수정 — 내 일정만(rules: createdBy 본인). 날짜도 변경 가능. */
+function startEditEvent(id){
+  const ev=_events.find(e=>e.id===id); if(!ev) return;
+  _editingEvtId=id;
+  document.getElementById("evtTitle").value=ev.title||"";
+  setEvtDate(ev.date||todayStr());
+  setEvtType(ev.type==="annual"?"annual":"once");
+  document.getElementById("evtMemo").value=ev.memo||"";
+  document.getElementById("btnAddEvt").textContent="수정하기";
+  const f=document.getElementById("evtForm"); f.style.display="block"; f.scrollIntoView({behavior:"smooth", block:"center"});
 }
 async function deleteEvent(id){
   if(!confirm("이 일정을 지울까요?")) return;
@@ -1985,41 +2040,60 @@ function wireDiaryBody(body){
   body.querySelectorAll("[data-deldiary]").forEach(b=>b.onclick=()=>deleteDiaryEntry(b.dataset.deldiary));
 }
 /* 사진 뷰어 — 좌우 스와이프/화살표/키보드로 연속 열람. 인디케이터(n/N). */
-let _viewerList=[], _viewerIdx=0, _viewerURLs=[];
-function openPhotoViewer(list, idx){
-  _viewerList=list||[]; _viewerIdx=idx||0;
-  _viewerURLs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _viewerURLs=[];
-  if(!_viewerList.length) return;
-  document.getElementById("photoModal").classList.add("show");
-  showViewerPhoto();
-}
-async function showViewerPhoto(){
-  const cur=_viewerList[_viewerIdx]; if(!cur) return;
-  const img=document.getElementById("photoModalImg"), ind=document.getElementById("photoModalIndicator");
-  const prev=document.getElementById("photoPrev"), next=document.getElementById("photoNext");
-  ind.textContent=(_viewerIdx+1)+" / "+_viewerList.length;
-  ind.style.display=_viewerList.length>1?"block":"none";
-  prev.style.display=(_viewerList.length>1 && _viewerIdx>0)?"grid":"none";
-  next.style.display=(_viewerList.length>1 && _viewerIdx<_viewerList.length-1)?"grid":"none";
-  img.style.opacity="0.35";
+/* 손가락 추적(drag-follow) 3슬라이드 캐러셀 + 양옆 프리로드.
+   좌우 스와이프=넘기기(임계/거리 스냅·양끝 고무줄), 아래=닫기, 화살표/키보드도. */
+let _viewerList=[], _viewerIdx=0, _pvCache={}, _pvW=0;
+let _dragX0=0, _dragY0=0, _dragging=false, _dragAxis=null, _dragDX=0;
+async function _pvLoadURL(item){
+  if(!item) return "";
+  if(_pvCache[item.photo]) return _pvCache[item.photo];
   try{
-    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",cur.entry,"photos",cur.photo));
+    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",item.entry,"photos",item.photo));
     if(snap.exists()){
       const d=snap.data(); const u8=(d.bytes && d.bytes.toUint8Array)?d.bytes.toUint8Array():d.bytes;
-      const url=URL.createObjectURL(new Blob([u8],{type:d.mime||"image/jpeg"})); _viewerURLs.push(url);
-      img.src=url; img.style.opacity="1";
-    } else { img.style.opacity="1"; }
-  }catch(e){ console.error(e); img.style.opacity="1"; }
+      const url=URL.createObjectURL(new Blob([u8],{type:d.mime||"image/jpeg"})); _pvCache[item.photo]=url; return url;
+    }
+  }catch(e){ console.error(e); }
+  return "";
+}
+function _pvViewportW(){ const vp=document.getElementById("pvViewport"); return (vp&&vp.clientWidth)||window.innerWidth; }
+function _pvSetX(px, anim){ const t=document.getElementById("pvTrack"); t.classList.toggle("anim", !!anim); t.style.transform="translateX("+px+"px)"; }
+async function _pvRender(){
+  _pvW=_pvViewportW();
+  const cur=_viewerList[_viewerIdx];
+  const curImg=document.getElementById("pvCur"), prevImg=document.getElementById("pvPrev"), nextImg=document.getElementById("pvNext");
+  curImg.src = (await _pvLoadURL(cur)) || "";
+  _pvLoadURL(_viewerList[_viewerIdx-1]).then(u=>{ prevImg.src=u||""; }); // 프리로드 → 넘어간 순간 공백 없음
+  _pvLoadURL(_viewerList[_viewerIdx+1]).then(u=>{ nextImg.src=u||""; });
+  _pvSetX(-_pvW, false); // 가운데(cur) 정렬
+  _updateViewerChrome();
+}
+function _updateViewerChrome(){
+  const ind=document.getElementById("photoModalIndicator");
+  const pb=document.getElementById("photoPrev"), nb=document.getElementById("photoNext");
+  ind.textContent=(_viewerIdx+1)+" / "+_viewerList.length;
+  ind.style.display=_viewerList.length>1?"block":"none";
+  pb.style.display=(_viewerList.length>1 && _viewerIdx>0)?"grid":"none";
+  nb.style.display=(_viewerList.length>1 && _viewerIdx<_viewerList.length-1)?"grid":"none";
+}
+function openPhotoViewer(list, idx){
+  _viewerList=list||[]; _viewerIdx=idx||0;
+  if(!_viewerList.length) return;
+  document.getElementById("photoModal").classList.add("show");
+  ["pvPrev","pvCur","pvNext"].forEach(id=>document.getElementById(id).src="");
+  _pvRender();
 }
 function viewerNav(delta){
   const n=_viewerIdx+delta;
   if(n<0 || n>=_viewerList.length) return;
-  _viewerIdx=n; showViewerPhoto();
+  _pvSetX(-_pvW - delta*_pvW, true); // delta+1→ -2W(다음), delta-1→ 0(이전) 로 슬라이드
+  setTimeout(()=>{ _viewerIdx=n; _pvRender(); }, 290);
 }
 function closePhotoViewer(){
-  document.getElementById("photoModal").classList.remove("show");
-  _viewerURLs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _viewerURLs=[];
-  _viewerList=[];
+  const modal=document.getElementById("photoModal");
+  modal.classList.remove("show"); modal.style.background="";
+  Object.values(_pvCache).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _pvCache={};
+  _viewerList=[]; document.getElementById("pvTrack").style.transform="";
 }
 
 /* ---- 사진 압축(캔버스): 긴변 maxDim으로 축소 → JPEG. Uint8Array 반환(Bytes 저장용) ---- */
@@ -2399,9 +2473,13 @@ document.getElementById("annivInput").addEventListener("change",e=>{ setProfile(
 document.getElementById("btnSchedRefresh").onclick=refreshApp;
 document.getElementById("btnToggleEvtForm").onclick=()=>{
   const f=document.getElementById("evtForm"); const open=f.style.display==="none";
+  if(open){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
+    if(!document.getElementById("evtDate").value) setEvtDate(_selDate||todayStr()); else setEvtDate(document.getElementById("evtDate").value); }
   f.style.display=open?"block":"none";
-  if(open && !document.getElementById("evtDate").value) document.getElementById("evtDate").value=_selDate||todayStr();
 };
+document.getElementById("evtDatePrev").onclick=()=>shiftEvtDate(-1);
+document.getElementById("evtDateNext").onclick=()=>shiftEvtDate(1);
+document.getElementById("evtDate").addEventListener("change",e=>{ const l=document.getElementById("evtDateLabel"); if(l) l.textContent=fmtDateK(e.target.value); });
 document.getElementById("evtTypeOnce").onclick=()=>setEvtType("once");
 document.getElementById("evtTypeAnnual").onclick=()=>setEvtType("annual");
 document.getElementById("btnAddEvt").onclick=addEvent;
@@ -2421,16 +2499,39 @@ document.getElementById("photoModalClose").onclick=closePhotoViewer;
 document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") closePhotoViewer(); });
 document.getElementById("photoPrev").onclick=e=>{ e.stopPropagation(); viewerNav(-1); };
 document.getElementById("photoNext").onclick=e=>{ e.stopPropagation(); viewerNav(1); };
-/* 사진 뷰어 제스처: 좌우 스와이프=넘기기, 아래로=닫기 */
+/* 사진 뷰어 드래그(손가락 추적): 이동 중 트랙이 손가락 따라옴, 놓으면 임계/양끝 고무줄 기준 스냅. 아래=닫기.
+   초기 이동 방향으로 축 잠금(좌우=넘기기 / 상하=닫기 프리뷰). */
 (function(){
-  const modal=document.getElementById("photoModal"); let x0=null,y0=null;
-  modal.addEventListener("touchstart",e=>{ if(e.touches.length===1){ x0=e.touches[0].clientX; y0=e.touches[0].clientY; } },{passive:true});
-  modal.addEventListener("touchend",e=>{
-    if(x0==null) return; const t=e.changedTouches[0], dx=t.clientX-x0, dy=t.clientY-y0;
-    if(Math.abs(dx)>45 && Math.abs(dx)>Math.abs(dy)) viewerNav(dx<0?1:-1);
-    else if(dy>90 && Math.abs(dy)>Math.abs(dx)) closePhotoViewer();
-    x0=null; y0=null;
-  },{passive:true});
+  const vp=document.getElementById("pvViewport"), modal=document.getElementById("photoModal");
+  vp.addEventListener("touchstart",e=>{
+    if(e.touches.length!==1) return;
+    _dragX0=e.touches[0].clientX; _dragY0=e.touches[0].clientY; _dragging=true; _dragAxis=null; _dragDX=0;
+    _pvW=_pvViewportW(); document.getElementById("pvTrack").classList.remove("anim");
+  },{passive:false});
+  vp.addEventListener("touchmove",e=>{
+    if(!_dragging) return;
+    const dx=e.touches[0].clientX-_dragX0, dy=e.touches[0].clientY-_dragY0;
+    if(_dragAxis===null && (Math.abs(dx)>8 || Math.abs(dy)>8)) _dragAxis = Math.abs(dx)>Math.abs(dy) ? "x" : "y";
+    if(_dragAxis==="x"){
+      e.preventDefault();
+      let d=dx;
+      if((_viewerIdx===0 && d>0) || (_viewerIdx===_viewerList.length-1 && d<0)) d*=0.35; // 양끝 고무줄 저항
+      _dragDX=d; _pvSetX(-_pvW + d, false);
+    } else if(_dragAxis==="y" && dy>0){
+      e.preventDefault();
+      modal.style.background="rgba(10,8,10,"+Math.max(0.32, 0.92 - dy/650).toFixed(3)+")"; // 아래로 = 닫기 프리뷰
+    }
+  },{passive:false});
+  vp.addEventListener("touchend",e=>{
+    if(!_dragging) return; _dragging=false;
+    const dy=e.changedTouches[0].clientY-_dragY0;
+    if(_dragAxis==="y"){ modal.style.background=""; if(dy>90) closePhotoViewer(); return; }
+    if(_dragAxis!=="x") return;
+    const th=_pvW*0.22;
+    if(_dragDX < -th && _viewerIdx < _viewerList.length-1) viewerNav(1);
+    else if(_dragDX > th && _viewerIdx > 0) viewerNav(-1);
+    else _pvSetX(-_pvW, true); // 임계 미달 → 원위치 스냅
+  },{passive:false});
 })();
 document.addEventListener("keydown",e=>{
   if(!document.getElementById("photoModal").classList.contains("show")) return;
