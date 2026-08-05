@@ -906,18 +906,23 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.0"; // 1인 1계정(구글 로그인)+Firebase Hosting 이전. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.1"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
-/* authDomain은 Firebase 기본값(firebaseapp.com)을 쓴다 — 자동 생성 OAuth 클라이언트에 이미 등록된
-   리다이렉트 URI가 `https://<project>.firebaseapp.com/__/auth/handler`뿐이기 때문(web.app 핸들러는 미등록 →
-   web.app로 지정하면 redirect_uri_mismatch, 8/5 실측). 앱은 web.app에서 서빙하되 로그인 왕복은 firebaseapp.com
-   핸들러를 경유(표준 Firebase 구성).
-   ⚠️iOS standalone 강화(선택): 진짜 same-site가 필요하면 (1) GCP 콘솔 OAuth 클라이언트에
-   `https://ogu-ogu-app-e4193.web.app/__/auth/handler`를 승인된 리디렉션 URI로 추가하고 (2) 이 authDomain을
-   web.app로 바꾸면 된다. 그 전까지는 표준 firebaseapp.com 경유(공식 이슈 #8329는 실기기 확인 권장). */
+/* canonical 오리진 = firebaseapp.com. 앱 오리진 == authDomain == firebaseapp.com 이면 로그인 왕복이 same-site로
+   성립하고(자동생성 OAuth 클라이언트에 firebaseapp.com 핸들러가 이미 등록됨 → GCP 콘솔 작업 불필요), iOS
+   standalone redirect의 교차도메인 파손(#8329)도 원천 회피된다. web.app도 같은 Hosting을 서빙하지만, 오리진이
+   갈리면 로그인 세션·공간 포인터(IndexedDB/localStorage) 저장소가 분산돼 "같은 나"가 갈라진다 → web.app 진입은
+   canonical로 즉시 통일한다(아래 리다이렉트). (8/5 실측: authDomain=web.app는 미등록으로 redirect_uri_mismatch,
+   authDomain=firebaseapp.com + web.app 서빙은 교차도메인이라 redirect 세션 미확립. 그래서 오리진을 firebaseapp.com
+   하나로 못박는 것이 콘솔 없이 성립하는 유일 해.) */
 const _HOST = (typeof location!=="undefined") ? location.hostname : "";
+/* 오리진 단일화: web.app로 들어와도 canonical firebaseapp.com으로 즉시 이동(저장소 분산=공간 갈라짐 차단).
+   firebaseapp.com/github.io/localhost는 해당 없음(루프 방지). 초기화 이전에 실행돼야 하므로 스크립트 최상단. */
+if(_HOST.endsWith(".web.app")){
+  location.replace("https://ogu-ogu-app-e4193.firebaseapp.com" + location.pathname + location.search + location.hash);
+}
 const firebaseConfig = {
   apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
   authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
@@ -1354,7 +1359,7 @@ async function initFirebase(){
 /* ===== 인증(1인 1계정): 구글 로그인 기본·필수 경로 =====
    - 신규/기기변경/재설치 어디서든 같은 구글 계정 = 같은 uid → 같은 우리 공간.
    - iOS standalone에선 popup이 인앱 브라우저로 격리돼 결과 회수가 실패하므로 redirect 우선.
-     redirect는 authDomain==서빙오리진(web.app)일 때 same-site로 동작(위 firebaseConfig 참고). */
+     redirect는 authDomain==서빙오리진(canonical firebaseapp.com)이라 same-site로 동작(위 firebaseConfig 참고). */
 async function googleSignIn(){
   const errEl=document.getElementById("authErr"); if(errEl) errEl.textContent="";
   let provider;
@@ -2261,7 +2266,7 @@ function isDeniedErr(err){ return !!(err && (err.code==="permission-denied" || e
 document.getElementById("btnGoogleSignin").onclick=()=>googleSignIn();
 document.getElementById("btnSignout").onclick=()=>doSignOut();
 // 이사 안내(구 배포)
-document.getElementById("btnOpenNewAddr").onclick=()=>{ location.href="https://ogu-ogu-app-e4193.web.app/"; };
+document.getElementById("btnOpenNewAddr").onclick=()=>{ location.href="https://ogu-ogu-app-e4193.firebaseapp.com/"; };
 document.getElementById("btnStayLegacy").onclick=()=>legacyContinue();
 document.getElementById("btnStart").onclick=()=>createSolo().catch(err=>{console.error(err); toast("시작하지 못했어요. 잠시 후 다시 시도해주세요");});
 /* 코드 입력 화면은 두 진입점을 공유한다:
