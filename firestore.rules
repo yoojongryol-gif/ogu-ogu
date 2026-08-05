@@ -17,15 +17,43 @@ service cloud.firestore {
     function pairOf(pairId) {
       return get(/databases/$(database)/documents/pairs/$(pairId)).data;
     }
+    function pairMembers(pid) {
+      return get(/databases/$(database)/documents/pairs/$(pid)).data.memberUids;
+    }
+
+    // ── codeIndex/{code} : 코드→pairId 역인덱스 (보안 재설계 2026-08-05) ──────────
+    //   문서 id = 6자리 코드 그 자체. 코드를 아는 자만 doc-id get으로 pairId를 얻는다.
+    //   ★ list 전면 금지 → where(status/rejoinOpen/code) 컬렉션 열거로 코드를 수확하던 경로(V1/V2) 봉합.
+    //   쓰기는 "대상 pair의 멤버"만 → 남의 pair를 가리키는 코드 위조 불가.
+    //   type: "invite"(솔로 초대) | "rejoin"(짝 도움 복귀). createdBy=발급 멤버(rejoin이면 생존자).
+    match /codeIndex/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["pairId","type","expiresAt","createdBy"])
+        && request.resource.data.createdBy == request.auth.uid
+        && (request.resource.data.type == "invite" || request.resource.data.type == "rejoin")
+        && request.resource.data.pairId is string
+        && request.resource.data.expiresAt is int
+        && (request.auth.uid in pairMembers(request.resource.data.pairId));
+      allow update: if signedIn()
+        && request.resource.data.pairId == resource.data.pairId          // 다른 pair로 재지정 금지(도용 차단)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasOnly(["pairId","type","expiresAt","createdBy"])
+        && (request.auth.uid in pairMembers(resource.data.pairId));
+      allow delete: if signedIn()
+        && (request.auth.uid in pairMembers(resource.data.pairId));
+    }
 
     match /pairs/{pairId} {
-      // 읽기: 이미 멤버이거나, 솔로/대기 상태이거나, 재합류 초대(rejoinOpen)가 열려 있는 쌍은
-      //   코드 입력을 위해 조회 가능. (코드 자체는 6자리 랜덤이라 추측 난이도로 방어 + 짧은 TTL로 창을 좁힘.
-      //   status/rejoinOpen 모두 등가(equality) 조건이라 where("status","==","solo") 등으로 규칙 증명이 성립한다.)
-      allow read: if isMember(resource.data)
-        || resource.data.status == "solo"
-        || resource.data.status == "waiting"
-        || (("rejoinOpen" in resource.data) && resource.data.rejoinOpen == true);
+      // 읽기(get/list 분리) — 보안 재설계 2026-08-05.
+      //   get: 이미 멤버이거나, "본인이 합류요청(joinRequest)을 걸어둔 대기 요청자"만 단건 조회(수락/거절 관측용).
+      //        (구 solo/waiting/rejoinOpen 무조건 read 삭제 — 열거 누출 봉합.)
+      //   list: 유일 컬렉션 쿼리 = where("memberUids","array-contains",내uid). 자기 uid로만 규칙 증명 성립 →
+      //         where("status","==","solo")·where("rejoinOpen","==",true) 류 열거는 거부된다.
+      allow get: if isMember(resource.data)
+        || (("joinRequest" in resource.data) && resource.data.joinRequest.uid == request.auth.uid);
+      allow list: if signedIn() && (request.auth.uid in resource.data.memberUids);
 
       // 생성: 본인 uid 1명 솔로로 시작 (페어링 게이트 없이 바로 입장). 짝은 초대코드로 나중에 합류.
       allow create: if signedIn()
@@ -137,12 +165,18 @@ service cloud.firestore {
               || (request.resource.data.rejoinReplaces in resource.data.memberUids)))
         ||
         // 케이스 G: 새 기기(새 uid)가 "잃은 자리"를 승계. 서버 0줄, rules만으로 안전 구현.
+        //   ★코드 검증(2026-08-05 치명 취약점 V1 수리): 승계 write는 rejoinProof(입력한 rejoin 코드)를 실어야 하고,
+        //     rejoinProof == resource.data.rejoinCode 여야 한다 → 코드를 모르면 승계 불가(무코드 탈취 원천 차단).
+        //     비멤버는 pair를 read 못 하므로 rejoinCode를 볼 수 없다 → codeIndex로 pairId만 얻고 코드는 out-of-band(짝이 알려줌).
         //   - rejoinOpen==true + 미만료(TTL)일 때만.
         //   - 나는 진짜 새 uid(기존 멤버가 아님)여야 하고, 결과 멤버는 정확히 2명.
         //   - 살아있는 멤버(=rejoinReplaces 제외한 기존 멤버)는 반드시 보존 → 활성 자리 탈취 불가.
         //   - 잃은 자리(rejoinReplaces)는 결과에서 비워짐 → 딱 그 자리만 교체.
         //   - 초대는 즉시 소비(rejoinOpen=false)되어 1회용. 잃은 uid의 stale lastReadAt/fcmTokens 정리 허용.
         (("rejoinOpen" in resource.data) && resource.data.rejoinOpen == true
+          && ("rejoinCode" in resource.data)
+          && ("rejoinProof" in request.resource.data)
+          && request.resource.data.rejoinProof == resource.data.rejoinCode
           && resource.data.rejoinExpiresAt > request.time.toMillis()
           && resource.data.status == "paired"
           && request.resource.data.status == "paired"
@@ -154,7 +188,7 @@ service cloud.firestore {
           && !(resource.data.rejoinReplaces in request.resource.data.memberUids)
           && request.resource.data.rejoinOpen == false
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(["memberUids","rejoinOpen","rejoinCode","rejoinExpiresAt","rejoinReplaces","lastReadAt","fcmTokens"]))
+               .hasOnly(["memberUids","rejoinOpen","rejoinCode","rejoinExpiresAt","rejoinReplaces","rejoinProof","lastReadAt","fcmTokens"]))
       );
       // pairs 문서 자체는 삭제하지 않는다(툼스톤 유지) — 양쪽 클라이언트가 실시간으로 "dissolved"
       // 상태를 관측해 각자 로컬 정리를 마칠 수 있어야 하므로, 문서가 통째로 사라지면 그 관측이 불가능해진다.

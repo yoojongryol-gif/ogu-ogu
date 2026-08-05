@@ -1037,7 +1037,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.6"; // 홈 탭 신설(5탭)+뒤로가기(엣지 스와이프·pushState·← 버튼). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.7"; // 보안 재설계: codeIndex 역인덱스 + pairs LIST 차단 + rejoin 코드검증(rejoinProof). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1710,6 +1710,30 @@ async function onSignedIn(){
 
 /* ===== 페어링 ===== */
 function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
+
+/* ===== codeIndex(코드→pairId 역인덱스) — 보안 재설계 2026-08-05 =====
+   pairs LIST를 rules로 차단했으므로 where(code==)/where(rejoinCode==) 조회가 불가.
+   대신 codeIndex/{code} 문서(doc-id=코드)를 get으로 해석한다. list는 rules상 금지(열거 봉합).
+   코드값의 권위 저장소는 pair(표시용). codeIndex는 파생 역인덱스(조회 전용). */
+function codeRef(code){ return M.doc(fb.db,"codeIndex",String(code)); }
+/* 인덱스 발급(create). 6자리 충돌(타 pair 선점) 시 setDoc가 permission-denied → 호출부가 코드 재생성해 재시도. */
+async function putCodeIndex(code, pid, type, expiresAt){
+  await M.setDoc(codeRef(code), { pairId:pid, type, expiresAt, createdBy:fb.uid });
+}
+async function delCodeIndex(code){ try{ await M.deleteDoc(codeRef(code)); }catch(e){} }
+/* invite 코드 발급 헬퍼: 유일 코드를 확보(충돌 재시도)해 codeIndex에 기록하고 그 코드를 반환.
+   반환 코드를 pair.code에도 저장(표시/서버측 증명용 권위값). */
+async function issueInviteCode(pid, oldCode){
+  const exp = Date.now()+24*60*60*1000;
+  for(let i=0;i<5;i++){
+    const code=genCode();
+    try{ await putCodeIndex(code, pid, "invite", exp); }
+    catch(e){ if(isDeniedErr(e)) continue; throw e; } // 충돌=다른 코드로 재시도
+    if(oldCode && oldCode!==code) delCodeIndex(oldCode);
+    return { code, exp };
+  }
+  throw new Error("invite code collision");
+}
 function fillCells(elId,code){
   const el=document.getElementById(elId); if(!el) return;
   el.innerHTML="";
@@ -1728,13 +1752,16 @@ function displayedInviteCode(){
 /* 솔로 시작: 페어링 게이트 없이 내 공간(status "solo")을 만들고 바로 입장. 짝은 초대코드로 나중에 합류. */
 async function createSolo(){
   _dissolvedHandled=false;
-  const code = genCode();
+  // pair 먼저 생성(코드 없이) → codeIndex 발급(충돌 재시도) → pair.code 저장(표시/증명 권위값).
   const ref = await M.addDoc(M.collection(fb.db,"pairs"), {
-    code, memberUids:[fb.uid], status:"solo",
-    createdAt:M.serverTimestamp(), codeExpiresAt: Date.now()+24*60*60*1000
+    memberUids:[fb.uid], status:"solo", createdAt:M.serverTimestamp()
   });
   pairId = ref.id;
   localStorage.setItem("oguogu.pairId", pairId);
+  try{
+    const { code, exp } = await issueInviteCode(pairId);
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId), { code, codeExpiresAt: exp }); // 케이스 I(멤버 code 갱신)
+  }catch(e){ console.error("초대코드 인덱스 발급 실패(비치명, openInvite에서 자연치유):", e); }
   watchPair(); // 스냅샷이 solo를 관측 → enterChat
 }
 
@@ -1770,15 +1797,37 @@ async function openInvite(force){
     // 이미 서버에 저장된 유효 코드 → 즉시 표시(쓰기 없음·네트워크 무관·경쟁 없음). "코드 안 나옴" 원천 차단.
     _renderInviteScreen(existing, "짝이 이 코드를 입력하면 바로 이어져요");
     show("screenInvite"); navOpen("invite", closeInviteRaw);
+    // codeIndex 보장(레거시 pair 자연치유) — 표시를 막지 않도록 fire-and-forget. 충돌 시 새 코드 재발급.
+    (async ()=>{
+      try{
+        const s=await M.getDoc(codeRef(existing));
+        if(!s.exists()){ await putCodeIndex(existing, pairId, "invite", currentPairData.codeExpiresAt || (Date.now()+24*60*60*1000)); }
+        else if(s.data().pairId!==pairId){ // 이 코드는 다른 공간이 선점 → 새 코드 재발급
+          const r=await issueInviteCode(pairId, existing);
+          await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code:r.code, codeExpiresAt:r.exp});
+          if(displayedInviteCode()===existing) fillCells("inviteCode", r.code);
+        }
+      }catch(e){ console.error("codeIndex 보장 실패(비치명):", e); }
+    })();
     return;
   }
-  // 만료됐거나(레거시 자연치유) 강제 재발급 — 새 코드로 저장+표시+공유를 한 값(code)으로 원자 갱신.
-  //   표시/복사/공유는 모두 이 code(=표시 DOM)에서 나오고 updateDoc도 같은 code를 저장하므로 "표시==저장==공유".
-  const code=genCode();
-  _renderInviteScreen(code, "코드를 저장하는 중이에요…");
+  // 만료됐거나(레거시 자연치유) 강제 재발급 — 새 코드로 codeIndex 발급 후 pair.code 저장.
+  //   표시/복사/공유는 모두 code(=표시 DOM)에서 나오고 pair.code도 같은 값이라 "표시==저장==공유".
+  _renderInviteScreen("------", "코드를 만드는 중이에요…");
   show("screenInvite"); navOpen("invite", closeInviteRaw);
+  let code, exp;
   try{
-    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+24*60*60*1000});
+    const r=await issueInviteCode(pairId, existing); code=r.code; exp=r.exp; // codeIndex 먼저 발급(조인 즉시 유효)
+  }catch(e){
+    console.error(e);
+    const err=document.getElementById("inviteErr"), retry=document.getElementById("btnInviteRetry");
+    if(err){ err.style.color="var(--danger)"; err.textContent="지금은 코드를 만들 수 없어요. 연결을 확인하고 ‘다시 만들기’를 눌러주세요"; }
+    if(retry) retry.style.display="";
+    return;
+  }
+  fillCells("inviteCode", code);
+  try{
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: exp});
     const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--muted)"; err.textContent="짝이 이 코드를 입력하면 바로 이어져요"; }
   }catch(e){
     console.error(e);
@@ -1806,24 +1855,25 @@ async function requestJoin(fromSolo){
   const code = document.getElementById("joinInput").value.trim();
   const msgEl = document.getElementById("joinMsg"); msgEl.textContent="";
   if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
-  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","solo"));
-  const snap = await M.getDocs(q).catch(()=>null);
-  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 짝의 코드를 다시 확인해주세요"; return; }
-  const d = snap.docs[0];
-  if(fromSolo && d.id===pairId){ msgEl.textContent="이건 내 공간의 코드예요. 짝의 코드를 입력해주세요"; return; }
-  if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){ msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; }
-  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 그 공간의 멤버예요"; return; }
+  // codeIndex/{code} get으로 pairId 해석(pairs LIST 차단됨). 비멤버는 pair를 못 읽으므로 만료·자기공간 판정은 인덱스로.
+  let idx=null;
+  try{ const s=await M.getDoc(codeRef(code)); idx = s.exists()? s.data():null; }catch(e){ idx=null; }
+  if(!idx || idx.type!=="invite"){ msgEl.textContent="코드를 찾을 수 없어요. 짝의 코드를 다시 확인해주세요"; return; }
+  if(idx.expiresAt && idx.expiresAt < Date.now()){ msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; }
+  const targetId = idx.pairId;
+  if(fromSolo && targetId===pairId){ msgEl.textContent="이건 내 공간의 코드예요. 짝의 코드를 입력해주세요"; return; }
   const nick = myNick() || "";
   try{
-    await M.updateDoc(d.ref, { joinRequest: { uid: fb.uid, nick, code, at: M.serverTimestamp() } }); // 요청만 기록(합류 아님)
+    // 요청만 기록(합류 아님). 이미 멤버/만료 시 rules 케이스 R이 거부 → catch에서 안내.
+    await M.updateDoc(M.doc(fb.db,"pairs",targetId), { joinRequest: { uid: fb.uid, nick, code, at: M.serverTimestamp() } });
   }catch(err){
     console.error(err);
     msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "요청에 실패했어요. 다시 시도해주세요";
     return;
   }
-  _pendingJoin = { targetId: d.id, fromSolo, oldSolo: (fromSolo ? pairId : null) };
+  _pendingJoin = { targetId, fromSolo, oldSolo: (fromSolo ? pairId : null) };
   showJoinWaiting(false);
-  watchJoinTarget(d.id);
+  watchJoinTarget(targetId);
 }
 /* 요청자: 대상 pair를 관측해 수락(paired+내가 멤버) / 거절(내 요청 소거) 감지 */
 function watchJoinTarget(targetId){
@@ -1897,8 +1947,11 @@ async function acceptJoinRequest(){
   toast("💞 연결됐어요");
 }
 async function rejectJoinRequest(){
-  const newCode = genCode();
-  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), { joinRequest: M.deleteField(), code:newCode, codeExpiresAt: Date.now()+24*60*60*1000 }); }
+  const oldCode = currentPairData && currentPairData.code;
+  let code, exp;
+  try{ const r=await issueInviteCode(pairId, oldCode); code=r.code; exp=r.exp; } // 새 codeIndex 발급 + 옛 코드 무효화
+  catch(e){ console.error(e); toast("거절하지 못했어요"); return; }
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), { joinRequest: M.deleteField(), code, codeExpiresAt: exp }); }
   catch(e){ console.error(e); toast("거절하지 못했어요"); return; }
   document.getElementById("joinReqBanner").style.display="none";
   toast("요청을 거절하고 코드를 새로 만들었어요");
@@ -2592,39 +2645,46 @@ async function openReinvite(){
   if(!pairId || !currentPairData){ return; }
   const other=otherUid();
   if(!other){ toast("아직 상대가 연결되지 않았어요"); return; }
-  const code=genCode();
-  const patch={ rejoinOpen:true, rejoinCode:code, rejoinExpiresAt:Date.now()+10*60*1000, rejoinReplaces:other };
+  const exp=Date.now()+10*60*1000;
+  // rejoin codeIndex 발급(createdBy=나=생존자 — 승계 클라가 여기서 생존자 uid를 읽어 newMembers 조립). 충돌 재시도.
+  let code=null;
+  for(let i=0;i<5;i++){ const c=genCode(); try{ await putCodeIndex(c,pairId,"rejoin",exp); code=c; break; }catch(e){ if(isDeniedErr(e)) continue; console.error(e); toast("코드를 만들지 못했어요"); return; } }
+  if(!code){ toast("코드를 만들지 못했어요"); return; }
+  const patch={ rejoinOpen:true, rejoinCode:code, rejoinExpiresAt:exp, rejoinReplaces:other };
   try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), patch); }
-  catch(e){ console.error(e); toast("코드를 만들지 못했어요"); return; }
+  catch(e){ console.error(e); delCodeIndex(code); toast("코드를 만들지 못했어요"); return; }
   fillCells("reinviteCode", code);
   show("screenReinvite");
 }
 async function cancelReinvite(){
+  const rc = currentPairData && currentPairData.rejoinCode;
   if(pairId){ try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {rejoinOpen:false}); }catch(e){ console.error(e); } }
+  if(rc) delCodeIndex(rc); // 열어둔 rejoin 인덱스 회수
   showTab("chat");
 }
 async function submitRejoin(){
   const code=document.getElementById("rejoinInput").value.trim();
   const msgEl=document.getElementById("rejoinMsg"); msgEl.textContent="";
   if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
-  const q=M.query(M.collection(fb.db,"pairs"), M.where("rejoinOpen","==",true), M.where("rejoinCode","==",code));
-  const snap=await M.getDocs(q).catch(()=>null);
-  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 상대방에게 다시 연결 코드를 받아주세요"; return; }
-  const d=snap.docs[0], data=d.data();
-  if(data.rejoinExpiresAt && data.rejoinExpiresAt < Date.now()){ msgEl.textContent="코드가 만료됐어요. 새 코드를 받아주세요"; return; }
-  const replaces=data.rejoinReplaces;
-  const survivors=(data.memberUids||[]).filter(u=>u!==replaces);
-  if((data.memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 이 공간의 멤버예요"; return; }
-  const newMembers=[...survivors, fb.uid];
+  // codeIndex/{code}(type rejoin) get으로 pairId·생존자(createdBy) 해석. 비멤버는 pair를 못 읽으므로 인덱스가 유일 경로.
+  let idx=null;
+  try{ const s=await M.getDoc(codeRef(code)); idx=s.exists()?s.data():null; }catch(e){ idx=null; }
+  if(!idx || idx.type!=="rejoin"){ msgEl.textContent="코드를 찾을 수 없어요. 상대방에게 다시 연결 코드를 받아주세요"; return; }
+  if(idx.expiresAt && idx.expiresAt < Date.now()){ msgEl.textContent="코드가 만료됐어요. 새 코드를 받아주세요"; return; }
+  const targetId=idx.pairId, survivor=idx.createdBy;
+  if(survivor===fb.uid){ msgEl.textContent="이미 이 공간의 멤버예요"; return; }
+  const newMembers=[survivor, fb.uid];
   _dissolvedHandled=false;
   try{
-    await M.updateDoc(d.ref, { memberUids:newMembers, rejoinOpen:false });
+    // 케이스 G 승계: rejoinProof=입력 코드(서버측 resource.data.rejoinCode와 대조=코드 소지 증명). 생존자 자리 보존.
+    await M.updateDoc(M.doc(fb.db,"pairs",targetId), { memberUids:newMembers, rejoinOpen:false, rejoinProof:code });
   }catch(err){
     console.error(err);
     msgEl.textContent = isDeniedErr(err) ? "연결 권한이 없어요. 코드를 다시 확인해주세요" : "이어받지 못했어요. 다시 시도해주세요";
     return;
   }
-  pairId=d.id;
+  delCodeIndex(code); // 1회용 소비
+  pairId=targetId;
   localStorage.setItem("oguogu.pairId", pairId);
   watchPair();
 }
