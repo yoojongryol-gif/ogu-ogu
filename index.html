@@ -414,9 +414,50 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 /* 키보드가 올라오면 하단 탭바를 부드럽게 접어(입력바가 자연스럽게 바닥까지 내려옴), 내려가면 복귀.
    visualViewport로 키보드 높이 감지 → body.kb-open 토글(채팅·일정·다이어리 입력 공통). */
 body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-events:none; }
-.tab{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 2px 6px; color:var(--muted); font-size:10.5px; font-weight:var(--w-med)}
-.tab .ti{font-size:20px; line-height:1}
+/* 5탭(홈·채팅·일정·다이어리·설정) — 360폭에서 좁아지므로 라벨·아이콘 축소 */
+.tab{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:7px 1px 6px; color:var(--muted); font-size:9.5px; font-weight:var(--w-med)}
+.tab span:last-child{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tab .ti{font-size:19px; line-height:1}
 .tab.on{color:var(--accent)}
+
+/* ═══════════════ 홈 탭 ═══════════════ */
+#homeScroll{display:flex; flex-direction:column; gap:var(--s4)}
+.home-couple{background:linear-gradient(135deg, var(--accent-soft), var(--surface)); border:1px solid var(--line); border-radius:var(--r-lg); padding:var(--s6) var(--s4); text-align:center; box-shadow:var(--shadow)}
+.home-couple .faces{display:flex; align-items:center; justify-content:center; gap:10px; font-size:34px; line-height:1}
+.home-couple .faces .lk{font-size:19px; color:var(--accent)}
+.home-couple .nicks{margin-top:8px; font-size:var(--t-body); font-weight:var(--w-med); color:var(--text)}
+.home-couple .dplus{margin-top:10px; font-size:var(--t-display); font-weight:800; color:var(--accent); letter-spacing:.02em; line-height:1.05}
+.home-couple .since{margin-top:3px; font-size:var(--t-cap); color:var(--muted)}
+.home-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:var(--s4); box-shadow:var(--shadow)}
+.home-card .hc-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px}
+.home-card .hc-title{font-size:var(--t-cap); font-weight:var(--w-bold); color:var(--muted); letter-spacing:.02em}
+.home-card .hc-more{font-size:var(--t-cap); color:var(--accent); font-weight:var(--w-med); background:none; border:none; cursor:pointer; padding:2px 4px}
+.home-evt{display:flex; align-items:center; gap:10px; padding:8px 0; cursor:pointer}
+.home-evt+.home-evt{border-top:1px solid var(--line)}
+.home-evt .dd{flex:none; min-width:52px; text-align:center; font-weight:var(--w-bold); font-size:var(--t-cap); color:var(--accent); background:var(--accent-soft); border-radius:var(--r-sm); padding:6px 4px}
+.home-evt.soon .dd{background:var(--accent); color:var(--accent-ink)}
+.home-evt .info{min-width:0; flex:1}
+.home-evt .t{font-size:var(--t-body); font-weight:var(--w-med); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.home-evt .s{font-size:var(--t-cap); color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.home-diary{display:flex; gap:10px; padding:8px 0; cursor:pointer; align-items:center}
+.home-diary+.home-diary{border-top:1px solid var(--line)}
+.home-diary img{width:54px; height:54px; border-radius:var(--r-sm); object-fit:cover; flex:none}
+.home-diary .dwrap{min-width:0; flex:1}
+.home-diary .dtx{font-size:var(--t-body); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+.home-diary .dmeta{font-size:var(--t-cap); color:var(--muted); margin-bottom:2px}
+.home-unread{display:flex; align-items:center; gap:10px; width:100%; background:var(--accent-soft); border:1px solid var(--line); border-radius:var(--r-md); padding:var(--s4); cursor:pointer; text-align:left; color:var(--text); font-family:inherit}
+.home-unread .badge{flex:none; background:var(--accent); color:var(--accent-ink); border-radius:var(--r-full); min-width:24px; height:24px; padding:0 7px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:var(--w-bold)}
+.home-unread .uw{min-width:0; flex:1}
+.home-unread .ut{font-size:var(--t-body); font-weight:var(--w-med)}
+.home-unread .us{font-size:var(--t-cap); color:var(--muted)}
+.home-unread .go{flex:none; color:var(--accent); font-weight:var(--w-med); font-size:var(--t-cap)}
+.home-invite{background:linear-gradient(135deg, var(--accent-soft), var(--surface)); border:1px dashed var(--accent); border-radius:var(--r-lg); padding:var(--s6) var(--s4); text-align:center; box-shadow:var(--shadow)}
+.home-invite .hi-emo{font-size:32px}
+.home-invite .hi-t{margin-top:8px; font-size:var(--t-body); font-weight:var(--w-med); color:var(--text)}
+.home-invite .hi-s{margin-top:4px; font-size:var(--t-cap); color:var(--muted)}
+.home-invite .primary-btn{margin:14px auto 0; max-width:220px}
+.home-empty{color:var(--muted); font-size:var(--t-cap); text-align:center; padding:8px 0}
+.form-back{background:none; border:none; color:var(--muted); font-size:var(--t-cap); font-weight:var(--w-med); padding:2px 0 10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px}
 
 /* ═══════════════ 일정·다이어리 공통 (스크롤 화면) ═══════════════ */
 .tabscreen{padding:0}
@@ -638,6 +679,21 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <button class="ghost-btn" id="btnRejoinCancel">뒤로</button>
 </div>
 
+<!-- 홈 -->
+<div class="screen tabscreen" id="screenHome">
+  <div class="tabhead"><div class="ttl">우리 홈</div>
+    <button class="hbtn" id="btnHomeRefresh" title="새로고침">🔄</button>
+    <button class="hbtn" id="btnHomeSettings" title="설정">⚙️</button></div>
+  <div class="tabscroll">
+    <div id="homeScroll">
+      <div id="homeCouple"></div>
+      <div id="homeUnread"></div>
+      <div id="homeUpcoming"></div>
+      <div id="homeDiary"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 채팅 -->
 <div class="screen" id="screenChat">
   <div class="chead">
@@ -677,6 +733,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div class="cal" id="calBox"></div>
     <button class="secondary-btn" id="btnToggleEvtForm" style="max-width:none;margin-bottom:var(--s4)">＋ 일정 추가</button>
     <div class="form-card" id="evtForm" style="display:none">
+      <button type="button" class="form-back" id="evtFormBack">← 닫기</button>
       <input class="fi" id="evtTitle" maxlength="40" placeholder="일정 제목 (예: 우리 여행)" autocomplete="off">
       <div class="daterow">
         <button type="button" class="daynav" id="evtDatePrev" aria-label="하루 전">‹</button>
@@ -719,6 +776,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div id="diaryCapNote"></div>
     <button class="secondary-btn" id="btnToggleDiaryForm" style="max-width:none;margin-bottom:var(--s4)">＋ 오늘의 기록</button>
     <div class="form-card" id="diaryForm" style="display:none">
+      <button type="button" class="form-back" id="diaryFormBack">← 닫기</button>
       <input class="fi" id="diaryDate" type="date">
       <textarea class="fi" id="diaryText" maxlength="2000" placeholder="오늘 우리 이야기를 적어봐요"></textarea>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -949,6 +1007,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 
 <!-- 하단 탭 바 (앱 내부에서만 노출) -->
 <nav class="tabbar" id="tabbar">
+  <button class="tab" data-tab="home"><span class="ti">🏠</span><span>홈</span></button>
   <button class="tab" data-tab="chat"><span class="ti">💬</span><span>채팅</span></button>
   <button class="tab" data-tab="schedule"><span class="ti">📅</span><span>일정</span></button>
   <button class="tab" data-tab="diary"><span class="ti">📖</span><span>다이어리</span></button>
@@ -978,7 +1037,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.5"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.6"; // 홈 탭 신설(5탭)+뒤로가기(엣지 스와이프·pushState·← 버튼). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1030,21 +1089,182 @@ function show(id){
   const tb=document.getElementById("tabbar"); if(tb) tb.classList.remove("on"); // 앱 밖 화면에선 탭 숨김
 }
 
+/* ===== 내비게이션 스택 (단일 출처) =====
+   세부 화면(일정 폼·다이어리 폼·초대·사진 뷰어)을 열 때 navOpen 등록.
+   ← 버튼·왼쪽 엣지 스와이프·안드로이드 하드웨어 뒤로가기·브라우저 뒤로가기가
+   모두 history.back()→popstate 한 경로로 수렴한다(제스처 판별·스택 정합의 단일 출처).
+   빈 스택에서 뒤로 = 홈 탭으로, 홈 루트에선 이탈 방지(재푸시+안내). */
+const _navStack=[];            // {name, close}
+let _navProgrammatic=false;    // 프로그램적 닫힘(폼 저장 등)일 때 popstate 재실행 방지
+let _rootGuardSet=false;
+function navHasOverlay(){ return _navStack.length>0; }
+function navOpen(name, closeFn){
+  if(_navStack.length && _navStack[_navStack.length-1].name===name){ _navStack[_navStack.length-1].close=closeFn; return; }
+  _navStack.push({name, close:closeFn});
+  try{ history.pushState({ogu:name, d:_navStack.length}, ""); }catch(e){}
+}
+/* 폼이 스스로 닫힐 때(저장 완료·취소 버튼): 스택에서 제거 + history 한 칸 되감기(popstate는 건너뜀). */
+function navConsume(name){
+  const i = name ? _navStack.map(x=>x.name).lastIndexOf(name) : _navStack.length-1;
+  if(i<0) return;
+  _navStack.splice(i,1);
+  _navProgrammatic=true;
+  try{ history.back(); }catch(e){ _navProgrammatic=false; }
+}
+/* 오버레이가 자체 로직으로 닫힐 때 호출(닫기는 rawClose가 담당, history만 정합). */
+function navCloseSelf(name, rawClose){
+  if(_navStack.some(x=>x.name===name)) navConsume(name);
+  if(rawClose) rawClose();
+}
+/* ← 버튼·엣지 스와이프 공통 진입점. */
+function navBack(){
+  if(navHasOverlay()){ try{ history.back(); }catch(e){} }
+  else if(inAppTabs() && currentTab!=="home"){ showTab("home"); }
+}
+function ensureRootGuard(){ if(_rootGuardSet) return; _rootGuardSet=true; try{ history.pushState({ogu:"root"}, ""); }catch(e){} }
+window.addEventListener("popstate", ()=>{
+  if(_navProgrammatic){ _navProgrammatic=false; return; }
+  if(_navStack.length){
+    const top=_navStack.pop();
+    try{ if(top && top.close) top.close(); }catch(e){}
+    return;
+  }
+  // 스택 빈 상태에서 뒤로 도달 → 홈이 아니면 홈으로, 홈 루트면 이탈 방지(재푸시+안내)
+  if(inAppTabs() && currentTab!=="home"){
+    showTab("home"); try{ history.pushState({ogu:"root"}, ""); }catch(e){}
+  } else if(inAppTabs()){
+    try{ history.pushState({ogu:"root"}, ""); }catch(e){}
+    toast("한 번 더 뒤로 누르면 앱을 나가요");
+  }
+});
+/* 왼쪽 가장자리(≤24px) 스와이프 → 뒤로. 사진 뷰어는 자체 캐러셀이 처리하므로 제외. */
+let _edgeX0=0, _edgeY0=0, _edgeActive=false, _edgeT0=0;
+document.addEventListener("touchstart",e=>{
+  _edgeActive=false;
+  if(e.touches.length!==1) return;
+  if(document.getElementById("photoModal").classList.contains("show")) return; // 뷰어 스와이프와 충돌 방지
+  if(!inAppTabs() && !navHasOverlay()) return; // 초기 플로우 화면에선 비활성
+  const x=e.touches[0].clientX;
+  if(x>24) return; // 가장자리에서 시작한 드래그만
+  _edgeActive=true; _edgeX0=x; _edgeY0=e.touches[0].clientY; _edgeT0=Date.now();
+},{passive:true});
+document.addEventListener("touchmove",e=>{
+  if(!_edgeActive) return;
+  const dx=e.touches[0].clientX-_edgeX0, dy=e.touches[0].clientY-_edgeY0;
+  if(Math.abs(dy)>Math.abs(dx)+12) _edgeActive=false; // 세로 스크롤 의도면 취소
+},{passive:true});
+document.addEventListener("touchend",e=>{
+  if(!_edgeActive) return; _edgeActive=false;
+  const dx=e.changedTouches[0].clientX-_edgeX0, dy=e.changedTouches[0].clientY-_edgeY0, dt=Date.now()-_edgeT0;
+  if(dx>56 && Math.abs(dy)<48 && dt<600) navBack(); // 오른쪽으로 충분히 민 빠른 스와이프
+},{passive:true});
+
 /* ===== 하단 탭 [채팅|일정|다이어리|설정] — 상태 유지 전환 ===== */
-const TAB_SCREEN={chat:"screenChat", schedule:"screenSchedule", diary:"screenDiary", settings:"screenSettings"};
-let currentTab="chat";
+const TAB_SCREEN={home:"screenHome", chat:"screenChat", schedule:"screenSchedule", diary:"screenDiary", settings:"screenSettings"};
+let currentTab="home";
 function inAppTabs(){ return Object.values(TAB_SCREEN).some(id=>document.getElementById(id).classList.contains("active")); }
 function showTab(tab){
-  if(!TAB_SCREEN[tab]) tab="chat";
+  if(!TAB_SCREEN[tab]) tab="home";
   currentTab=tab;
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   document.getElementById(TAB_SCREEN[tab]).classList.add("active");
   const tb=document.getElementById("tabbar"); if(tb) tb.classList.add("on");
   document.querySelectorAll("#tabbar .tab").forEach(el=>el.classList.toggle("on", el.dataset.tab===tab));
-  if(tab==="chat"){ applyChatHeader(); if(!isLocked()) markRead(); }
+  if(tab==="home"){ renderHome(); }
+  else if(tab==="chat"){ applyChatHeader(); if(!isLocked()) markRead(); }
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
   else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); renderAppVersion(); }
+}
+
+/* ===== 홈 탭 — 커플 카드·안 읽은 메시지·다가오는 일정·최근 다이어리 미리보기 =====
+   (읽기 전용 요약; 탭하면 해당 탭/엔트리로 이동. 데이터는 이미 구독 중인 _events/_diary/스냅샷 재사용.) */
+function unreadFromPartner(){
+  if(isLocked()) return 0;
+  if(!_lastMsgSnapshotDocs || !_lastMsgSnapshotDocs.length) return 0;
+  const o=otherUid(); if(!o) return 0;
+  const myRead = (currentPairData && currentPairData.lastReadAt) ? tsMillis(currentPairData.lastReadAt[fb.uid]) : 0;
+  let n=0;
+  for(const d of _lastMsgSnapshotDocs){ const m=d.data(); if(m.sender===o && (tsMillis(m.ts)||0) > myRead) n++; }
+  return n;
+}
+function renderHome(){
+  applyChatHeader(); // 헤더 값(닉/이모지/D+) 재계산 보장
+  updateSoloAffordances();
+  const solo = pairId && !otherUid();
+  const cp=document.getElementById("homeCouple");
+  if(solo){
+    cp.innerHTML='<div class="home-invite"><div class="hi-emo">💌</div>'
+      +'<div class="hi-t">아직 나 혼자예요</div>'
+      +'<div class="hi-s">짝을 초대하면 둘만의 공간이 돼요.<br>지금 남긴 기록도 함께 보게 돼요.</div>'
+      +'<button class="primary-btn" id="homeInviteBtn">💌 짝 초대하기</button></div>';
+    const b=document.getElementById("homeInviteBtn"); if(b) b.onclick=openInvite;
+  } else {
+    const dd=ddayText();
+    cp.innerHTML='<div class="home-couple"><div class="faces"><span>'+esc(myEmoji()||"🙂")+'</span><span class="lk">🩷</span><span>'+esc(partnerEmoji()||"🙂")+'</span></div>'
+      +'<div class="nicks">'+esc(myNick()||"나")+' · '+esc(partnerNick()||"짝")+'</div>'
+      +(dd?'<div class="dplus">'+esc(dd)+'</div>':'')
+      +(dd?'<div class="since">우리가 함께한 날</div>':'<div class="since" style="margin-top:10px">설정 → 꾸미기에서 애칭·기념일을 정해봐요</div>')
+      +'</div>';
+  }
+  // 안 읽은 새 메시지 배지
+  const uw=document.getElementById("homeUnread"); const un=unreadFromPartner();
+  if(un>0){
+    uw.innerHTML='<button class="home-unread" id="homeUnreadBtn"><span class="badge">'+(un>99?"99+":un)+'</span>'
+      +'<span class="uw"><span class="ut">새 메시지가 왔어요</span><span class="us">'+(partnerNick()||"짝")+'이 보낸 메시지 '+un+'개</span></span><span class="go">보기 →</span></button>';
+    const b=document.getElementById("homeUnreadBtn"); if(b) b.onclick=()=>{ showTab("chat"); };
+    uw.style.display="";
+  } else { uw.innerHTML=""; uw.style.display="none"; }
+  renderHomeUpcoming();
+  renderHomeDiary();
+}
+function renderHomeUpcoming(){
+  const el=document.getElementById("homeUpcoming"); if(!el) return;
+  const today=startOfDay(new Date());
+  const items=[];
+  _events.forEach(ev=>{ const occ=nextOccurrence(ev); if(occ && daysBetween(today,occ)>=0) items.push({ev,occ}); });
+  anniversaryItems().forEach(it=>{ const occ=parseYMD(it.date); if(occ && daysBetween(today,occ)>=0) items.push({ev:it,occ}); });
+  items.sort((a,b)=>a.occ-b.occ);
+  const top=items.slice(0,3);
+  let body;
+  if(!top.length){ body='<div class="home-empty">다가오는 일정이 없어요 · 일정 탭에서 기념일을 더해봐요 🩷</div>'; }
+  else {
+    body=top.map(({ev,occ})=>{
+      const n=daysBetween(today,occ);
+      const isAnniv = ev._synthetic || ev.type==="annual";
+      const soon = n<=7;
+      const ddl=ddLabel(occ);
+      const rl=(!ev._synthetic && ev.type!=="annual" && ev.endDate) ? rangeLabel(ev.date, ev.endDate) : null;
+      const sub=[rl || isoDate(occ).replace(/-/g,"."), (ev._synthetic?"기념일":(ev.type==="annual"?"매년":"")), ev.memo].filter(Boolean).join(" · ");
+      const title = (isAnniv && soon) ? (ddl+" "+esc(ev.title)) : esc(ev.title); // 기념일 임박=강조 표기
+      return '<div class="home-evt'+(soon?' soon':'')+'"><div class="dd">'+ddl+'</div>'
+        +'<div class="info"><div class="t">'+title+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div></div>';
+    }).join("");
+  }
+  el.innerHTML='<div class="home-card"><div class="hc-head"><span class="hc-title">다가오는 일정</span>'
+    +'<button class="hc-more" id="homeMoreEvt">전체 보기 →</button></div>'+body+'</div>';
+  const m=document.getElementById("homeMoreEvt"); if(m) m.onclick=()=>showTab("schedule");
+  el.querySelectorAll(".home-evt").forEach(x=>x.onclick=()=>showTab("schedule"));
+}
+function renderHomeDiary(){
+  const el=document.getElementById("homeDiary"); if(!el) return;
+  if(isLocked()){ el.innerHTML='<div class="home-card"><div class="hc-head"><span class="hc-title">최근 다이어리</span></div><div class="home-empty">🔒 잠금 해제 후 볼 수 있어요</div></div>'; return; }
+  const recent=_diary.slice(0,2);
+  let body;
+  if(!recent.length){ body='<div class="home-empty">아직 기록이 없어요 · 다이어리 탭에서 오늘의 우리를 남겨봐요 📖</div>'; }
+  else {
+    body=recent.map(en=>{
+      const th=(en.thumbs&&en.thumbs[0])?'<img loading="lazy" src="'+thumbUrl(en.thumbs[0])+'" alt="">':'';
+      const who=(en.authorUid===fb.uid)?"내 기록":((partnerNick()||"짝")+" 기록");
+      const tx=en.text ? esc(en.text) : (en.thumbs&&en.thumbs.length?"사진 "+en.thumbs.length+"장":"");
+      return '<div class="home-diary" data-entry="'+en.id+'">'+th
+        +'<div class="dwrap"><div class="dmeta">'+esc(fmtDateK(en.date))+' · '+esc(who)+'</div><div class="dtx">'+tx+'</div></div></div>';
+    }).join("");
+  }
+  el.innerHTML='<div class="home-card"><div class="hc-head"><span class="hc-title">최근 다이어리</span>'
+    +'<button class="hc-more" id="homeMoreDiary">전체 보기 →</button></div>'+body+'</div>';
+  const m=document.getElementById("homeMoreDiary"); if(m) m.onclick=()=>showTab("diary");
+  el.querySelectorAll(".home-diary").forEach(x=>x.onclick=()=>{ showTab("diary"); }); // 다이어리 탭으로 이동(해당 엔트리 목록 표시)
 }
 /* 앱/캐시 버전 표시 — "폰이 어느 버전인지"를 사장님이 한눈에 읽도록(재발 방지 인프라).
    APP_VERSION = 로드된 index.html, 캐시 = 실제 페이지를 제어 중인 서비스워커 VER(둘이 다르면 캐시 미갱신). */
@@ -1307,6 +1527,7 @@ function hideLock(){
   _unlockedThisSession=true;
   document.getElementById("lockScreen").style.display="none";
   renderMessages(); // 잠금 해제 순간에만 실제 대화 내용을 다시 그린다
+  if(currentTab==="home" && inAppTabs()) renderHome(); // 홈 미리보기(다이어리·배지)도 해제 후 갱신
   markRead();
 }
 async function autoUnlockCheck(){
@@ -1536,6 +1757,7 @@ function _renderInviteScreen(code, statusText, isErr){
   if(retry) retry.style.display=isErr?"":"none";
   if(err){ err.style.color=isErr?"var(--danger)":"var(--muted)"; err.textContent=statusText||""; }
 }
+function closeInviteRaw(){ if(pairId){ showTab("home"); } else { show("screenStart"); } }
 async function openInvite(force){
   if(!pairId || !currentPairData){ toast("먼저 공간을 만들어주세요"); return; }
   if(otherUid()){ toast("이미 짝과 연결돼 있어요"); return; }
@@ -1547,14 +1769,14 @@ async function openInvite(force){
   if(!force && valid){
     // 이미 서버에 저장된 유효 코드 → 즉시 표시(쓰기 없음·네트워크 무관·경쟁 없음). "코드 안 나옴" 원천 차단.
     _renderInviteScreen(existing, "짝이 이 코드를 입력하면 바로 이어져요");
-    show("screenInvite");
+    show("screenInvite"); navOpen("invite", closeInviteRaw);
     return;
   }
   // 만료됐거나(레거시 자연치유) 강제 재발급 — 새 코드로 저장+표시+공유를 한 값(code)으로 원자 갱신.
   //   표시/복사/공유는 모두 이 code(=표시 DOM)에서 나오고 updateDoc도 같은 code를 저장하므로 "표시==저장==공유".
   const code=genCode();
   _renderInviteScreen(code, "코드를 저장하는 중이에요…");
-  show("screenInvite");
+  show("screenInvite"); navOpen("invite", closeInviteRaw);
   try{
     await M.updateDoc(M.doc(fb.db,"pairs",pairId), {code, codeExpiresAt: Date.now()+24*60*60*1000});
     const err=document.getElementById("inviteErr"); if(err){ err.style.color="var(--muted)"; err.textContent="짝이 이 코드를 입력하면 바로 이어져요"; }
@@ -1710,6 +1932,7 @@ function watchPair(){
         renderMessages(); // 읽음표시 등 부가 필드 변경만 반영, 구독 유지
         if(currentTab==="schedule") renderSchedule();
         if(currentTab==="diary") renderDiary();
+        if(currentTab==="home") renderHome();
       } else if(document.getElementById("screenReinvite").classList.contains("active") && currentPairData.rejoinOpen===true){
         // 재초대 코드 대기 화면은 유지(상대가 아직 안 들어옴)
       } else {
@@ -1726,6 +1949,7 @@ function watchPair(){
         updateSoloAffordances(); renderMessages();
         if(currentTab==="schedule") renderSchedule();
         if(currentTab==="diary") renderDiary();
+        if(currentTab==="home") renderHome();
       } else {
         enterChat();
       }
@@ -1735,9 +1959,11 @@ function watchPair(){
     toast("연결 상태를 확인할 수 없어요"); });
 }
 
-function enterChat(){
+function enterChat(){   // 앱 진입 = 홈 탭부터(구성은 renderHome). 이름은 호환 위해 유지.
+  _navStack.length=0;   // 앱 진입 시 오버레이 스택 초기화(초대 등 잔여 정리)
   showLock();
-  showTab("chat");
+  ensureRootGuard();    // 뒤로가기 이탈 방지용 루트 히스토리 1개 확보
+  showTab("home");
   applyChatHeader();
   updateSoloAffordances();
   watchMessages();
@@ -1823,6 +2049,7 @@ function watchMessages(){
   unsubMsgs = M.onSnapshot(q, snap=>{
     _lastMsgSnapshotDocs = snap.empty ? [] : snap.docs;
     renderMessages();
+    if(currentTab==="home" && inAppTabs()) renderHome(); // 홈 안 읽은 배지 갱신
     if(!isLocked() && document.getElementById("screenChat").classList.contains("active") && document.visibilityState==="visible") markRead();
   }, err=>{ console.error(err); if(isDeniedErr(err) && pairId){ recoverFromDeadPair(); } });
 }
@@ -1918,6 +2145,7 @@ function watchEvents(){
   unsubEvents=M.onSnapshot(q, snap=>{
     _events=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
     if(currentTab==="schedule" && inAppTabs()) renderSchedule();
+    else if(currentTab==="home" && inAppTabs()) renderHomeUpcoming();
   }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
 }
 function watchDiary(){
@@ -1926,6 +2154,7 @@ function watchDiary(){
   unsubDiary=M.onSnapshot(q, snap=>{
     _diary=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
     if(currentTab==="diary" && inAppTabs()) renderDiary();
+    else if(currentTab==="home" && inAppTabs()) renderHomeDiary();
   }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
 }
 
@@ -2093,7 +2322,7 @@ async function addEvent(){
       toast("일정을 추가했어요");
     }
     document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value=""; setEvtEndDate("");
-    document.getElementById("evtForm").style.display="none";
+    closeEvtForm();
     _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
   }catch(e){ console.error(e); toast(isDeniedErr(e)?(_editingEvtId?"수정 권한이 없어요":"추가 권한이 없어요"):(_editingEvtId?"수정하지 못했어요":"추가하지 못했어요")); }
 }
@@ -2107,7 +2336,8 @@ function startEditEvent(id){
   setEvtEndDate(ev.type==="annual" ? "" : (ev.endDate||""));
   document.getElementById("evtMemo").value=ev.memo||"";
   document.getElementById("btnAddEvt").textContent="수정하기";
-  const f=document.getElementById("evtForm"); f.style.display="block"; f.scrollIntoView({behavior:"smooth", block:"center"});
+  openEvtForm();
+  const f=document.getElementById("evtForm"); f.scrollIntoView({behavior:"smooth", block:"center"});
 }
 async function deleteEvent(id){
   if(!confirm("이 일정을 지울까요?")) return;
@@ -2215,6 +2445,7 @@ function openPhotoViewer(list, idx){
   document.getElementById("photoModal").classList.add("show");
   ["pvPrev","pvCur","pvNext"].forEach(id=>document.getElementById(id).src="");
   _pvRender();
+  navOpen("photoViewer", _closeViewerRaw); // 하드웨어/제스처 뒤로가기로도 닫히게
 }
 function viewerNav(delta){
   const n=_viewerIdx+delta;
@@ -2222,12 +2453,13 @@ function viewerNav(delta){
   _pvSetX(-_pvW - delta*_pvW, true); // delta+1→ -2W(다음), delta-1→ 0(이전) 로 슬라이드
   setTimeout(()=>{ _viewerIdx=n; _pvRender(); }, 290);
 }
-function closePhotoViewer(){
+function _closeViewerRaw(){
   const modal=document.getElementById("photoModal");
   modal.classList.remove("show"); modal.style.background="";
   Object.values(_pvCache).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _pvCache={};
   _viewerList=[]; document.getElementById("pvTrack").style.transform="";
 }
+function closePhotoViewer(){ navCloseSelf("photoViewer", _closeViewerRaw); } // UI 트리거(X·배경·아래로 밀기) 공통 — history 정합
 
 /* ---- 사진 압축(캔버스): 긴변 maxDim으로 축소 → JPEG. Uint8Array 반환(Bytes 저장용) ---- */
 function compressImage(file, maxDim, quality){
@@ -2284,8 +2516,8 @@ function startEditDiary(id){
   document.getElementById("diarySelCount").textContent="사진은 그대로 유지돼요";
   document.getElementById("btnAddDiary").textContent="수정하기";
   document.getElementById("btnCancelDiaryEdit").style.display="";
-  const f=document.getElementById("diaryForm"); f.style.display="block";
-  f.scrollIntoView({behavior:"smooth", block:"nearest"});
+  openDiaryForm();
+  document.getElementById("diaryForm").scrollIntoView({behavior:"smooth", block:"nearest"});
 }
 async function saveDiary(){
   if(!pairId){ toast("먼저 시작해주세요"); return; }
@@ -2295,7 +2527,7 @@ async function saveDiary(){
   if(_editingDiaryId){
     try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",_editingDiaryId), {text, date, updatedAt:M.serverTimestamp()}); toast("수정했어요"); }
     catch(e){ console.error(e); toast(isDeniedErr(e)?"수정 권한이 없어요":"수정하지 못했어요"); return; }
-    closeDiaryForm(); return;
+    navCloseSelf("diaryForm", closeDiaryForm); return;
   }
   if(!text && !_diarySel.length){ toast("내용이나 사진을 담아주세요"); return; }
   const remaining=PHOTO_CAP-photoCount();
@@ -2320,7 +2552,7 @@ async function saveDiary(){
     }
     if(fulls.length){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {photoCount: photoCount()+fulls.length}); }
     toast("기록을 저장했어요");
-    closeDiaryForm();
+    navCloseSelf("diaryForm", closeDiaryForm);
   }catch(e){ console.error(e); toast(isDeniedErr(e)?"저장 권한이 없어요":"저장하지 못했어요"); }
   finally{ btn.disabled=false; if(!_editingDiaryId) btn.textContent="저장하기"; }
 }
@@ -2551,7 +2783,7 @@ document.getElementById("btnRejoin").onclick=()=>{ document.getElementById("rejo
 document.getElementById("btnRejoinSubmit").onclick=()=>submitRejoin();
 document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitRejoin(); });
 document.getElementById("btnRejoinCancel").onclick=()=>show("screenStart");
-document.getElementById("btnInviteBack").onclick=()=>{ if(pairId) enterChat(); else show("screenStart"); };
+document.getElementById("btnInviteBack").onclick=()=>navBack();
 document.getElementById("btnInvite").onclick=()=>openInvite();
 document.getElementById("btnInviteRetry").onclick=()=>openInvite(true); // 강제 새 코드 발급
 document.getElementById("soloBanner").onclick=()=>openInvite();
@@ -2595,6 +2827,8 @@ document.getElementById("btnAttach").onclick=()=>{ const m=document.getElementBy
   if(files.length) sendChatPhotos(files);
 }));
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
+document.getElementById("btnHomeSettings").onclick=()=>{ showTab("settings"); };
+["btnHomeRefresh"].forEach(id=>{ const el=document.getElementById(id); if(el) el.onclick=refreshApp; });
 async function refreshApp(){
   try{
     if("serviceWorker" in navigator){
@@ -2608,7 +2842,7 @@ async function refreshApp(){
   const el=document.getElementById(id);
   if(el) el.onclick=refreshApp;
 });
-document.getElementById("btnBackFromSettings").onclick=()=>showTab("chat");
+document.getElementById("btnBackFromSettings").onclick=()=>showTab("home");
 document.getElementById("btnBreakup").onclick=openBreakup;
 document.getElementById("breakupStep1Cancel").onclick=closeBreakup;
 document.getElementById("breakupStep1Confirm").onclick=openBreakupStep2;
@@ -2629,12 +2863,17 @@ document.getElementById("annivInput").addEventListener("change",e=>{ setProfile(
 
 /* 일정 컨트롤 */
 document.getElementById("btnSchedRefresh").onclick=refreshApp;
+function _hideEvtForm(){ const f=document.getElementById("evtForm"); if(f) f.style.display="none"; }
+function openEvtForm(){ document.getElementById("evtForm").style.display="block"; navOpen("evtForm", _hideEvtForm); }
+function closeEvtForm(){ navCloseSelf("evtForm", _hideEvtForm); }   // 저장 완료·닫기 공통(history 정합)
 document.getElementById("btnToggleEvtForm").onclick=()=>{
-  const f=document.getElementById("evtForm"); const open=f.style.display==="none";
-  if(open){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기"; setEvtEndDate("");
-    if(!document.getElementById("evtDate").value) setEvtDate(_selDate||todayStr()); else setEvtDate(document.getElementById("evtDate").value); }
-  f.style.display=open?"block":"none";
+  const f=document.getElementById("evtForm"); const willOpen=f.style.display==="none";
+  if(willOpen){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기"; setEvtEndDate("");
+    if(!document.getElementById("evtDate").value) setEvtDate(_selDate||todayStr()); else setEvtDate(document.getElementById("evtDate").value);
+    openEvtForm();
+  } else { navBack(); }
 };
+document.getElementById("evtFormBack").onclick=()=>navBack();
 document.getElementById("evtDatePrev").onclick=()=>shiftEvtDate(-1);
 document.getElementById("evtDateNext").onclick=()=>shiftEvtDate(1);
 document.getElementById("evtDate").addEventListener("change",e=>{ const l=document.getElementById("evtDateLabel"); if(l) l.textContent=fmtDateK(e.target.value); });
@@ -2649,15 +2888,17 @@ document.getElementById("btnAddEvt").onclick=addEvent;
 /* 다이어리 컨트롤 */
 document.getElementById("diaryTabList").onclick=()=>setDiaryView("list");
 document.getElementById("diaryTabGrid").onclick=()=>setDiaryView("grid");
+function openDiaryForm(){ document.getElementById("diaryForm").style.display="block"; navOpen("diaryForm", closeDiaryForm); }
 document.getElementById("btnToggleDiaryForm").onclick=()=>{
-  const f=document.getElementById("diaryForm"); const open=f.style.display==="none";
-  if(open){ closeDiaryForm(); if(!document.getElementById("diaryDate").value) document.getElementById("diaryDate").value=todayStr(); f.style.display="block"; }
-  else { f.style.display="none"; }
+  const f=document.getElementById("diaryForm"); const willOpen=f.style.display==="none";
+  if(willOpen){ closeDiaryForm(); if(!document.getElementById("diaryDate").value) document.getElementById("diaryDate").value=todayStr(); openDiaryForm(); }
+  else { navBack(); }
 };
+document.getElementById("diaryFormBack").onclick=()=>navBack();
 document.getElementById("diaryPhotos").addEventListener("change", onDiaryFileSelect);
 document.getElementById("diaryCamera").addEventListener("change", onDiaryFileSelect); // 📷 바로 찍기(단일 촬영)
 document.getElementById("btnAddDiary").onclick=saveDiary;
-document.getElementById("btnCancelDiaryEdit").onclick=()=>closeDiaryForm();
+document.getElementById("btnCancelDiaryEdit").onclick=()=>navBack();
 document.getElementById("photoModalClose").onclick=closePhotoViewer;
 document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") closePhotoViewer(); });
 document.getElementById("photoPrev").onclick=e=>{ e.stopPropagation(); viewerNav(-1); };
