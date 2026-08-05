@@ -827,7 +827,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.6"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.5.7"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1471,6 +1471,7 @@ function enterChat(){
   watchDiary();
   if(!isLocked()) markRead();
   maybeShowInstallHint();
+  syncNotifyToken(); // 알림 켠 상태면 현재 pair로 토큰 재기록(방 이동 대응)
 }
 
 /* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
@@ -2199,10 +2200,11 @@ if(window.visualViewport){
 }
 
 /* =========================================================================
-   알림(웹푸시, FCM) — 2단계 A: 클라이언트 통합 + 내용 완전 숨김. 실제 발송 인프라(VAPID·릴레이)는
-   콘솔 작업(사장님) 이후에만 e2e 검증 가능 — 이 코드는 그 전 단계까지의 클라이언트 경로.
+   알림(웹푸시, FCM) — 대화 알림 + 내용 완전 숨김. VAPID 공개키는 콘솔에서 발급 완료(2026-08-05).
+   발송은 PC 릴레이(scripts/ogu_push_relay.py, 서비스계정)가 Firestore 신규 메시지 감지 → 상대 토큰으로 FCM.
+   ⚠️VAPID_KEY는 "공개키"라 클라이언트에 포함되는 것이 정상(비밀 아님). 비밀은 서비스계정 키(저장소 밖).
    ========================================================================= */
-const VAPID_KEY = ""; // TODO(사장님): Firebase 콘솔 웹 푸시 인증서 공개키로 교체
+const VAPID_KEY = "B5xTIPaDpPQQ6aUyPB2nNZwKAyvKktewQGJ49DFkUcOxghbq1hiKaD2Cv5JtVsGwJjbbzcVvBYi5IRPPNHt9ZSDg";
 let fcmMessaging=null;
 function notifyIsOn(){ return !!localStorage.getItem("oguogu.notify.on"); }
 function renderNotifyUI(){
@@ -2222,12 +2224,21 @@ async function enableNotify(){
     if(!fcmMessaging) fcmMessaging = messagingMod.getMessaging(fb.app);
     const token = await messagingMod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await navigator.serviceWorker.ready});
     if(!token){ toast("토큰 발급에 실패했어요"); return; }
+    localStorage.setItem("oguogu.notify.token", token); // 캐시 → 합류/방 이동 시 현재 pair로 재기록
     if(pairId){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token}).catch(()=>{}); }
     localStorage.setItem("oguogu.notify.on","1");
     renderNotifyUI();
     toast("🔔 알림을 켰어요 — 내용은 절대 표시되지 않아요");
     messagingMod.onMessage(fcmMessaging, ()=>{ toast("🩷 5959 · 새 소식이 있어요"); });
   }catch(err){ console.error(err); toast("알림 설정에 실패했어요"); }
+}
+/* 토큰이 pair를 따라가게: 알림 켠 사용자가 방을 이동(양쪽-솔로 합류 등)하면, 캐시된 토큰을 현재 pair의
+   fcmTokens[내uid]에 재기록한다(릴레이가 "현재 공간"에서 상대 토큰을 찾도록). enterChat에서 1회 호출. */
+async function syncNotifyToken(){
+  if(!notifyIsOn() || !pairId) return;
+  const tk=localStorage.getItem("oguogu.notify.token"); if(!tk) return;
+  if(currentPairData && currentPairData.fcmTokens && currentPairData.fcmTokens[fb.uid]===tk) return; // 이미 최신
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: tk}); }catch(e){ /* 조용히 */ }
 }
 function disableNotify(){ localStorage.removeItem("oguogu.notify.on"); renderNotifyUI(); toast("알림을 껐어요"); }
 document.getElementById("notifyToggle").onclick=()=>{ notifyIsOn()?disableNotify():enableNotify(); };

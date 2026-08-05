@@ -1,0 +1,208 @@
+# -*- coding: utf-8 -*-
+"""
+5959(오구오구) 웹푸시 릴레이 — 서버 없는 구조의 "PC 릴레이".
+Firestore의 신규 대화 메시지를 감지해, 그 메시지를 "받는 쪽(상대 멤버)"의 FCM 토큰으로만 푸시를 보낸다.
+내용은 절대 싣지 않는다(data-only) → 브라우저/서비스워커가 고정 문구 "새 소식이 도착했어요"만 표시한다.
+
+설계 원칙(사장님 승인 라운드):
+  - 본인 메시지엔 미발송(보낸 사람에게는 알림 X). 상대 멤버 토큰으로만.
+  - 내용 미노출: notification 블록을 절대 넣지 않는다(data-only). 문구는 sw.js onBackgroundMessage가 고정.
+  - 중복 발송 방지: (a) 프로세스 단일 인스턴스 락, (b) 메시지별 처리 상태(state.json)로 재발송 차단.
+  - 무료 읽기 한도 보수적: paired 목록은 드물게(기본 5분) 갱신, 메시지 폴링은 보수적 간격(기본 30초).
+  - 비밀(서비스계정 키)은 저장소 밖 경로에서 로드. 절대 커밋 금지.
+
+필요 패키지:  pip install firebase-admin
+서비스계정 키:  기본 경로 = C:/Users/NHNE/ogu-ogu-secrets/ogu-ogu-service-account.json
+              (환경변수 OGU_SA_KEY 로 덮어쓸 수 있음)
+실행:  python scripts/ogu_push_relay.py           (상시 폴링)
+       python scripts/ogu_push_relay.py --once    (1회 스윕 후 종료, 점검용)
+로그:  C:/Users/NHNE/ogu-ogu-secrets/ogu_push_relay.log
+"""
+import os, sys, json, time, logging, socket, atexit
+from datetime import datetime, timezone
+
+PROJECT_ID = "ogu-ogu-app-e4193"
+SECRETS_DIR = os.environ.get("OGU_SECRETS_DIR", r"C:/Users/NHNE/ogu-ogu-secrets")
+SA_KEY = os.environ.get("OGU_SA_KEY", os.path.join(SECRETS_DIR, "ogu-ogu-service-account.json"))
+STATE_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay_state.json")
+LOCK_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay.lock")
+LOG_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay.log")
+
+PAIRS_REFRESH_SEC = int(os.environ.get("OGU_PAIRS_REFRESH_SEC", "300"))   # paired 목록 갱신(보수적)
+POLL_SEC = int(os.environ.get("OGU_POLL_SEC", "30"))                       # 메시지 폴링 간격(보수적)
+MSG_LIMIT = 20                                                             # 한 번에 처리할 신규 메시지 상한
+
+os.makedirs(SECRETS_DIR, exist_ok=True)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                    handlers=[logging.FileHandler(LOG_PATH, encoding="utf-8"), logging.StreamHandler(sys.stdout)])
+log = logging.getLogger("ogu_relay")
+
+
+# ── 단일 인스턴스 락(중복 발송 사고 방지) ─────────────────────────────
+def acquire_single_instance():
+    if os.path.exists(LOCK_PATH):
+        try:
+            info = json.load(open(LOCK_PATH, encoding="utf-8"))
+            pid = int(info.get("pid", -1))
+            if _pid_alive(pid):
+                log.error("이미 릴레이가 실행 중입니다(pid=%s, host=%s). 중복 실행 방지로 종료.", pid, info.get("host"))
+                sys.exit(2)
+        except Exception:
+            pass  # 손상된 락은 덮어쓴다
+    json.dump({"pid": os.getpid(), "host": socket.gethostname(), "at": _now_iso()},
+              open(LOCK_PATH, "w", encoding="utf-8"))
+    atexit.register(lambda: os.path.exists(LOCK_PATH) and os.remove(LOCK_PATH))
+
+
+def _pid_alive(pid):
+    if pid <= 0:
+        return False
+    try:
+        if os.name == "nt":
+            import subprocess
+            out = subprocess.check_output(["tasklist", "/FI", f"PID eq {pid}"], stderr=subprocess.DEVNULL).decode("cp949", "ignore")
+            return str(pid) in out
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ── 상태(중복 방지): pair별 마지막 처리한 메시지 시각(ms) ───────────────
+def load_state():
+    try:
+        return json.load(open(STATE_PATH, encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def save_state(state):
+    tmp = STATE_PATH + ".tmp"
+    json.dump(state, open(tmp, "w", encoding="utf-8"))
+    os.replace(tmp, STATE_PATH)
+
+
+def _ts_ms(v):
+    # Firestore Timestamp(서버시간) → epoch ms. None/누락은 0.
+    if v is None:
+        return 0
+    try:
+        return int(v.timestamp() * 1000)
+    except Exception:
+        return 0
+
+
+def main():
+    if not os.path.exists(SA_KEY):
+        log.error("서비스계정 키가 없습니다: %s", SA_KEY)
+        log.error("→ 사장님: Firebase 콘솔(u/1 tongshin2) → 프로젝트 설정 → 서비스 계정 → '새 비공개 키 생성'으로")
+        log.error("  JSON을 받아 위 경로에 저장하세요(저장소 밖, 절대 커밋 금지).")
+        sys.exit(3)
+
+    import firebase_admin
+    from firebase_admin import credentials, firestore, messaging
+
+    acquire_single_instance()
+    firebase_admin.initialize_app(credentials.Certificate(SA_KEY))
+    db = firestore.client()
+    log.info("릴레이 시작 (project=%s, poll=%ss, pairs_refresh=%ss)", PROJECT_ID, POLL_SEC, PAIRS_REFRESH_SEC)
+
+    state = load_state()
+    once = "--once" in sys.argv
+    pairs = {}
+    pairs_loaded_at = 0
+
+    while True:
+        now = time.time()
+        # paired 목록 갱신(보수적)
+        if now - pairs_loaded_at >= PAIRS_REFRESH_SEC or not pairs:
+            pairs = load_paired(db)
+            pairs_loaded_at = now
+            log.info("활성 pair %d개 로드", len(pairs))
+
+        sent = 0
+        for pid, members in list(pairs.items()):
+            sent += process_pair(db, messaging, pid, members, state)
+        if sent:
+            save_state(state)
+            log.info("이번 스윕 발송 %d건", sent)
+
+        if once:
+            break
+        time.sleep(POLL_SEC)
+
+
+def load_paired(db):
+    """status==paired 인 pair만 {pid: {'members':[..], 'fcmTokens':{uid:token}}}."""
+    out = {}
+    try:
+        for d in db.collection("pairs").where("status", "==", "paired").stream():
+            data = d.to_dict() or {}
+            out[d.id] = {"members": data.get("memberUids", []), "fcmTokens": data.get("fcmTokens", {}) or {}}
+    except Exception as e:
+        log.warning("paired 목록 조회 실패: %s", e)
+    return out
+
+
+def process_pair(db, messaging, pid, meta, state):
+    """pair의 신규 메시지를 감지 → 상대 멤버 토큰으로 data-only 푸시. 발송 건수 반환."""
+    last = int(state.get(pid, 0))
+    sent = 0
+    try:
+        # ts 오름차순, 최근 것부터 제한. lastSeen 이후만 처리(중복 방지).
+        q = db.collection("pairs").document(pid).collection("messages").order_by("ts").limit_to_last(MSG_LIMIT)
+        docs = list(q.get())
+    except Exception as e:
+        log.warning("[%s] 메시지 조회 실패: %s", pid, e)
+        return 0
+
+    # 최신 fcmTokens 확보(캐시가 오래됐을 수 있어 pair 문서 재조회는 비용이라, 스윕 시작분 meta 사용).
+    tokens = meta.get("fcmTokens", {})
+    max_ts = last
+    for d in docs:
+        m = d.to_dict() or {}
+        ts = _ts_ms(m.get("ts"))
+        if ts <= last:
+            continue
+        max_ts = max(max_ts, ts)
+        sender = m.get("sender")
+        # 받는 쪽 = 보낸 사람 아닌 멤버(들)
+        for uid in meta.get("members", []):
+            if uid == sender:
+                continue  # 본인에겐 미발송
+            token = tokens.get(uid)
+            if not token:
+                continue  # 상대가 알림 미구독
+            if _send(messaging, token, pid):
+                sent += 1
+    if max_ts > last:
+        state[pid] = max_ts
+    return sent
+
+
+def _send(messaging, token, pid):
+    """data-only 푸시(내용 미노출). notification 블록 없음 → sw.js가 고정 문구 표시."""
+    try:
+        msg = messaging.Message(
+            token=token,
+            data={"t": "m"},  # 내용 없음(신규 메시지 신호만)
+            webpush=messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "1800"},
+                # notification 의도적으로 미포함 — 내용 노출 방지(문구는 서비스워커가 고정).
+            ),
+        )
+        messaging.send(msg)
+        return True
+    except Exception as e:
+        name = type(e).__name__
+        # 무효/만료 토큰 등은 조용히 스킵(다음 구독 갱신 때 정리됨). 내용은 로그에도 안 남김.
+        log.info("[%s] 발송 스킵(%s)", pid, name)
+        return False
+
+
+if __name__ == "__main__":
+    main()

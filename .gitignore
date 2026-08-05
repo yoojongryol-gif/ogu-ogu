@@ -5,3 +5,11 @@ dev/
 .env.*
 *.log
 .DS_Store
+# 웹푸시 서비스계정 키/상태 — 절대 커밋 금지(원칙: 저장소 밖 ../ogu-ogu-secrets 에 보관).
+# 혹시 저장소 안에 실수로 들어오더라도 커밋되지 않도록 방어.
+ogu-ogu-secrets/
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+ogu_push_relay_state.json
+ogu_push_relay.lock
