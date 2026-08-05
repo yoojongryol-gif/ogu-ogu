@@ -72,6 +72,10 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _now_ms():
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
 # ── 상태(중복 방지): pair별 마지막 처리한 메시지 시각(ms) ───────────────
 def load_state():
     try:
@@ -149,13 +153,21 @@ def load_paired(db):
 
 
 def process_pair(db, messaging, pid, meta, state):
-    """pair의 신규 메시지를 감지 → 상대 멤버 토큰으로 data-only 푸시. 발송 건수 반환."""
-    last = int(state.get(pid, 0))
+    """pair의 신규 메시지를 감지 → 상대 멤버 토큰으로 data-only 푸시. 발송 건수 반환.
+    비용 핵심: lastSeen '이후'(ts >) 만 쿼리 → 신규 메시지가 없으면 읽기 0건(무료 한도 보수적).
+    첫 관측 pair는 백로그를 알림 없이 건너뛰고 기준시각만 now로 세팅(과거 메시지 무더기 발송/읽기 방지)."""
+    from firebase_admin import firestore as _fs
+    from datetime import datetime, timezone
     sent = 0
+    if pid not in state:
+        state[pid] = _now_ms()  # 첫 관측: 백로그 스킵(이 시점 이후 메시지만 알림)
+        return 0
+    last = int(state[pid])
     try:
-        # ts 오름차순, 최근 것부터 제한. lastSeen 이후만 처리(중복 방지).
-        q = db.collection("pairs").document(pid).collection("messages").order_by("ts").limit_to_last(MSG_LIMIT)
-        docs = list(q.get())
+        after = datetime.fromtimestamp(last / 1000.0, timezone.utc)
+        q = (db.collection("pairs").document(pid).collection("messages")
+             .where("ts", ">", after).order_by("ts").limit(MSG_LIMIT))
+        docs = list(q.get())  # 신규 없으면 0건 읽기
     except Exception as e:
         log.warning("[%s] 메시지 조회 실패: %s", pid, e)
         return 0
