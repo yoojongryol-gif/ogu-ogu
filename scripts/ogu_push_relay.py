@@ -33,8 +33,10 @@ POLL_SEC = int(os.environ.get("OGU_POLL_SEC", "30"))                       # 메
 MSG_LIMIT = 20                                                             # 한 번에 처리할 신규 메시지 상한
 
 os.makedirs(SECRETS_DIR, exist_ok=True)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                    handlers=[logging.FileHandler(LOG_PATH, encoding="utf-8"), logging.StreamHandler(sys.stdout)])
+_handlers = [logging.FileHandler(LOG_PATH, encoding="utf-8")]
+if sys.stdout is not None:  # pythonw(무창) 실행 시 stdout=None → StreamHandler 생략(로그는 파일로만)
+    _handlers.append(logging.StreamHandler(sys.stdout))
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=_handlers)
 log = logging.getLogger("ogu_relay")
 
 
@@ -131,8 +133,10 @@ def main():
         sent = 0
         for pid, members in list(pairs.items()):
             sent += process_pair(db, messaging, pid, members, state)
+        # 상태는 항상 저장한다 — 첫 관측(first-sight)으로 세팅한 lastSeen도 반드시 영속화해야
+        # 다음 스윕에서 '그 이후' 메시지를 신규로 잡는다(sent==0일 때 미저장 시 매번 재초기화되어 발송 누락).
+        save_state(state)
         if sent:
-            save_state(state)
             log.info("이번 스윕 발송 %d건", sent)
 
         if once:
