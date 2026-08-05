@@ -827,7 +827,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.7"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.5.8"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -2200,11 +2200,14 @@ if(window.visualViewport){
 }
 
 /* =========================================================================
-   알림(웹푸시, FCM) — 대화 알림 + 내용 완전 숨김. VAPID 공개키는 콘솔에서 발급 완료(2026-08-05).
-   발송은 PC 릴레이(scripts/ogu_push_relay.py, 서비스계정)가 Firestore 신규 메시지 감지 → 상대 토큰으로 FCM.
-   ⚠️VAPID_KEY는 "공개키"라 클라이언트에 포함되는 것이 정상(비밀 아님). 비밀은 서비스계정 키(저장소 밖).
-   ========================================================================= */
-const VAPID_KEY = "B5xTIPaDpPQQ6aUyPB2nNZwKAyvKktewQGJ49DFkUcOxghbq1hiKaD2Cv5JtVsGwJjbbzcVvBYi5IRPPNHt9ZSDg";
+   알림(웹푸시, FCM) — 대화 알림 + 내용 완전 숨김. 발송은 PC 릴레이(scripts/ogu_push_relay.py, 서비스계정).
+   ⚠️VAPID_KEY는 "공개키"라 클라이언트에 포함되는 것이 정상(비밀 아님).
+   상태(2026-08-05): 콘솔(u/1 tongshin2) 클라우드 메시징에서 웹 푸시 인증서(VAPID 키쌍)를 "생성 완료"했으나,
+   콘솔 SPA가 무한 로딩 상태라 자동화로 키 문자열을 신뢰성 있게 추출하지 못함(스크린샷/텍스트 추출 타임아웃).
+   → 사장님이 콘솔 [웹 푸시 인증서]의 "키 쌍" 복사 아이콘으로 87자 공개키를 복사해 아래에 붙여넣으면 활성화.
+      경로: console.firebase.google.com/u/1/project/ogu-ogu-app-e4193/settings/cloudmessaging (키 쌍 열의 복사).
+   빈 값이면 enableNotify가 "발송 준비 필요" 문구로 안전하게 막는다(잘못된 키로 인한 오류 노출 방지). */
+const VAPID_KEY = ""; // TODO(사장님): 콘솔 [웹 푸시 인증서] 키 쌍 복사 → 여기 붙여넣기(공개키, 커밋 OK)
 let fcmMessaging=null;
 function notifyIsOn(){ return !!localStorage.getItem("oguogu.notify.on"); }
 function renderNotifyUI(){
