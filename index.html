@@ -910,14 +910,17 @@ const APP_VERSION = "0.7.0"; // 1인 1계정(구글 로그인)+Firebase Hosting 
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
-/* authDomain은 "서빙 오리진과 동일"해야 iOS standalone에서 signInWithRedirect가 same-site로 동작한다
-   (교차도메인 시 Safari 16.1+/Chrome 115+ 서드파티 쿠키 차단으로 결과 회수 실패 — 공식 이슈 #8329).
-   Firebase Hosting 도메인(web.app/firebaseapp.com)에서 서빙되면 그 호스트를 그대로 authDomain으로 써서
-   앱 오리진==authDomain을 성립시킨다. 그 외(localhost=에뮬레이터, 레거시 github.io=구글로그인 미사용)는 기본값. */
+/* authDomain은 Firebase 기본값(firebaseapp.com)을 쓴다 — 자동 생성 OAuth 클라이언트에 이미 등록된
+   리다이렉트 URI가 `https://<project>.firebaseapp.com/__/auth/handler`뿐이기 때문(web.app 핸들러는 미등록 →
+   web.app로 지정하면 redirect_uri_mismatch, 8/5 실측). 앱은 web.app에서 서빙하되 로그인 왕복은 firebaseapp.com
+   핸들러를 경유(표준 Firebase 구성).
+   ⚠️iOS standalone 강화(선택): 진짜 same-site가 필요하면 (1) GCP 콘솔 OAuth 클라이언트에
+   `https://ogu-ogu-app-e4193.web.app/__/auth/handler`를 승인된 리디렉션 URI로 추가하고 (2) 이 authDomain을
+   web.app로 바꾸면 된다. 그 전까지는 표준 firebaseapp.com 경유(공식 이슈 #8329는 실기기 확인 권장). */
 const _HOST = (typeof location!=="undefined") ? location.hostname : "";
 const firebaseConfig = {
   apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
-  authDomain: (_HOST.endsWith(".web.app") || _HOST.endsWith(".firebaseapp.com")) ? _HOST : "ogu-ogu-app-e4193.firebaseapp.com",
+  authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
   projectId: "ogu-ogu-app-e4193",
   storageBucket: "ogu-ogu-app-e4193.firebasestorage.app",
   messagingSenderId: "663259886074",
