@@ -13,9 +13,11 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
 <!--
 ================================================================================
-  5959 (v0.5.3) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
+  5959 (v0.5.4) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
   · v0.5.3: 양쪽-솔로 합류(설정→받은 코드 입력, 합류 성공 후 내 솔로 정리) + 초대 저장실패 문구 분리
     (permission-denied↔네트워크) + 케이스 I가 waiting 수용(구세대) + 설정에 앱/캐시 버전 표시.
+  · v0.5.4: iOS 전송버튼 무반응 수리(touchstart preventDefault가 click 취소 → touchend/click 직접 전송+디바운스)
+    + 전송 실패 비침묵(입력 복원·상태별 토스트) + 키보드 열림 시 하단 탭바 접힘(입력바 바닥 정합).
   · 토큰 구조는 design/index.html 시안(2026-08-04, 사장님 ⓐ "따뜻한 감성" 확정)에서 이식.
   · 전 화면이 아래 토큰만 참조 → 레이아웃 기본기는 테마 무관 동일, 차이는 값(팔레트)으로만.
   · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
@@ -380,8 +382,12 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   display:none; flex:none; align-items:stretch; background:var(--surface);
   border-top:1px solid var(--line); box-shadow:0 -1px 3px rgba(90,60,60,.05);
   padding-bottom:env(safe-area-inset-bottom,0px); z-index:3;
+  overflow:hidden; max-height:96px; transition:max-height .22s ease, opacity .18s ease;
 }
 .tabbar.on{display:flex}
+/* 키보드가 올라오면 하단 탭바를 부드럽게 접어(입력바가 자연스럽게 바닥까지 내려옴), 내려가면 복귀.
+   visualViewport로 키보드 높이 감지 → body.kb-open 토글(채팅·일정·다이어리 입력 공통). */
+body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-events:none; }
 .tab{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 2px 6px; color:var(--muted); font-size:10.5px; font-weight:var(--w-med)}
 .tab .ti{font-size:20px; line-height:1}
 .tab.on{color:var(--accent)}
@@ -821,7 +827,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.3"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.5.4"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1531,9 +1537,12 @@ async function sendMessage(){
     sender: fb.uid, text, ts: M.serverTimestamp()
   }).catch(err=>{
     console.error(err);
-    input.value=text;
-    if(isDeniedErr(err)){ recoverFromDeadPair(); return; }
-    toast("전송에 실패했어요");
+    input.value=text; // 실패 시 입력 복원(침묵 금지 — 사용자가 다시 시도 가능)
+    if(isDeniedErr(err)){
+      if(currentPairData && currentPairData.status==="dissolved"){ toast("이 공간은 정리된 상태라 보낼 수 없어요"); handleDissolved(); return; }
+      toast("연결이 만료됐어요. 다시 연결해주세요"); recoverFromDeadPair(); return;
+    }
+    toast("전송에 실패했어요 — 잠시 후 다시 시도해주세요");
   });
 }
 
@@ -2061,11 +2070,21 @@ document.getElementById("shareChip").onclick=async ()=>{
   try{ await navigator.share({title:"5959", text:"우리 둘만의 공간 5959 초대코드: "+c+"\n앱에서 '받은 초대코드가 있어요'에 입력해줘"}); }
   catch(e){ /* 사용자가 취소한 경우 조용히 무시 */ }
 };
-/* iOS 키보드 유지: 전송 버튼 기본 blur 차단 + form submit 경로로 전송 */
-["mousedown","touchstart"].forEach(ev=>{
-  document.getElementById("sendBtn").addEventListener(ev, e=>{ e.preventDefault(); }, {passive:false});
-});
-document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); });
+/* 전송 트리거 — iOS "전송 버튼 무반응" 회귀 수리.
+   기존엔 touchstart에서 preventDefault로 blur만 막으려 했으나, iOS Safari는 touchstart의
+   preventDefault가 뒤따르는 click을 통째로 취소한다 → 버튼이 type=submit이어도 submit이 안 떠서
+   sendMessage가 호출되지 않았다(전송 버튼 탭 무반응 = 사장님 "전송 안 됨"의 실제 원인. 데스크톱은
+   click이 살아 정상 → 폰만 실패하던 이유). 수리: 제스처(touchend/click/엔터)에서 전송을 "직접" 실행,
+   400ms 디바운스로 중복 방지. mousedown preventDefault는 데스크톱 blur 차단용으로만(클릭은 살림). */
+let _lastSendAt=0;
+function triggerSend(){ const t=Date.now(); if(t-_lastSendAt<400) return; _lastSendAt=t; sendMessage(); }
+(function(){
+  const sb=document.getElementById("sendBtn");
+  sb.addEventListener("touchend", e=>{ e.preventDefault(); triggerSend(); }, {passive:false}); // 모바일: 키보드 유지+전송
+  sb.addEventListener("mousedown", e=>{ e.preventDefault(); }, {passive:false});                // 데스크톱: blur만 차단
+  sb.addEventListener("click", e=>{ e.preventDefault(); triggerSend(); });                       // 데스크톱: 전송
+})();
+document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); triggerSend(); }); // 엔터키
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 async function refreshApp(){
   try{
@@ -2140,7 +2159,13 @@ document.getElementById("installHintClose").onclick=()=>{
 /* ===== iOS 키보드 대응: visualViewport로 실제 보이는 높이에 앱 셸을 맞춤 ===== */
 if(window.visualViewport){
   const vv=window.visualViewport;
-  const applyVV=()=>{ document.body.style.height = vv.height+"px"; window.scrollTo(0,0); };
+  const applyVV=()=>{
+    document.body.style.height = vv.height+"px";
+    window.scrollTo(0,0);
+    // 키보드 열림 감지: 레이아웃 뷰포트(innerHeight)와 시각 뷰포트(vv.height) 높이차가 크면 키보드가 올라온 것.
+    const kbOpen = (window.innerHeight - vv.height) > 120;
+    document.body.classList.toggle("kb-open", kbOpen); // → 하단 탭바 접힘(.kb-open .tabbar)
+  };
   vv.addEventListener("resize", applyVV);
   vv.addEventListener("scroll", applyVV);
 }
