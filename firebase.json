@@ -17,6 +17,8 @@
       "**/node_modules/**",
       "dev/**",
       "scripts/**",
+      "test/**",
+      "design/**",
       "firestore.rules",
       "storage.rules",
       "firestore.indexes.json"
