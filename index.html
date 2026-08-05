@@ -288,6 +288,25 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   background:var(--accent); color:var(--accent-ink); font-size:17px; display:grid; place-items:center; box-shadow:var(--shadow);
 }
 #sendBtn:disabled{opacity:.4}
+#btnAttach{
+  width:42px; height:42px; border-radius:var(--r-full); flex:none;
+  background:var(--accent-soft); color:var(--accent); font-size:22px; display:grid; place-items:center; font-weight:var(--w-bold);
+}
+/* 채팅 사진 첨부 메뉴(앨범/카메라) */
+.attach-menu{
+  flex:none; display:flex; gap:8px; padding:8px var(--s3); background:var(--surface); border-top:1px solid var(--line);
+}
+.attach-opt{
+  flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;
+  font-size:13.5px; font-weight:var(--w-med); color:var(--accent); background:var(--accent-soft);
+  padding:11px 14px; border-radius:var(--r-md);
+}
+.attach-opt input{display:none}
+/* 채팅 사진 버블 */
+.bubble.bubble-photo{padding:3px; background:var(--me-bg); max-width:66%}
+.you .bubble.bubble-photo{background:var(--you-bg)}
+.bubble-photo img{display:block; width:100%; max-width:220px; border-radius:15px; object-fit:cover; background:var(--surface2)}
+.bubble-photo.sending{opacity:.55}
 
 /* ═══════════════ 설정 ═══════════════ */
 #screenSettings{padding-top:calc(var(--s5) + env(safe-area-inset-top,0px))}
@@ -632,7 +651,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <span class="go">초대하기 →</span>
   </button>
   <div id="msgList"><div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div></div>
+  <div class="attach-menu" id="attachMenu" style="display:none">
+    <label class="attach-opt">🖼️ 앨범에서<input type="file" id="chatAlbum" accept="image/*" multiple></label>
+    <label class="attach-opt">📷 사진 찍기<input type="file" id="chatCamera" accept="image/*" capture="environment"></label>
+  </div>
   <form class="inbar" id="chatForm">
+    <button type="button" id="btnAttach" aria-label="사진 첨부">＋</button>
     <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
     <button id="sendBtn" type="submit">↑</button>
   </form>
@@ -678,8 +702,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div class="form-card" id="diaryForm" style="display:none">
       <input class="fi" id="diaryDate" type="date">
       <textarea class="fi" id="diaryText" maxlength="2000" placeholder="오늘 우리 이야기를 적어봐요"></textarea>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <label class="file-btn" id="diaryFileLabel">🖼️ 사진 담기<input type="file" id="diaryPhotos" accept="image/*" multiple style="display:none"></label>
+        <label class="file-btn" id="diaryCamLabel">📷 바로 찍기<input type="file" id="diaryCamera" accept="image/*" capture="environment" style="display:none"></label>
         <span class="photo-count" id="diarySelCount"></span>
       </div>
       <button class="primary-btn" id="btnAddDiary" style="max-width:none">저장하기</button>
@@ -934,7 +959,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.3"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.4"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1757,11 +1782,20 @@ function renderMessages(){
         ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
         : '<div class="meta"><span>'+time+'</span></div>';
     }
-    const bubbleHtml='<div class="bubble">'+esc(m.text)+'</div>';
+    const bubbleHtml = m.thumb
+      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
+      : '<div class="bubble">'+esc(m.text)+'</div>';
     row.innerHTML = mine ? (metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
     list.appendChild(row);
   }
+  // 채팅 사진 탭 → 기존 뷰어 재사용(대화 내 사진들을 연속 열람·스와이프·프리로드)
+  const photoMsgs = msgs.filter(x=>x.data && x.data.thumb);
+  const photoItems = photoMsgs.map(x=>({ref:["messages", x.id, "photos", x.data.thumb.photoId]}));
+  list.querySelectorAll("[data-chatmsg]").forEach(el=>el.onclick=()=>{
+    const idx=photoMsgs.findIndex(x=>x.id===el.dataset.chatmsg);
+    openPhotoViewer(photoItems, Math.max(0, idx));
+  });
   list.scrollTop = list.scrollHeight;
 }
 function watchMessages(){
@@ -1803,6 +1837,34 @@ async function sendMessage(){
     }
     toast("전송에 실패했어요 — 잠시 후 다시 시도해주세요");
   });
+}
+
+/* 채팅 사진 전송 — 다이어리와 동일 규격(1280 q75 + 썸네일 320 q65). 썸네일은 메시지 문서에 인라인,
+   원본은 messages/{id}/photos/{photoId}에 Bytes. 캡은 pair.photoCount 합산(다이어리+채팅 공용 50장). */
+async function sendChatPhotos(fileList){
+  if(!pairId || !fileList || !fileList.length) return;
+  if(currentPairData && currentPairData.status==="dissolved"){ toast("이 공간은 정리된 상태예요"); return; }
+  let remaining = PHOTO_CAP - photoCount();
+  if(remaining <= 0){ toast("함께 담을 수 있는 사진은 "+PHOTO_CAP+"장까지예요. 오래된 사진을 정리하면 더 보낼 수 있어요."); return; }
+  const files=[...fileList].slice(0, remaining);
+  if(fileList.length > files.length) toast("사진 용량이 가득 차 "+files.length+"장만 보내요");
+  let added=0;
+  for(const f of files){
+    let full, thumb;
+    try{ full=await compressImage(f,1280,0.75); thumb=await compressImage(f,320,0.65); }
+    catch(err){ console.error(err); toast("일부 사진을 처리하지 못했어요"); continue; }
+    if(full.bytes.length > 950000){ toast("너무 큰 사진은 건너뛰었어요"); continue; } // 1MiB 문서 상한 방어
+    const msgRef=M.doc(M.collection(fb.db,"pairs",pairId,"messages"));
+    const photoId=M.doc(M.collection(fb.db,"pairs",pairId,"messages",msgRef.id,"photos")).id;
+    try{
+      await M.setDoc(msgRef, { sender:fb.uid, ts:M.serverTimestamp(), hasPhoto:true,
+        thumb:{ photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes) } });
+      await M.setDoc(M.doc(fb.db,"pairs",pairId,"messages",msgRef.id,"photos",photoId),
+        { bytes:M.Bytes.fromUint8Array(full.bytes), mime:"image/jpeg", w:full.w, h:full.h, authorUid:fb.uid, createdAt:M.serverTimestamp() });
+      added++;
+    }catch(e){ console.error(e); toast(isDeniedErr(e)?"보낼 권한이 없어요":"사진을 보내지 못했어요"); }
+  }
+  if(added){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), { photoCount: photoCount()+added }).catch(()=>{}); }
 }
 
 /* =========================================================================
@@ -2033,7 +2095,7 @@ function wireDiaryBody(body){
     // 같은 그룹(엔트리 썸네일 묶음 / 그리드 전체)의 사진들을 연속 열람 리스트로 구성
     const container = im.closest(".thumbs, .grid-photos");
     const imgs = container ? [...container.querySelectorAll("[data-photo]")] : [im];
-    const list = imgs.map(x=>({entry:x.dataset.entry, photo:x.dataset.photo}));
+    const list = imgs.map(x=>({ref:["diary", x.dataset.entry, "photos", x.dataset.photo]}));
     openPhotoViewer(list, Math.max(0, imgs.indexOf(im)));
   });
   body.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>startEditDiary(b.dataset.edit));
@@ -2045,13 +2107,15 @@ function wireDiaryBody(body){
 let _viewerList=[], _viewerIdx=0, _pvCache={}, _pvW=0;
 let _dragX0=0, _dragY0=0, _dragging=false, _dragAxis=null, _dragDX=0;
 async function _pvLoadURL(item){
-  if(!item) return "";
-  if(_pvCache[item.photo]) return _pvCache[item.photo];
+  // item.ref = pairs/{pairId} 하위 원본 사진 문서 경로(다이어리/채팅 공용). 예: ["diary",e,"photos",p] / ["messages",m,"photos",p]
+  if(!item || !item.ref) return "";
+  const key=item.ref.join("/");
+  if(_pvCache[key]) return _pvCache[key];
   try{
-    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",item.entry,"photos",item.photo));
+    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,...item.ref));
     if(snap.exists()){
       const d=snap.data(); const u8=(d.bytes && d.bytes.toUint8Array)?d.bytes.toUint8Array():d.bytes;
-      const url=URL.createObjectURL(new Blob([u8],{type:d.mime||"image/jpeg"})); _pvCache[item.photo]=url; return url;
+      const url=URL.createObjectURL(new Blob([u8],{type:d.mime||"image/jpeg"})); _pvCache[key]=url; return url;
     }
   }catch(e){ console.error(e); }
   return "";
@@ -2119,19 +2183,24 @@ function compressImage(file, maxDim, quality){
   });
 }
 function onDiaryFileSelect(e){
+  // 앨범(multiple)·카메라(단일) 공용 — 선택분을 기존 선택에 이어붙인다(카메라로 여러 장 이어 찍기 가능).
   const files=[...e.target.files];
-  const remaining=PHOTO_CAP-photoCount();
-  _diarySel=files.slice(0, Math.max(0,remaining));
-  if(files.length>remaining) toast("이번에 담을 수 있는 사진은 "+Math.max(0,remaining)+"장이에요");
+  const remaining=PHOTO_CAP-photoCount()-_diarySel.length; // 다이어리+채팅 합산 캡(photoCount) 반영
+  const add=files.slice(0, Math.max(0,remaining));
+  _diarySel=_diarySel.concat(add);
+  if(files.length>add.length) toast("사진 용량이 가득 찼어요 (다이어리·채팅 합쳐 "+PHOTO_CAP+"장)");
+  e.target.value=""; // 같은 파일·재촬영 재선택 허용
   const c=document.getElementById("diarySelCount");
-  if(c) c.textContent=_diarySel.length ? _diarySel.length+"장 선택됨" : "";
+  if(c) c.textContent=_diarySel.length ? _diarySel.length+"장 담김" : "";
 }
 function closeDiaryForm(){
   document.getElementById("diaryForm").style.display="none";
   document.getElementById("diaryText").value="";
   document.getElementById("diaryPhotos").value="";
+  document.getElementById("diaryCamera").value="";
   document.getElementById("diarySelCount").textContent="";
   document.getElementById("diaryFileLabel").style.display="";
+  document.getElementById("diaryCamLabel").style.display="";
   document.getElementById("btnCancelDiaryEdit").style.display="none";
   document.getElementById("btnAddDiary").textContent="저장하기";
   _diarySel=[]; _editingDiaryId=null;
@@ -2141,7 +2210,8 @@ function startEditDiary(id){
   _editingDiaryId=id;
   document.getElementById("diaryDate").value=en.date||todayStr();
   document.getElementById("diaryText").value=en.text||"";
-  document.getElementById("diaryFileLabel").style.display="none"; // 이번 라운드: 텍스트만 수정, 사진은 유지
+  document.getElementById("diaryFileLabel").style.display="none"; // 수정 시: 텍스트만, 사진은 유지
+  document.getElementById("diaryCamLabel").style.display="none";
   document.getElementById("diarySelCount").textContent="사진은 그대로 유지돼요";
   document.getElementById("btnAddDiary").textContent="수정하기";
   document.getElementById("btnCancelDiaryEdit").style.display="";
@@ -2305,6 +2375,11 @@ async function verifyBreakupStep2(){
   catch(err){ console.error(err); closeBreakup(); toast("정리하지 못했어요. 다시 시도해주세요"); }
 }
 async function purgeAllMessages(id){
+  // 사진 메시지의 photos 서브컬렉션을 먼저 소거(이별 소거에 채팅 사진 원본 포함).
+  try{
+    const withPhotos=await M.getDocs(M.query(M.collection(fb.db,"pairs",id,"messages"), M.where("hasPhoto","==",true)));
+    for(const d of withPhotos.docs){ await purgeCollection(["pairs",id,"messages",d.id,"photos"]); }
+  }catch(e){ console.error("채팅 사진 소거 실패(비치명):", e); }
   const PAGE=300;
   const colRef=M.collection(fb.db,"pairs",id,"messages");
   while(true){
@@ -2436,6 +2511,12 @@ document.getElementById("shareChip").onclick=async ()=>{
   sb.addEventListener("click", e=>{ e.preventDefault(); sendMessage(); });                       // 데스크톱: 전송
 })();
 document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); }); // 엔터키
+/* 채팅 사진 첨부: + → 앨범/카메라 메뉴 → 선택·촬영 즉시 압축 후 전송 */
+document.getElementById("btnAttach").onclick=()=>{ const m=document.getElementById("attachMenu"); m.style.display = (m.style.display==="none") ? "flex" : "none"; };
+["chatAlbum","chatCamera"].forEach(id=>document.getElementById(id).addEventListener("change",e=>{
+  const files=[...e.target.files]; e.target.value=""; document.getElementById("attachMenu").style.display="none";
+  if(files.length) sendChatPhotos(files);
+}));
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 async function refreshApp(){
   try{
@@ -2493,6 +2574,7 @@ document.getElementById("btnToggleDiaryForm").onclick=()=>{
   else { f.style.display="none"; }
 };
 document.getElementById("diaryPhotos").addEventListener("change", onDiaryFileSelect);
+document.getElementById("diaryCamera").addEventListener("change", onDiaryFileSelect); // 📷 바로 찍기(단일 촬영)
 document.getElementById("btnAddDiary").onclick=saveDiary;
 document.getElementById("btnCancelDiaryEdit").onclick=()=>closeDiaryForm();
 document.getElementById("photoModalClose").onclick=closePhotoViewer;

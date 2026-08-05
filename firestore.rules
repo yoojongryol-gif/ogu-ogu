@@ -169,6 +169,18 @@ service cloud.firestore {
         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
+
+        // 채팅 사진 원본(Bytes) — 다이어리 photos와 동일 규격. 멤버 전용. 이별(dissolved) 시 소거 허용.
+        //   메시지 문서 자체엔 인라인 썸네일(thumb.bytes)만, 원본은 여기에. 캡은 pair.photoCount(케이스 J)로 공용.
+        match /photos/{photoId} {
+          allow read: if isMember(pairOf(pairId));
+          allow create: if isMember(pairOf(pairId))
+            && request.resource.data.authorUid == request.auth.uid
+            && pairOf(pairId).status != "dissolved";
+          allow update: if false;
+          allow delete: if isMember(pairOf(pairId))
+            && (resource.data.authorUid == request.auth.uid || pairOf(pairId).status == "dissolved");
+        }
       }
 
       // ── 일정(events) ────────────────────────────────────────────────
