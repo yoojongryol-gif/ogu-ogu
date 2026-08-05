@@ -866,7 +866,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.6.0"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.6.1"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -2285,15 +2285,36 @@ document.getElementById("installHintClose").onclick=()=>{
   document.getElementById("installHint").style.display="none";
 };
 
-/* ===== iOS 키보드 대응: visualViewport로 실제 보이는 높이에 앱 셸을 맞춤 ===== */
+/* ===== iOS 키보드 대응: 하단 탭바 접기(신호 이중화) =====
+   ★수리: iOS 홈화면(standalone) PWA는 visualViewport 수축 이벤트가 불안정/지연 → 탭바 숨김 미동작.
+   1차 신호 = 입력창 focusin/focusout(채팅·일정·다이어리 텍스트 포커스=키보드 열림으로 간주, iOS에서 가장 확실).
+   2차 = visualViewport(포커스 유지된 채 키보드만 닫히는 경우 보정 + 입력바를 키보드 위로 올리는 셸 높이 보정).
+   blur 시 300ms 디레이로 깜빡임 방지(전송버튼 탭 순간 blur→즉시 재포커스 정합). */
+function _isTextField(el){
+  if(!el) return false;
+  if(el.tagName==="TEXTAREA") return true;
+  if(el.tagName==="INPUT"){ const t=(el.type||"text").toLowerCase(); return !["button","submit","checkbox","radio","range","file","image","reset","color"].includes(t); }
+  return false;
+}
+let _kbBlurTimer=null, _kbConfirmedOpen=false;
+document.addEventListener("focusin", e=>{
+  if(_isTextField(e.target)){ clearTimeout(_kbBlurTimer); _kbConfirmedOpen=false; document.body.classList.add("kb-open"); }
+});
+document.addEventListener("focusout", e=>{
+  if(_isTextField(e.target)){
+    clearTimeout(_kbBlurTimer);
+    _kbBlurTimer=setTimeout(()=>{ if(!_isTextField(document.activeElement)) document.body.classList.remove("kb-open"); }, 300);
+  }
+});
 if(window.visualViewport){
   const vv=window.visualViewport;
   const applyVV=()=>{
-    document.body.style.height = vv.height+"px";
+    document.body.style.height = vv.height+"px"; // 입력바를 키보드 위로(셸 높이 보정)
     window.scrollTo(0,0);
-    // 키보드 열림 감지: 레이아웃 뷰포트(innerHeight)와 시각 뷰포트(vv.height) 높이차가 크면 키보드가 올라온 것.
-    const kbOpen = (window.innerHeight - vv.height) > 120;
-    document.body.classList.toggle("kb-open", kbOpen); // → 하단 탭바 접힘(.kb-open .tabbar)
+    const diff = window.innerHeight - vv.height;
+    if(diff > 120){ _kbConfirmedOpen=true; document.body.classList.add("kb-open"); }            // 키보드 확실히 열림(보조 강화)
+    else if(diff < 60 && _kbConfirmedOpen){ _kbConfirmedOpen=false; document.body.classList.remove("kb-open"); } // 열렸다 닫힘 보정(포커스 유지돼도)
+    // ↑ 확인-후-닫힘일 때만 제거 → 키보드 여는 애니메이션 중(diff 작음)엔 깜빡이지 않음
   };
   vv.addEventListener("resize", applyVV);
   vv.addEventListener("scroll", applyVV);
