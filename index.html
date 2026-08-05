@@ -18,6 +18,8 @@
     (permission-denied↔네트워크) + 케이스 I가 waiting 수용(구세대) + 설정에 앱/캐시 버전 표시.
   · v0.5.4: iOS 전송버튼 무반응 수리(touchstart preventDefault가 click 취소 → touchend/click 직접 전송+디바운스)
     + 전송 실패 비침묵(입력 복원·상태별 토스트) + 키보드 열림 시 하단 탭바 접힘(입력바 바닥 정합).
+  · v0.6.0: 합류 승인(코드=요청, 멤버 수락해야 paired. 수락 전 요청자는 비멤버=본데이터 접근 0. 거절 시 코드 회전)
+    + 잠금 유예(끔/1/5/30분, 기본 5분, 유예 내 재진입 잠금 생략) + 릴레이/SW 합류요청 푸시(내용 숨김).
   · 토큰 구조는 design/index.html 시안(2026-08-04, 사장님 ⓐ "따뜻한 감성" 확정)에서 이식.
   · 전 화면이 아래 토큰만 참조 → 레이아웃 기본기는 테마 무관 동일, 차이는 값(팔레트)으로만.
   · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
@@ -457,6 +459,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .photo-count{font-size:12px; color:var(--muted); font-weight:var(--w-med)}
 .file-btn{display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--w-med); color:var(--accent); background:var(--accent-soft); padding:10px 14px; border-radius:var(--r-md); cursor:pointer}
 
+/* 합류 요청 배너 — 초대한 멤버 화면 상단 고정(수락/거절) */
+.joinreq-banner{
+  position:fixed; top:0; left:0; right:0; z-index:600;
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--accent); color:var(--accent-ink);
+  padding:calc(11px + env(safe-area-inset-top,0px)) 14px 11px; box-shadow:var(--shadow-lg);
+  font-size:13.5px; font-weight:var(--w-med); line-height:1.35;
+}
+.joinreq-banner .jr-actions{display:flex; gap:8px; flex:none}
+.joinreq-banner button{background:rgba(255,255,255,.24); color:var(--accent-ink); padding:7px 14px; border-radius:var(--r-full); font-size:12.5px; font-weight:var(--w-bold)}
+.joinreq-banner button.rej{background:transparent; border:1px solid rgba(255,255,255,.55)}
+
 /* 사진 라이트박스 */
 .photo-modal{position:fixed; inset:0; z-index:750; background:rgba(10,8,10,.92); display:none; align-items:center; justify-content:center; padding:20px}
 .photo-modal.show{display:flex}
@@ -518,8 +532,23 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="notice" id="joinSoloNotice" style="display:none">짝이 먼저 만든 공간으로 합류해요. 지금 내 공간의 기록은 함께 옮겨지지 않아요.</div>
   <input class="code-input" id="joinInput" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="off">
   <div class="errline" id="joinMsg"></div>
-  <button class="primary-btn" id="btnJoinSubmit">들어가기</button>
+  <button class="primary-btn" id="btnJoinSubmit">연결 요청 보내기</button>
+  <div class="hint" style="margin-top:6px">상대가 수락해야 연결돼요 · 코드만으로는 들어가지지 않아요</div>
   <button class="ghost-btn" id="btnJoinCancel">뒤로</button>
+</div>
+
+<!-- 합류 요청 후: 상대 수락 대기 -->
+<div class="screen center mid" id="screenJoinWaiting">
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h" id="joinWaitTitle">상대의 수락을 기다리고 있어요</h1>
+  <div class="sub" id="joinWaitSub">짝이 요청을 수락하면 바로 이어져요</div>
+  <div class="spring"></div>
+  <div class="waiting" id="joinWaitAnim">
+    <div class="merge"><span class="h">🙂</span><span class="link"></span><span class="h">🙂</span></div>
+    <div class="sub" style="margin-top:0"><b style="color:var(--text);font-weight:var(--w-med)">수락을 기다리는 중</b></div>
+  </div>
+  <div class="spring"></div>
+  <button class="ghost-btn" id="btnJoinWaitCancel">취소</button>
 </div>
 
 <!-- 재합류 코드 입력(짝 도움 복귀) -->
@@ -692,12 +721,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div class="desc" id="lockModeHint" style="margin-top:8px"></div>
     </div>
     <div class="set-row set-col" id="autoLockRow" style="display:none">
-      <div class="label">자동 잠금</div>
-      <div class="desc">화면을 벗어났다 돌아오면 다시 잠가요</div>
+      <div class="label">잠금 유예</div>
+      <div class="desc">앱을 잠깐 벗어났다 이 시간 안에 돌아오면 잠금을 건너뛰어요 (끔 = 매번 잠금)</div>
       <div class="seg-row">
-        <button class="seg-btn" id="autoLock0Btn">즉시</button>
+        <button class="seg-btn" id="autoLock0Btn">끔</button>
         <button class="seg-btn" id="autoLock1Btn">1분</button>
         <button class="seg-btn" id="autoLock5Btn">5분</button>
+        <button class="seg-btn" id="autoLock30Btn">30분</button>
       </div>
     </div>
     <div class="set-row">
@@ -805,6 +835,15 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="lock-msg" id="lockMsg"></div>
 </div>
 
+<!-- 합류 요청 배너(초대한 멤버에게 실시간 노출) -->
+<div class="joinreq-banner" id="joinReqBanner" style="display:none">
+  <span id="joinReqText">누군가 연결을 요청했어요</span>
+  <span class="jr-actions">
+    <button id="btnJoinAccept">수락</button>
+    <button class="rej" id="btnJoinReject">거절</button>
+  </span>
+</div>
+
 <!-- 하단 탭 바 (앱 내부에서만 노출) -->
 <nav class="tabbar" id="tabbar">
   <button class="tab" data-tab="chat"><span class="ti">💬</span><span>채팅</span></button>
@@ -827,7 +866,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.9"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.6.0"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1098,13 +1137,16 @@ async function autoBioUnlock(){
 }
 function lockMode(){return localStorage.getItem("oguogu.lock.mode")||(bioIsOn()?"bio":"pin");}
 
-/* ----- 자동 잠금 타이머 (즉시/1분/5분, 기본값=즉시) ----- */
+/* ----- 잠금 유예(grace) 타이머 — 앱을 벗어났다 유예 시간 내 재진입하면 잠금 생략, 초과 시에만 잠금.
+   끔(0)=매번 잠금 / 1·5·30분. 기본값 5분. 기기 로컬 저장(pair 동기화 불필요, 기기별 설정).
+   원칙: "해제된 세션"만 연장(잠긴 채 이탈 시 유예 미적용) / 앱 첫 실행·이별은 유예 무시하고 잠금.
+   시계 조작 방어는 과설계 금지 — 로컬 위협모델상 PIN 폴백이 항상 존재. ----- */
 let _hiddenAt=0;
-function autoLockMs(){const v=localStorage.getItem("oguogu.lock.autoLockMs");return v===null?0:(parseInt(v,10)||0);}
+function autoLockMs(){const v=localStorage.getItem("oguogu.lock.autoLockMs");return v===null?300000:(parseInt(v,10)||0);} // 기본 5분
 function setAutoLockMs(ms){localStorage.setItem("oguogu.lock.autoLockMs",String(ms));renderAutoLockUI();}
 function renderAutoLockUI(){
   const ms=autoLockMs();
-  [["autoLock0Btn",0],["autoLock1Btn",60000],["autoLock5Btn",300000]].forEach(([id,v])=>{
+  [["autoLock0Btn",0],["autoLock1Btn",60000],["autoLock5Btn",300000],["autoLock30Btn",1800000]].forEach(([id,v])=>{
     const el=document.getElementById(id); if(el) el.classList.toggle("active",ms===v);
   });
 }
@@ -1209,6 +1251,7 @@ document.getElementById("lockModeBioBtn").onclick=()=>chooseLockMode("bio");
 document.getElementById("autoLock0Btn").onclick=()=>setAutoLockMs(0);
 document.getElementById("autoLock1Btn").onclick=()=>setAutoLockMs(60000);
 document.getElementById("autoLock5Btn").onclick=()=>setAutoLockMs(300000);
+document.getElementById("autoLock30Btn").onclick=()=>setAutoLockMs(1800000);
 document.getElementById("lockBioBtn").onclick=()=>bioUnlock(); // 수동(버튼) = silent 아님(실패 사유 표시)
 document.getElementById("lockPinFallback").onclick=showPinFallback;
 document.getElementById("lockInput").addEventListener("input",autoUnlockCheck);
@@ -1228,11 +1271,13 @@ document.addEventListener("visibilitychange",()=>{
     _hiddenAt=Date.now();
     if(autoLockMs()===0){_unlockedThisSession=false; lockContentNow();}
   }else{
+    // 재진입: 유예 시간 초과 시에만 잠금(유예 내면 잠금 생략). 유예는 잠금을 "다시 걸" 뿐, 해제하진 않는다
+    //   → 잠긴 채 이탈했으면 그대로 잠김(유예 미적용). 앱 첫 실행은 boot의 enterChat→showLock이 담당(여기 무관).
     const elapsed=_hiddenAt?Date.now()-_hiddenAt:Infinity;
     if(elapsed>=autoLockMs()){
       _unlockedThisSession=false;
       lockContentNow();
-      if(document.getElementById("screenChat").classList.contains("active")) showLock();
+      if(inAppTabs()) showLock(); // 채팅뿐 아니라 일정·다이어리·설정 어느 탭에서 돌아와도 잠금 표시
     }
   }
 });
@@ -1352,37 +1397,13 @@ async function openInvite(force){
   }
 }
 
-async function joinPair(){
-  _dissolvedHandled=false;
-  const code = document.getElementById("joinInput").value.trim();
-  const msgEl = document.getElementById("joinMsg");
-  msgEl.textContent="";
-  if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
-  const q = M.query(M.collection(fb.db,"pairs"), M.where("code","==",code), M.where("status","==","solo"));
-  const snap = await M.getDocs(q).catch(()=>null);
-  if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 다시 확인해주세요"; return; }
-  const d = snap.docs[0];
-  if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){
-    msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; // rules 거부 문구와 통일(시계 스큐 혼선 방지)
-  }
-  if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 내 공간의 코드예요. 짝의 기기에서 입력해주세요"; return; }
-  try{
-    await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" });
-  }catch(err){
-    console.error(err);
-    msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "연결에 실패했어요. 다시 시도해주세요";
-    return;
-  }
-  pairId = d.id;
-  localStorage.setItem("oguogu.pairId", pairId);
-  watchPair();
-}
-
-/* 양쪽-솔로 합류: 이미 내 솔로 공간이 있는 상태에서 짝의 코드로 짝의 공간에 합류한다.
-   (설계 누락 수리: 솔로 시작 도입 후, 양쪽이 각자 공간을 만들면 첫 화면 코드입력에 못 가 합류 경로가 없었다.)
-   원자성 순서: 반드시 ①짝 공간 합류 성공 → ②그 뒤에 내 옛 솔로 공간 정리. 순서를 뒤집지 않는다
-   (합류 실패했는데 내 공간이 먼저 사라지는 사고 방지). rules 케이스 B는 솔로 보유 uid의 합류를 허용(실측 200). */
-async function joinFromSolo(){
+/* ============ 합류 승인(join approval) ============
+   사장님 보안 지적("코드만 있으면 다 들어오나?") 대응: 코드 입력은 즉시 합류가 아니라 "합류 요청"이며,
+   초대한 멤버가 "수락"해야만 paired가 된다. 요청자는 수락 전까지 비멤버 → 메시지·일정·다이어리·테마
+   어느 것도 접근 불가(rules 케이스 R/B가 강제).
+   fromSolo=true(설정 경로): 내 솔로 공간이 이미 있는 상태의 요청 — 수락되면 그때(원자성) 옛 솔로를 정리한다. */
+let _pendingJoin=null, _unsubJoinTarget=null;
+async function requestJoin(fromSolo){
   const code = document.getElementById("joinInput").value.trim();
   const msgEl = document.getElementById("joinMsg"); msgEl.textContent="";
   if(!/^\d{6}$/.test(code)){ msgEl.textContent="6자리 숫자를 입력하세요"; return; }
@@ -1390,23 +1411,98 @@ async function joinFromSolo(){
   const snap = await M.getDocs(q).catch(()=>null);
   if(!snap || snap.empty){ msgEl.textContent="코드를 찾을 수 없어요. 짝의 코드를 다시 확인해주세요"; return; }
   const d = snap.docs[0];
-  if(d.id===pairId){ msgEl.textContent="이건 내 공간의 코드예요. 짝의 코드를 입력해주세요"; return; }
+  if(fromSolo && d.id===pairId){ msgEl.textContent="이건 내 공간의 코드예요. 짝의 코드를 입력해주세요"; return; }
   if(d.data().codeExpiresAt && d.data().codeExpiresAt < Date.now()){ msgEl.textContent="코드가 만료됐거나 이미 연결됐어요"; return; }
   if((d.data().memberUids||[]).includes(fb.uid)){ msgEl.textContent="이미 그 공간의 멤버예요"; return; }
-  if(!confirm("지금 내 공간의 기록은 함께 옮겨지지 않아요. 짝의 공간으로 합류할까요?")) return;
-  const oldSolo = pairId; // 합류 성공 후에만 정리할 내 옛 솔로 공간
-  _dissolvedHandled=false;
+  const nick = myNick() || "";
   try{
-    await M.updateDoc(d.ref, { memberUids: M.arrayUnion(fb.uid), status:"paired" }); // ① 합류(성공해야 다음 단계)
+    await M.updateDoc(d.ref, { joinRequest: { uid: fb.uid, nick, code, at: M.serverTimestamp() } }); // 요청만 기록(합류 아님)
   }catch(err){
     console.error(err);
-    msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "합류에 실패했어요. 다시 시도해주세요";
-    return; // 실패 시 내 솔로 공간은 그대로 보존
+    msgEl.textContent = isDeniedErr(err) ? "코드가 만료됐거나 이미 연결됐어요" : "요청에 실패했어요. 다시 시도해주세요";
+    return;
   }
-  pairId = d.id;
-  localStorage.setItem("oguogu.pairId", pairId);
-  watchPair(); // ②-a 합류한 공간으로 입장(옛 pair 리스너 해제)
-  if(oldSolo && oldSolo!==d.id){ dissolvePairById(oldSolo).catch(e=>console.error("옛 솔로 공간 정리 실패(비치명):", e)); } // ②-b 정리
+  _pendingJoin = { targetId: d.id, fromSolo, oldSolo: (fromSolo ? pairId : null) };
+  showJoinWaiting(false);
+  watchJoinTarget(d.id);
+}
+/* 요청자: 대상 pair를 관측해 수락(paired+내가 멤버) / 거절(내 요청 소거) 감지 */
+function watchJoinTarget(targetId){
+  if(_unsubJoinTarget) _unsubJoinTarget();
+  _unsubJoinTarget = M.onSnapshot(M.doc(fb.db,"pairs",targetId), snap=>{
+    if(!snap.exists()) return;
+    const d = snap.data();
+    if(d.status==="paired" && (d.memberUids||[]).includes(fb.uid)){
+      // 수락됨 → 합류한 공간으로 입장, 그 뒤(원자성) 옛 솔로 정리
+      if(_unsubJoinTarget){ _unsubJoinTarget(); _unsubJoinTarget=null; }
+      const pj=_pendingJoin; _pendingJoin=null;
+      _dissolvedHandled=false;
+      pairId = targetId; localStorage.setItem("oguogu.pairId", pairId);
+      watchPair();
+      toast("💞 연결됐어요");
+      if(pj && pj.oldSolo && pj.oldSolo!==targetId){ dissolvePairById(pj.oldSolo).catch(e=>console.error("옛 솔로 정리 실패(비치명):", e)); }
+    } else if(!d.joinRequest || d.joinRequest.uid!==fb.uid){
+      // 거절됐거나 내 요청이 소거/교체됨
+      if(_unsubJoinTarget){ _unsubJoinTarget(); _unsubJoinTarget=null; }
+      const pj=_pendingJoin; _pendingJoin=null;
+      showJoinRejected(pj);
+    }
+    // else: 아직 대기(내 요청 유지·solo) → 계속 기다림
+  }, err=>{ console.error(err); });
+}
+function showJoinWaiting(){
+  const t=document.getElementById("joinWaitTitle"), s=document.getElementById("joinWaitSub"), anim=document.getElementById("joinWaitAnim"), btn=document.getElementById("btnJoinWaitCancel");
+  if(t) t.textContent="상대의 수락을 기다리고 있어요";
+  if(s) s.textContent="짝이 요청을 수락하면 바로 이어져요";
+  if(anim) anim.style.display="";
+  if(btn) btn.textContent="취소";
+  show("screenJoinWaiting");
+}
+function showJoinRejected(pj){
+  const t=document.getElementById("joinWaitTitle"), s=document.getElementById("joinWaitSub"), anim=document.getElementById("joinWaitAnim"), btn=document.getElementById("btnJoinWaitCancel");
+  if(t) t.textContent="연결이 거절됐어요";
+  if(s) s.textContent="짝에게 새 코드를 받아 다시 시도해주세요";
+  if(anim) anim.style.display="none";
+  if(btn) btn.textContent="돌아가기";
+  _pendingJoin = { rejected:true, fromSolo: (pj && pj.fromSolo) };
+  show("screenJoinWaiting");
+}
+async function cancelJoinWaiting(){
+  const pj=_pendingJoin; _pendingJoin=null;
+  if(_unsubJoinTarget){ _unsubJoinTarget(); _unsubJoinTarget=null; }
+  // 대기 취소 시 대상에서 내 요청 소거(거절 상태면 이미 없음)
+  if(pj && pj.targetId && !pj.rejected){ try{ await M.updateDoc(M.doc(fb.db,"pairs",pj.targetId), {joinRequest: M.deleteField()}); }catch(e){} }
+  if(pj && pj.fromSolo && pairId) enterChat(); else show("screenStart");
+}
+
+/* ============ 초대한 멤버 쪽: 합류 요청 배너 + 수락/거절 ============ */
+function renderJoinReqBanner(){
+  const banner=document.getElementById("joinReqBanner"); if(!banner) return;
+  const jr = currentPairData && currentPairData.joinRequest;
+  const iAmMember = currentPairData && (currentPairData.memberUids||[]).includes(fb.uid);
+  if(jr && iAmMember && jr.uid!==fb.uid && (currentPairData.status==="solo"||currentPairData.status==="waiting")){
+    const who = (jr.nick && jr.nick.trim()) ? jr.nick.trim() : "누군가";
+    document.getElementById("joinReqText").textContent = who+"이(가) 연결을 요청했어요";
+    banner.style.display="flex";
+  } else {
+    banner.style.display="none";
+  }
+}
+async function acceptJoinRequest(){
+  const jr = currentPairData && currentPairData.joinRequest;
+  if(!jr){ document.getElementById("joinReqBanner").style.display="none"; return; }
+  const newMembers = [...(currentPairData.memberUids||[]), jr.uid];
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), { memberUids:newMembers, status:"paired", joinRequest: M.deleteField() }); }
+  catch(e){ console.error(e); toast(isDeniedErr(e)?"이미 만료된 요청이에요":"수락하지 못했어요"); return; }
+  document.getElementById("joinReqBanner").style.display="none";
+  toast("💞 연결됐어요");
+}
+async function rejectJoinRequest(){
+  const newCode = genCode();
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), { joinRequest: M.deleteField(), code:newCode, codeExpiresAt: Date.now()+24*60*60*1000 }); }
+  catch(e){ console.error(e); toast("거절하지 못했어요"); return; }
+  document.getElementById("joinReqBanner").style.display="none";
+  toast("요청을 거절하고 코드를 새로 만들었어요");
 }
 
 function watchPair(){
@@ -1420,6 +1516,7 @@ function watchPair(){
     currentPairData = snap.data();
     _prevMemberCount=(currentPairData.memberUids||[]).length;
     applyThemeFromData(); // 꾸미기 실시간 동기화(테마/배경/말풍선)
+    renderJoinReqBanner(); // 합류 요청 배너(초대한 멤버에게 수락/거절 노출) — 상태 무관 항상 평가
     if(currentPairData.status==="dissolved"){ handleDissolved(); return; }
     if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
       // 짝 도움 복귀: 상대가 방금 승계(재연결)했으면 안내
@@ -2075,12 +2172,15 @@ function openJoinScreen(fromSolo){
   if(sub) sub.textContent = fromSolo ? "짝이 알려준 6자리 코드를 입력하세요" : "상대방이 알려준 6자리 코드를 입력하세요";
   show("screenJoin");
 }
-function submitJoinScreen(){ _joinFromSolo ? joinFromSolo() : joinPair(); }
+function submitJoinScreen(){ requestJoin(_joinFromSolo); } // 즉시 합류 아님 → 합류 "요청"(멤버 수락 필요)
 document.getElementById("btnJoin").onclick=()=>openJoinScreen(false);
 document.getElementById("btnJoinFromSolo").onclick=()=>openJoinScreen(true);
 document.getElementById("btnJoinSubmit").onclick=()=>submitJoinScreen();
 document.getElementById("joinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitJoinScreen(); });
 document.getElementById("btnJoinCancel").onclick=()=>{ if(_joinFromSolo && pairId) showTab("settings"); else show("screenStart"); };
+document.getElementById("btnJoinWaitCancel").onclick=()=>cancelJoinWaiting();
+document.getElementById("btnJoinAccept").onclick=()=>acceptJoinRequest();
+document.getElementById("btnJoinReject").onclick=()=>rejectJoinRequest();
 document.getElementById("btnRejoin").onclick=()=>{ document.getElementById("rejoinInput").value=""; document.getElementById("rejoinMsg").textContent=""; show("screenRejoin"); };
 document.getElementById("btnRejoinSubmit").onclick=()=>submitRejoin();
 document.getElementById("rejoinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") submitRejoin(); });

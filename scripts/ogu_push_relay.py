@@ -131,8 +131,11 @@ def main():
             log.info("활성 pair %d개 로드", len(pairs))
 
         sent = 0
-        for pid, members in list(pairs.items()):
-            sent += process_pair(db, messaging, pid, members, state)
+        for pid, meta in list(pairs.items()):
+            if meta.get("status") == "paired":
+                sent += process_pair(db, messaging, pid, meta, state)          # 새 메시지 알림
+            elif meta.get("joinRequest"):
+                sent += process_join_request(db, messaging, pid, meta, state)  # 합류 요청 알림
         # 상태는 항상 저장한다 — 첫 관측(first-sight)으로 세팅한 lastSeen도 반드시 영속화해야
         # 다음 스윕에서 '그 이후' 메시지를 신규로 잡는다(sent==0일 때 미저장 시 매번 재초기화되어 발송 누락).
         save_state(state)
@@ -145,15 +148,46 @@ def main():
 
 
 def load_paired(db):
-    """status==paired 인 pair만 {pid: {'members':[..], 'fcmTokens':{uid:token}}}."""
+    """활성 pair 로드: paired(메시지 알림) + solo/waiting(합류 요청 알림).
+    {pid: {'status','members':[..],'fcmTokens':{uid:token},'joinRequest':{...}|None}}."""
     out = {}
     try:
-        for d in db.collection("pairs").where("status", "==", "paired").stream():
+        for d in db.collection("pairs").where("status", "in", ["paired", "solo", "waiting"]).stream():
             data = d.to_dict() or {}
-            out[d.id] = {"members": data.get("memberUids", []), "fcmTokens": data.get("fcmTokens", {}) or {}}
+            out[d.id] = {
+                "status": data.get("status"),
+                "members": data.get("memberUids", []),
+                "fcmTokens": data.get("fcmTokens", {}) or {},
+                "joinRequest": data.get("joinRequest"),
+            }
     except Exception as e:
-        log.warning("paired 목록 조회 실패: %s", e)
+        log.warning("활성 pair 조회 실패: %s", e)
     return out
+
+
+def process_join_request(db, messaging, pid, meta, state):
+    """solo/waiting pair에 합류 요청(joinRequest)이 있으면 초대한 멤버에게 "연결 요청" 푸시(1회).
+    중복 방지: 요청 식별키(요청자 uid + at)를 상태에 기록해 같은 요청은 재발송 안 함."""
+    jr = meta.get("joinRequest") or {}
+    req_uid = jr.get("uid")
+    if not req_uid:
+        return 0
+    at = _ts_ms(jr.get("at")) or 0
+    key = "req:" + pid
+    seen = state.get(key)
+    sig = str(req_uid) + ":" + str(at)
+    if seen == sig:
+        return 0  # 이미 이 요청은 알림 보냄
+    tokens = meta.get("fcmTokens", {})
+    sent = 0
+    for uid in meta.get("members", []):  # 초대한 멤버(요청자 아님)에게만
+        if uid == req_uid:
+            continue
+        token = tokens.get(uid)
+        if token and _send(messaging, token, pid, kind="req"):
+            sent += 1
+    state[key] = sig
+    return sent
 
 
 def process_pair(db, messaging, pid, meta, state):
@@ -200,12 +234,13 @@ def process_pair(db, messaging, pid, meta, state):
     return sent
 
 
-def _send(messaging, token, pid):
-    """data-only 푸시(내용 미노출). notification 블록 없음 → sw.js가 고정 문구 표시."""
+def _send(messaging, token, pid, kind="m"):
+    """data-only 푸시(내용 미노출). notification 블록 없음 → sw.js가 종류(t)별 고정 문구 표시.
+    kind: 'm'=새 메시지 / 'req'=합류 요청. t는 카테고리일 뿐 내용이 아니다."""
     try:
         msg = messaging.Message(
             token=token,
-            data={"t": "m"},  # 내용 없음(신규 메시지 신호만)
+            data={"t": kind},  # 내용 없음(종류 신호만)
             webpush=messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "1800"},
                 # notification 의도적으로 미포함 — 내용 노출 방지(문구는 서비스워커가 고정).

@@ -3,7 +3,7 @@
    ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
    화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
    주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
-const VER = "oguogu-v0.5.9";
+const VER = "oguogu-v0.6.0";
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
@@ -43,13 +43,16 @@ try{
     appId: "1:663259886074:web:dfa2eecf74034bfe923443"
   });
   const messaging = firebase.messaging();
-  messaging.onBackgroundMessage(() => {
-    // 발신자·본문 절대 미노출 — payload 값은 의도적으로 읽지 않는다.
+  messaging.onBackgroundMessage((payload) => {
+    // 본문·발신자 절대 미노출. 오직 "종류 플래그"(t: 메시지 m / 합류요청 req)만 읽어 고정 문구를 고른다.
+    //   t는 내용이 아니라 카테고리 → 내용 숨김 원칙 유지(문구는 항상 고정).
+    const t = payload && payload.data && payload.data.t;
+    const isReq = (t === "req");
     self.registration.showNotification("5959", {
-      body: "새 소식이 있어요",
+      body: isReq ? "연결 요청이 도착했어요" : "새 소식이 도착했어요",
       icon: "./icon-512.png",
       badge: "./icon-512.png",
-      tag: "oguogu-msg", // 여러 건이 와도 알림 1개로 합쳐 대화 볼륨 노출 방지
+      tag: isReq ? "oguogu-req" : "oguogu-msg", // 종류별 1개로 합쳐 볼륨 노출 방지
     });
   });
 }catch(e){ /* 구형 브라우저 등 importScripts 실패 시 캐시 SW 동작만 유지 */ }

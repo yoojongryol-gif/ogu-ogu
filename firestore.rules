@@ -67,26 +67,55 @@ service cloud.firestore {
           && request.resource.data.photoCount >= 0
           && request.resource.data.photoCount <= 50)
         ||
-        // 케이스 B: 솔로(또는 구 대기) 쌍에 초대코드로 새 멤버(본인)가 합류 → paired 승격.
-        //   기존 1인은 그대로 보존(hasAll) + 본인 추가, 결과 정확히 2명. 상태만 paired로.
-        //   코드 만료(codeExpiresAt)를 서버시간으로 강제 → 만료 코드로는 합류 불가(rules 레벨 방어).
-        //   (codeExpiresAt 없는 구 waiting 문서는 관대하게 통과 — 하위호환.)
+        // 케이스 R: 비멤버가 "합류 요청"만 기록(joinRequest 필드). 수락 전 접근은 여기서 끝난다.
+        //   ★보안 핵심(사장님 "코드만 있으면 다 들어오나?" 대응): 이 케이스는 memberUids/status를 절대 바꾸지
+        //   못하므로 요청자는 여전히 "비멤버"다 → 메시지·일정·다이어리·사진(전부 isMember 게이트)과 테마 수정에
+        //   접근할 수 없다. 오직 joinRequest 필드만 쓸 수 있고, 코드 소지(joinRequest.code==code)와 본인 uid를
+        //   증명해야 한다(만료 코드로는 요청 불가). 멤버의 수락(케이스 B)이 있어야만 paired가 된다.
         ((resource.data.status == "solo" || resource.data.status == "waiting")
           && resource.data.memberUids.size() == 1
+          && !(request.auth.uid in resource.data.memberUids)
+          && (!("codeExpiresAt" in resource.data) || request.time.toMillis() < resource.data.codeExpiresAt)
+          && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["joinRequest"])
+          && ("joinRequest" in request.resource.data)
+          && request.resource.data.joinRequest.uid == request.auth.uid
+          && request.resource.data.joinRequest.code == resource.data.code)
+        ||
+        // 케이스 R-cancel: 요청자가 본인 합류 요청을 취소(joinRequest 소거). 멤버·상태·코드 불변.
+        (("joinRequest" in resource.data)
+          && resource.data.joinRequest.uid == request.auth.uid
+          && !(request.auth.uid in resource.data.memberUids)
+          && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["joinRequest"])
+          && !("joinRequest" in request.resource.data))
+        ||
+        // 케이스 B: 멤버가 합류 요청을 "수락" → paired 승격(기존 "코드만 있으면 즉시 합류"를 대체).
+        //   기존 1인 보존(hasAll) + 요청자(joinRequest.uid) 추가로 정확히 2명, 상태 paired, joinRequest 소거.
+        //   hasAny([joinRequest.uid])로 "추가되는 2번째 멤버 = 요청자"를 강제(임의 uid 끼워넣기 차단).
+        //   코드 만료 방어 유지.
+        (isMember(resource.data)
+          && (resource.data.status == "solo" || resource.data.status == "waiting")
+          && resource.data.memberUids.size() == 1
+          && ("joinRequest" in resource.data)
           && (!("codeExpiresAt" in resource.data) || request.time.toMillis() < resource.data.codeExpiresAt)
           && request.resource.data.memberUids.size() == 2
           && request.resource.data.memberUids.hasAll(resource.data.memberUids)
-          && request.resource.data.memberUids.hasAny([request.auth.uid])
-          && request.resource.data.status == "paired")
+          && request.resource.data.memberUids.hasAny([resource.data.joinRequest.uid])
+          && request.resource.data.status == "paired"
+          && !("joinRequest" in request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["memberUids","status","joinRequest"]))
         ||
-        // 케이스 I: 솔로/구대기(waiting=구세대) 멤버가 초대코드 재발급. 멤버·상태 불변, code 계열만 갱신.
-        //   waiting 추가: 솔로 도입 이전 생성된 구세대 pair가 재발급 시 403 → 클라가 "저장 지연"으로 오인해
-        //   무한 재시도에 빠지던 것 봉합(케이스 B의 solo/waiting 수용과 대칭). status는 그대로 유지(승격 아님).
+        // 케이스 I: 솔로/구대기 멤버가 코드 재발급 또는 합류 요청 "거절". 멤버·상태 불변.
+        //   허용 필드: code/codeExpiresAt(재발급) + joinRequest(거절=소거). 거절 시 보통 코드를 함께 회전해 무효화.
+        //   waiting 수용은 구세대 pair 하위호환(케이스 B/R과 대칭).
         (isMember(resource.data)
           && (resource.data.status == "solo" || resource.data.status == "waiting")
           && request.resource.data.status == resource.data.status
           && request.resource.data.memberUids == resource.data.memberUids
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["code","codeExpiresAt"]))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["code","codeExpiresAt","joinRequest"]))
         ||
         // 케이스 C: 관계 정리(이별 프로토콜) — 어느 쪽 멤버든 단독 실행 가능. 상대 동의 불필요(설계 철학: 인질 방지).
         //   멤버 목록은 불변, status/dissolvedAt/dissolvedBy 필드만 갱신 가능(다른 필드 끼워넣기 차단).
