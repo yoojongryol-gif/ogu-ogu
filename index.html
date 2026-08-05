@@ -258,7 +258,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 @keyframes pop{from{transform:translateY(6px) scale(.97);opacity:.4}to{transform:none;opacity:1}}
 .bubble{
   max-width:76%; padding:9px 13px; font-size:var(--t-body); line-height:1.42; font-weight:var(--w-reg);
-  word-break:break-word; border-radius:var(--bubble-r); box-shadow:var(--shadow);
+  word-break:break-word; white-space:pre-wrap; border-radius:var(--bubble-r); box-shadow:var(--shadow);
 }
 .me .bubble{background:var(--me-bg); color:var(--me-ink)}
 .you .bubble{background:var(--you-bg); color:var(--you-ink)}
@@ -275,12 +275,14 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .msg-empty .empty-emoji{font-size:40px; margin-bottom:10px}
 
 .inbar{
-  flex:none; display:flex; align-items:center; gap:var(--s2); padding:var(--s2) var(--s3);
+  flex:none; display:flex; align-items:flex-end; gap:var(--s2); padding:var(--s2) var(--s3);
   background:var(--surface); border-top:1px solid var(--line);
 }
+/* 여러 줄 입력(textarea) — Enter=줄바꿈(터치)이 자연스럽게 되고, 자동 높이 확장(최대 ~5줄 후 스크롤). */
 #msgInput{
-  flex:1; background:var(--surface2); border:none; border-radius:var(--r-full);
-  padding:11px 16px; font-size:var(--t-body); color:var(--text);
+  flex:1; min-width:0; background:var(--surface2); border:none; border-radius:var(--r-lg);
+  padding:10px 16px; font-size:var(--t-body); color:var(--text);
+  font-family:inherit; line-height:1.4; resize:none; max-height:118px; overflow-y:auto;
 }
 #msgInput::placeholder{color:var(--muted)}
 #sendBtn{
@@ -441,6 +443,11 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .cal-d{aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:var(--r-sm); font-size:13px; color:var(--text); position:relative}
 .cal-d.other{color:var(--muted); opacity:.35}
 .cal-d.today{background:var(--accent-soft); color:var(--accent); font-weight:var(--w-bold)}
+/* 기간(다일) 일정 — 시작~종료 날들에 은은한 밴드로 이어져 보이게(양끝만 라운드). */
+.cal-d.rng{background:color-mix(in srgb, var(--accent) 13%, transparent); border-radius:0}
+.cal-d.rng.rng-s{border-top-left-radius:var(--r-sm); border-bottom-left-radius:var(--r-sm)}
+.cal-d.rng.rng-e{border-top-right-radius:var(--r-sm); border-bottom-right-radius:var(--r-sm)}
+.cal-d.rng.today{background:var(--accent-soft)}
 .cal-d.sel{outline:1.5px solid var(--accent); outline-offset:-1.5px}
 .cal-d .dot{position:absolute; bottom:5px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:var(--accent)}
 .cal-d .anv{position:absolute; top:2px; right:3px; font-size:9px}
@@ -657,7 +664,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
   <form class="inbar" id="chatForm">
     <button type="button" id="btnAttach" aria-label="사진 첨부">＋</button>
-    <input id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000">
+    <textarea id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000" rows="1" enterkeyhint="enter"></textarea>
     <button id="sendBtn" type="submit">↑</button>
   </form>
 </div>
@@ -680,6 +687,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div class="diary-toggle" style="margin-bottom:10px">
         <button type="button" class="on" id="evtTypeOnce" data-type="once">한 번</button>
         <button type="button" id="evtTypeAnnual" data-type="annual">매년 반복(기념일)</button>
+      </div>
+      <div id="evtEndSection">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 4px">
+          <span class="hint">종료일 (하루면 비워두세요)</span>
+          <button type="button" class="link-btn" id="evtEndClear" style="font-size:12px">당일로</button>
+        </div>
+        <div class="daterow">
+          <button type="button" class="daynav" id="evtEndPrev" aria-label="종료 하루 전">‹</button>
+          <input class="datepick" id="evtEndDate" type="date">
+          <button type="button" class="daynav" id="evtEndNext" aria-label="종료 하루 후">›</button>
+        </div>
+        <div class="hint" id="evtEndLabel" style="text-align:center; margin:-4px 0 10px"></div>
       </div>
       <input class="fi" id="evtMemo" maxlength="80" placeholder="메모 (선택)" autocomplete="off">
       <button class="primary-btn" id="btnAddEvt" style="max-width:none">추가하기</button>
@@ -959,7 +978,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.4"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.5"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1824,7 +1843,7 @@ async function sendMessage(){
   const input=document.getElementById("msgInput");
   const text=input.value.trim();
   if(!text || !pairId) return;
-  input.value="";
+  input.value=""; autoGrowMsg(); // 전송 후 입력창 높이 1줄로 복귀
   try{ input.focus(); }catch(e){}
   await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
     sender: fb.uid, text, ts: M.serverTimestamp()
@@ -1921,9 +1940,23 @@ function renderDday(){
     +(base.getFullYear()+'.'+(base.getMonth()+1)+'.'+base.getDate())+' 부터 · 우리가 함께한 날</div></div>';
 }
 function eventsOnDay(dt){
-  const y=dt.getFullYear(), mo=dt.getMonth(), da=dt.getDate();
+  const mo=dt.getMonth(), da=dt.getDate(), d=startOfDay(dt);
   return _events.filter(ev=>{ const b=parseYMD(ev.date); if(!b) return false;
-    return ev.type==="annual" ? (b.getMonth()===mo && b.getDate()===da) : (b.getFullYear()===y && b.getMonth()===mo && b.getDate()===da); });
+    if(ev.type==="annual") return b.getMonth()===mo && b.getDate()===da; // 기념일=단일일 반복(기간 조합 v1 제외)
+    const s=startOfDay(b), e=(ev.endDate && parseYMD(ev.endDate)) ? startOfDay(parseYMD(ev.endDate)) : s;
+    return d>=s && d<=e; }); // 기간이면 시작~종료 모든 날에 표시
+}
+/* 이 날이 다일 기간의 어디인지: null | {start, end} — 달력 밴드용(rng/rng-s/rng-e). */
+function rangeRoleOnDay(dt){
+  const d=startOfDay(dt);
+  for(const ev of _events){
+    if(ev.type==="annual" || !ev.endDate) continue;
+    const b=parseYMD(ev.date), eb=parseYMD(ev.endDate); if(!b||!eb) continue;
+    const s=startOfDay(b), e=startOfDay(eb);
+    if(e<=s) continue;
+    if(d>=s && d<=e) return { start:d.getTime()===s.getTime(), end:d.getTime()===e.getTime() };
+  }
+  return null;
 }
 function renderCalendar(){
   const box=document.getElementById("calBox"); if(!box) return;
@@ -1940,7 +1973,9 @@ function renderCalendar(){
     const isToday=startOfDay(dt).getTime()===today.getTime();
     const isAnniv=anniv && anniv.getMonth()===_calM && anniv.getDate()===d;
     const hasEvt=eventsOnDay(dt).length>0;
-    html+='<button class="cal-d'+(isToday?' today':'')+(_selDate===ds?' sel':'')+'" data-day="'+ds+'">'+d
+    const rr=rangeRoleOnDay(dt);
+    const rngCls = rr ? (' rng'+(rr.start?' rng-s':'')+(rr.end?' rng-e':'')) : '';
+    html+='<button class="cal-d'+(isToday?' today':'')+(_selDate===ds?' sel':'')+rngCls+'" data-day="'+ds+'">'+d
       +(isAnniv?'<span class="anv">🩷</span>':'')+(hasEvt?'<span class="dot"></span>':'')+'</button>';
   }
   box.innerHTML=html+'</div>';
@@ -1966,6 +2001,26 @@ function shiftEvtDate(delta){
   cur.setDate(cur.getDate()+delta);
   setEvtDate(isoDate(cur));
 }
+/* 종료일(선택) — 기간(1박 이상) 일정. 비우면 하루짜리(기존 동작). */
+function setEvtEndDate(dateStr){
+  const inp=document.getElementById("evtEndDate"); const lbl=document.getElementById("evtEndLabel");
+  if(inp) inp.value = /^\d{4}-\d{2}-\d{2}$/.test(dateStr||"") ? dateStr : "";
+  if(lbl) lbl.textContent = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? fmtDateK(dateStr) : "하루 일정";
+}
+function shiftEvtEndDate(delta){
+  // 종료일이 비었으면 시작일 다음날부터 시작
+  const base = parseYMD(document.getElementById("evtEndDate").value) || parseYMD(document.getElementById("evtDate").value) || new Date();
+  base.setDate(base.getDate()+delta);
+  setEvtEndDate(isoDate(base));
+}
+/* 기간 라벨: "8/15 ~ 8/17 (2박 3일)". end<=start 이면 null(단일). */
+function rangeLabel(startStr, endStr){
+  const s=parseYMD(startStr), e=parseYMD(endStr);
+  if(!s || !e) return null;
+  const nights=daysBetween(s,e);
+  if(nights<=0) return null;
+  return (s.getMonth()+1)+"/"+s.getDate()+" ~ "+(e.getMonth()+1)+"/"+e.getDate()+" ("+nights+"박 "+(nights+1)+"일)";
+}
 function renderUpcoming(){
   const el=document.getElementById("upcomingList"); if(!el) return;
   const today=startOfDay(new Date());
@@ -1977,7 +2032,8 @@ function renderUpcoming(){
   el.innerHTML=items.slice(0,12).map(({ev,occ})=>{
     const mine=ev.createdBy===fb.uid;
     const typeLabel=ev._synthetic ? "기념일" : (ev.type==="annual"?"매년":"");
-    const sub=[isoDate(occ).replace(/-/g,"."), typeLabel, ev.memo].filter(Boolean).join(" · ");
+    const rl=(!ev._synthetic && ev.type!=="annual" && ev.endDate) ? rangeLabel(ev.date, ev.endDate) : null; // 기간이면 "8/15 ~ 8/17 (2박 3일)"
+    const sub=[rl || isoDate(occ).replace(/-/g,"."), typeLabel, ev.memo].filter(Boolean).join(" · ");
     const editable = (!ev._synthetic && mine);
     const del= editable ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
     const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+esc(ev.title)+'</div>'
@@ -2005,37 +2061,50 @@ function anniversaryItems(){
 function setEvtType(t){ _evtType=t;
   document.getElementById("evtTypeOnce").classList.toggle("on",t==="once");
   document.getElementById("evtTypeAnnual").classList.toggle("on",t==="annual");
+  // 기념일(매년 반복)은 단일일만 — 기간 섹션 숨김+초기화(기간 조합 v1 제외)
+  const sec=document.getElementById("evtEndSection");
+  if(sec) sec.style.display = (t==="annual") ? "none" : "";
+  if(t==="annual") setEvtEndDate("");
 }
 let _editingEvtId=null;
 async function addEvent(){
   if(!pairId){ toast("먼저 시작해주세요"); return; }
   if(currentPairData && currentPairData.status==="dissolved") return;
   const title=document.getElementById("evtTitle").value.trim();
-  const date=document.getElementById("evtDate").value;
+  let start=document.getElementById("evtDate").value;
+  let end=document.getElementById("evtEndDate").value;
   const memo=document.getElementById("evtMemo").value.trim();
   if(!title){ toast("제목을 입력해주세요"); return; }
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast("날짜를 선택해주세요"); return; } // 과거·미래 모두 허용(기념일 소급 등)
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ toast("날짜를 선택해주세요"); return; } // 과거·미래 모두 허용(기념일 소급 등)
+  // 기간(종료일) 정규화: 기념일은 단일 / 종료<시작이면 자동 스왑 / 종료==시작이면 단일 처리
+  if(_evtType==="annual") end="";
+  if(end && /^\d{4}-\d{2}-\d{2}$/.test(end)){
+    if(end < start){ const t=start; start=end; end=t; toast("시작일과 종료일을 바꿨어요"); }
+    if(end===start) end="";
+  } else end="";
   try{
     if(_editingEvtId){
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date, type:_evtType, memo });
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField() });
       toast("일정을 수정했어요");
     } else {
-      await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), {
-        title, date, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() });
+      const doc={ title, date:start, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() };
+      if(end) doc.endDate=end;
+      await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), doc);
       toast("일정을 추가했어요");
     }
-    document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value="";
+    document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value=""; setEvtEndDate("");
     document.getElementById("evtForm").style.display="none";
     _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
   }catch(e){ console.error(e); toast(isDeniedErr(e)?(_editingEvtId?"수정 권한이 없어요":"추가 권한이 없어요"):(_editingEvtId?"수정하지 못했어요":"추가하지 못했어요")); }
 }
-/* 일정 수정 — 내 일정만(rules: createdBy 본인). 날짜도 변경 가능. */
+/* 일정 수정 — 내 일정만(rules: createdBy 본인). 날짜·기간 변경 가능. */
 function startEditEvent(id){
   const ev=_events.find(e=>e.id===id); if(!ev) return;
   _editingEvtId=id;
   document.getElementById("evtTitle").value=ev.title||"";
   setEvtDate(ev.date||todayStr());
-  setEvtType(ev.type==="annual"?"annual":"once");
+  setEvtType(ev.type==="annual"?"annual":"once"); // end 섹션 표시/숨김 처리
+  setEvtEndDate(ev.type==="annual" ? "" : (ev.endDate||""));
   document.getElementById("evtMemo").value=ev.memo||"";
   document.getElementById("btnAddEvt").textContent="수정하기";
   const f=document.getElementById("evtForm"); f.style.display="block"; f.scrollIntoView({behavior:"smooth", block:"center"});
@@ -2510,7 +2579,15 @@ document.getElementById("shareChip").onclick=async ()=>{
   sb.addEventListener("mousedown", e=>{ e.preventDefault(); }, {passive:false});                // 데스크톱: blur만 차단
   sb.addEventListener("click", e=>{ e.preventDefault(); sendMessage(); });                       // 데스크톱: 전송
 })();
-document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); }); // 엔터키
+document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); }); // sendBtn 클릭 폴백(터치/데스크톱 모두 직접 핸들러가 우선)
+/* 입력창(textarea): 자동 높이 확장 + Enter 정책. 터치 기기는 Enter=줄바꿈(전송은 ↑ 버튼만), 데스크톱은 Enter=전송·Shift+Enter=줄바꿈. */
+function autoGrowMsg(){ const ta=document.getElementById("msgInput"); if(!ta) return; ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,118)+"px"; }
+function _prefersTouchEnter(){ try{ return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }catch(e){ return false; } }
+document.getElementById("msgInput").addEventListener("input", autoGrowMsg);
+document.getElementById("msgInput").addEventListener("keydown", e=>{
+  // IME 조합 중 Enter는 조합 확정이지 전송 아님. 터치 기기·Shift+Enter는 줄바꿈(기본 동작 유지). 데스크톱 Enter만 전송.
+  if(e.key==="Enter" && !e.shiftKey && !e.isComposing && !_prefersTouchEnter()){ e.preventDefault(); sendMessage(); }
+});
 /* 채팅 사진 첨부: + → 앨범/카메라 메뉴 → 선택·촬영 즉시 압축 후 전송 */
 document.getElementById("btnAttach").onclick=()=>{ const m=document.getElementById("attachMenu"); m.style.display = (m.style.display==="none") ? "flex" : "none"; };
 ["chatAlbum","chatCamera"].forEach(id=>document.getElementById(id).addEventListener("change",e=>{
@@ -2554,13 +2631,17 @@ document.getElementById("annivInput").addEventListener("change",e=>{ setProfile(
 document.getElementById("btnSchedRefresh").onclick=refreshApp;
 document.getElementById("btnToggleEvtForm").onclick=()=>{
   const f=document.getElementById("evtForm"); const open=f.style.display==="none";
-  if(open){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
+  if(open){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기"; setEvtEndDate("");
     if(!document.getElementById("evtDate").value) setEvtDate(_selDate||todayStr()); else setEvtDate(document.getElementById("evtDate").value); }
   f.style.display=open?"block":"none";
 };
 document.getElementById("evtDatePrev").onclick=()=>shiftEvtDate(-1);
 document.getElementById("evtDateNext").onclick=()=>shiftEvtDate(1);
 document.getElementById("evtDate").addEventListener("change",e=>{ const l=document.getElementById("evtDateLabel"); if(l) l.textContent=fmtDateK(e.target.value); });
+document.getElementById("evtEndPrev").onclick=()=>shiftEvtEndDate(-1);
+document.getElementById("evtEndNext").onclick=()=>shiftEvtEndDate(1);
+document.getElementById("evtEndClear").onclick=()=>setEvtEndDate("");
+document.getElementById("evtEndDate").addEventListener("change",e=>{ setEvtEndDate(e.target.value); });
 document.getElementById("evtTypeOnce").onclick=()=>setEvtType("once");
 document.getElementById("evtTypeAnnual").onclick=()=>setEvtType("annual");
 document.getElementById("btnAddEvt").onclick=addEvent;
