@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>패스키 실기 랩 · 5959</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    margin:0;padding:16px;background:#fbf3ee;color:#3a3133;line-height:1.5;max-width:560px;margin:0 auto}
+  h1{font-size:19px;margin:4px 0 8px}
+  .intro{background:#fbe6ec;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.65;margin-bottom:14px}
+  .intro b{color:#e0577a}
+  .sec{background:#fff;border:1px solid #efe2d9;border-radius:14px;padding:12px 14px;margin-bottom:12px}
+  .sec h2{font-size:14px;margin:0 0 4px}
+  .sec .d{font-size:12px;color:#ab9a95;margin-bottom:10px}
+  button{display:block;width:100%;text-align:left;margin:6px 0;padding:12px 14px;border:1.5px solid #ec7f9b;
+    background:#fff;color:#3a3133;border-radius:10px;font-size:14px;font-weight:600}
+  button .n{color:#ec7f9b;font-weight:800;margin-right:6px}
+  button .sub{display:block;font-size:11.5px;color:#ab9a95;font-weight:400;margin-top:3px}
+  button:disabled{opacity:.4}
+  #status{font-size:12px;color:#ab9a95;margin:4px 0 10px}
+  #log{background:#25201c;color:#efe7df;border-radius:12px;padding:12px;font-size:12px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;min-height:120px;line-height:1.6}
+  .row2{display:flex;gap:8px}.row2 button{flex:1}
+  input{width:100%;padding:10px;border:1.5px solid #efe2d9;border-radius:10px;margin:6px 0;font-size:14px}
+  .clear{border-color:#ab9a95;color:#ab9a95}
+</style>
+</head>
+<body>
+<h1>🔐 패스키 실기 랩 (5959)</h1>
+<div class="intro">
+  라이브 앱과 무관한 <b>실험 페이지</b>예요(앱 코드·데이터 안 건드림).<br>
+  ① 먼저 <b>등록</b> 섹션에서 한 방식으로 패스키를 등록한 뒤,<br>
+  ② <b>잠금 해제 시도</b> 버튼들을 눌러보세요.<br>
+  각 버튼을 누를 때 <b>iOS 시스템 시트의 "계속" 탭이 필요한지 / 탭 없이 바로 지문·Face ID로 풀리는지</b>를
+  눈으로 보고 <b>몇 번 버튼이 탭 없이 풀렸는지</b> 알려주시면 그 조합을 앱에 이식할게요.<br>
+  (아래 로그엔 성공/실패만 남아요. "탭 필요 여부"는 화면을 보고 판정해 주세요.)
+</div>
+
+<div id="status">지원 여부 확인 중…</div>
+
+<div class="sec">
+  <h2>1) 패스키 등록 (한 방식만 골라 등록)</h2>
+  <div class="d">등록 방식이 이후 "탭 없이 풀림" 여부를 좌우할 수 있어요. 하나씩 바꿔가며 테스트.</div>
+  <button id="r1"><span class="n">R1</span>비-discoverable 등록 (현행 앱 방식)<span class="sub">residentKey: discouraged · UV: preferred</span></button>
+  <button id="r2"><span class="n">R2</span>discoverable 등록<span class="sub">residentKey: required · UV: preferred</span></button>
+  <button id="r3"><span class="n">R3</span>discoverable + UV required 등록<span class="sub">residentKey: required · UV: required</span></button>
+</div>
+
+<div class="sec">
+  <h2>2) 잠금 해제 시도 (등록 후 눌러보기)</h2>
+  <div class="d">각 버튼 = credentials.get() 한 번. "계속" 탭 없이 바로 풀리는 게 몇 번인지 확인.</div>
+  <button id="g1"><span class="n">G1</span>allowCredentials 지정 · UV preferred (현행)<span class="sub">등록한 자격증명 id를 콕 집어 요청</span></button>
+  <button id="g2"><span class="n">G2</span>allowCredentials 생략 · UV preferred<span class="sub">discoverable 등록(R2/R3) 후에 의미 있음</span></button>
+  <button id="g3"><span class="n">G3</span>allowCredentials 지정 · UV required<span class="sub">생체 강제</span></button>
+  <button id="g4"><span class="n">G4</span>mediation: "conditional" (자동완성형)<span class="sub">아래 입력칸 탭 시 자동 제안되는지</span></button>
+  <input id="condInput" type="text" autocomplete="username webauthn" placeholder="G4용: 여길 탭하면 패스키 자동 제안?">
+  <button id="g5"><span class="n">G5</span>hints: ["client-device"] · allow 생략<span class="sub">WebAuthn L3 힌트(기기 우선) — iOS 반응 확인</span></button>
+</div>
+
+<div id="log">로그가 여기 표시돼요…</div>
+<button class="clear" id="clear" style="margin-top:10px">로그 지우기</button>
+
+<script>
+const $=id=>document.getElementById(id);
+let lastRawId=null; // 마지막 등록 자격증명(rawId ArrayBuffer)
+function b64u(buf){const b=new Uint8Array(buf);let s="";for(const x of b)s+=String.fromCharCode(x);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+function now(){const d=new Date();return d.toTimeString().slice(0,8)+"."+String(d.getMilliseconds()).padStart(3,"0");}
+function log(msg){const el=$("log");el.textContent=("["+now()+"] "+msg+"\n")+el.textContent;}
+function rnd(n){return crypto.getRandomValues(new Uint8Array(n));}
+
+(async function(){
+  let ok=!!window.PublicKeyCredential, plat=false, cond=false;
+  try{ plat=await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); }catch(e){}
+  try{ cond=PublicKeyCredential.isConditionalMediationAvailable && await PublicKeyCredential.isConditionalMediationAvailable(); }catch(e){}
+  $("status").textContent = "WebAuthn "+(ok?"지원":"미지원")+" · 플랫폼 인증기 "+(plat?"있음":"없음")+" · conditional "+(cond?"가능":"불가");
+})();
+
+async function register(opts, label){
+  log("등록 시도 "+label+" …");
+  try{
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:rnd(32), rp:{name:"5959 lab"},
+      user:{id:rnd(16),name:"oguogu-lab",displayName:"5959 lab"},
+      pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+      authenticatorSelection:Object.assign({authenticatorAttachment:"platform"},opts),
+      timeout:120000, attestation:"none"
+    }});
+    lastRawId=cred.rawId;
+    log("✓ 등록 성공 "+label+" · id="+b64u(cred.rawId).slice(0,18)+"…");
+  }catch(e){ log("✗ 등록 실패 "+label+" · "+(e&&e.name)+": "+((e&&e.message)||"").slice(0,80)); }
+}
+async function getassert(publicKey, label, mediation){
+  if(!lastRawId && !(publicKey.allowCredentials && publicKey.allowCredentials.length===0)){
+    log("! 먼저 등록(R1~R3) 후 시도하세요 ("+label+")"); return;
+  }
+  log("해제 시도 "+label+" …  (지금 화면의 시트 형태·탭 여부를 봐주세요)");
+  try{
+    const req={publicKey};
+    if(mediation) req.mediation=mediation;
+    const a=await navigator.credentials.get(req);
+    log("✓ 해제 성공 "+label+" · id="+(a?b64u(a.rawId).slice(0,18):"?")+"…");
+  }catch(e){ log("✗ 해제 실패/취소 "+label+" · "+(e&&e.name)+": "+((e&&e.message)||"").slice(0,80)); }
+}
+
+$("r1").onclick=()=>register({residentKey:"discouraged",userVerification:"preferred"},"R1(비discoverable)");
+$("r2").onclick=()=>register({residentKey:"required",userVerification:"preferred"},"R2(discoverable)");
+$("r3").onclick=()=>register({residentKey:"required",userVerification:"required"},"R3(discoverable+UVreq)");
+
+$("g1").onclick=()=>getassert({challenge:rnd(32),allowCredentials:lastRawId?[{type:"public-key",id:lastRawId}]:[],userVerification:"preferred",timeout:120000},"G1(allow지정·UVpref)");
+$("g2").onclick=()=>getassert({challenge:rnd(32),userVerification:"preferred",timeout:120000},"G2(allow생략·UVpref)");
+$("g3").onclick=()=>getassert({challenge:rnd(32),allowCredentials:lastRawId?[{type:"public-key",id:lastRawId}]:[],userVerification:"required",timeout:120000},"G3(allow지정·UVreq)");
+$("g4").onclick=()=>getassert({challenge:rnd(32),userVerification:"preferred",timeout:120000},"G4(conditional)","conditional");
+$("g5").onclick=()=>getassert({challenge:rnd(32),hints:["client-device"],userVerification:"preferred",timeout:120000},"G5(hints:client-device)");
+$("clear").onclick=()=>{$("log").textContent="로그 지움\n";};
+</script>
+</body>
+</html>
