@@ -477,8 +477,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 /* 사진 라이트박스 */
 .photo-modal{position:fixed; inset:0; z-index:750; background:rgba(10,8,10,.92); display:none; align-items:center; justify-content:center; padding:20px}
 .photo-modal.show{display:flex}
-.photo-modal img{max-width:100%; max-height:100%; border-radius:var(--r-md); object-fit:contain}
-.photo-modal .close{position:absolute; top:calc(14px + env(safe-area-inset-top,0px)); right:18px; color:#fff; font-size:26px; width:40px; height:40px; display:grid; place-items:center}
+.photo-modal img{max-width:100%; max-height:100%; border-radius:var(--r-md); object-fit:contain; transition:opacity .12s; touch-action:pan-y}
+.photo-modal .close{position:absolute; top:calc(14px + env(safe-area-inset-top,0px)); right:18px; color:#fff; font-size:26px; width:40px; height:40px; display:grid; place-items:center; z-index:2}
+.photo-modal .pv-arrow{position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; display:none; place-items:center; color:#fff; font-size:34px; background:rgba(255,255,255,.14); border-radius:var(--r-full); z-index:2}
+.photo-modal .pv-prev{left:12px}
+.photo-modal .pv-next{right:12px}
+.photo-modal .pv-indicator{position:absolute; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); color:#fff; font-size:13px; font-weight:var(--w-bold); background:rgba(0,0,0,.45); padding:5px 14px; border-radius:var(--r-full); display:none}
 </style>
 </head>
 <body>
@@ -895,7 +899,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 <!-- 사진 크게 보기 -->
 <div class="photo-modal" id="photoModal">
   <button class="close" id="photoModalClose" aria-label="닫기">✕</button>
+  <button class="pv-arrow pv-prev" id="photoPrev" aria-label="이전 사진">‹</button>
   <img id="photoModalImg" alt="">
+  <button class="pv-arrow pv-next" id="photoNext" aria-label="다음 사진">›</button>
+  <div class="pv-indicator" id="photoModalIndicator"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -906,7 +913,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.1"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.2"; // 1인 1계정(구글 로그인)+canonical 오리진=firebaseapp.com. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1967,21 +1974,52 @@ function renderDiaryGrid(body){
   wireDiaryBody(body);
 }
 function wireDiaryBody(body){
-  body.querySelectorAll("[data-photo]").forEach(im=>im.onclick=()=>openPhoto(im.dataset.entry, im.dataset.photo));
+  body.querySelectorAll("[data-photo]").forEach(im=>im.onclick=()=>{
+    // 같은 그룹(엔트리 썸네일 묶음 / 그리드 전체)의 사진들을 연속 열람 리스트로 구성
+    const container = im.closest(".thumbs, .grid-photos");
+    const imgs = container ? [...container.querySelectorAll("[data-photo]")] : [im];
+    const list = imgs.map(x=>({entry:x.dataset.entry, photo:x.dataset.photo}));
+    openPhotoViewer(list, Math.max(0, imgs.indexOf(im)));
+  });
   body.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>startEditDiary(b.dataset.edit));
   body.querySelectorAll("[data-deldiary]").forEach(b=>b.onclick=()=>deleteDiaryEntry(b.dataset.deldiary));
 }
-async function openPhoto(entryId, photoId){
-  const modal=document.getElementById("photoModal"), img=document.getElementById("photoModalImg");
-  img.src=""; modal.classList.add("show");
+/* 사진 뷰어 — 좌우 스와이프/화살표/키보드로 연속 열람. 인디케이터(n/N). */
+let _viewerList=[], _viewerIdx=0, _viewerURLs=[];
+function openPhotoViewer(list, idx){
+  _viewerList=list||[]; _viewerIdx=idx||0;
+  _viewerURLs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _viewerURLs=[];
+  if(!_viewerList.length) return;
+  document.getElementById("photoModal").classList.add("show");
+  showViewerPhoto();
+}
+async function showViewerPhoto(){
+  const cur=_viewerList[_viewerIdx]; if(!cur) return;
+  const img=document.getElementById("photoModalImg"), ind=document.getElementById("photoModalIndicator");
+  const prev=document.getElementById("photoPrev"), next=document.getElementById("photoNext");
+  ind.textContent=(_viewerIdx+1)+" / "+_viewerList.length;
+  ind.style.display=_viewerList.length>1?"block":"none";
+  prev.style.display=(_viewerList.length>1 && _viewerIdx>0)?"grid":"none";
+  next.style.display=(_viewerList.length>1 && _viewerIdx<_viewerList.length-1)?"grid":"none";
+  img.style.opacity="0.35";
   try{
-    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"photos",photoId));
+    const snap=await M.getDoc(M.doc(fb.db,"pairs",pairId,"diary",cur.entry,"photos",cur.photo));
     if(snap.exists()){
-      const data=snap.data();
-      const u8=(data.bytes && data.bytes.toUint8Array) ? data.bytes.toUint8Array() : data.bytes;
-      img.src=URL.createObjectURL(new Blob([u8],{type:data.mime||"image/jpeg"}));
-    } else { toast("사진을 찾을 수 없어요"); modal.classList.remove("show"); }
-  }catch(e){ console.error(e); toast("사진을 불러오지 못했어요"); modal.classList.remove("show"); }
+      const d=snap.data(); const u8=(d.bytes && d.bytes.toUint8Array)?d.bytes.toUint8Array():d.bytes;
+      const url=URL.createObjectURL(new Blob([u8],{type:d.mime||"image/jpeg"})); _viewerURLs.push(url);
+      img.src=url; img.style.opacity="1";
+    } else { img.style.opacity="1"; }
+  }catch(e){ console.error(e); img.style.opacity="1"; }
+}
+function viewerNav(delta){
+  const n=_viewerIdx+delta;
+  if(n<0 || n>=_viewerList.length) return;
+  _viewerIdx=n; showViewerPhoto();
+}
+function closePhotoViewer(){
+  document.getElementById("photoModal").classList.remove("show");
+  _viewerURLs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _viewerURLs=[];
+  _viewerList=[];
 }
 
 /* ---- 사진 압축(캔버스): 긴변 maxDim으로 축소 → JPEG. Uint8Array 반환(Bytes 저장용) ---- */
@@ -2379,8 +2417,25 @@ document.getElementById("btnToggleDiaryForm").onclick=()=>{
 document.getElementById("diaryPhotos").addEventListener("change", onDiaryFileSelect);
 document.getElementById("btnAddDiary").onclick=saveDiary;
 document.getElementById("btnCancelDiaryEdit").onclick=()=>closeDiaryForm();
-document.getElementById("photoModalClose").onclick=()=>document.getElementById("photoModal").classList.remove("show");
-document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") e.currentTarget.classList.remove("show"); });
+document.getElementById("photoModalClose").onclick=closePhotoViewer;
+document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") closePhotoViewer(); });
+document.getElementById("photoPrev").onclick=e=>{ e.stopPropagation(); viewerNav(-1); };
+document.getElementById("photoNext").onclick=e=>{ e.stopPropagation(); viewerNav(1); };
+/* 사진 뷰어 제스처: 좌우 스와이프=넘기기, 아래로=닫기 */
+(function(){
+  const modal=document.getElementById("photoModal"); let x0=null,y0=null;
+  modal.addEventListener("touchstart",e=>{ if(e.touches.length===1){ x0=e.touches[0].clientX; y0=e.touches[0].clientY; } },{passive:true});
+  modal.addEventListener("touchend",e=>{
+    if(x0==null) return; const t=e.changedTouches[0], dx=t.clientX-x0, dy=t.clientY-y0;
+    if(Math.abs(dx)>45 && Math.abs(dx)>Math.abs(dy)) viewerNav(dx<0?1:-1);
+    else if(dy>90 && Math.abs(dy)>Math.abs(dx)) closePhotoViewer();
+    x0=null; y0=null;
+  },{passive:true});
+})();
+document.addEventListener("keydown",e=>{
+  if(!document.getElementById("photoModal").classList.contains("show")) return;
+  if(e.key==="ArrowLeft") viewerNav(-1); else if(e.key==="ArrowRight") viewerNav(1); else if(e.key==="Escape") closePhotoViewer();
+});
 
 /* ===== 홈 화면 추가(설치) 안내 배너 ===== */
 function isStandalone(){ return matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
