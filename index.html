@@ -827,7 +827,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.5"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.5.6"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1041,22 +1041,32 @@ async function registerBio(){
 /* 실기 수리: WebAuthn get()은 사용자 제스처 없이 호출되면 iOS/Safari가 조용히 NotAllowedError로 거부.
    자동 호출 전부 제거, lockBioBtn/키패드 Face ID 탭(진짜 제스처)에서만 호출. */
 let _bioBusy=false;
-async function bioUnlock(){
-  const id=localStorage.getItem("oguogu.lock.bio");if(!id)return;
-  if(_bioBusy)return;
+/* bioUnlock(silent): 지문·Face ID로 잠금 해제. 반환 true=해제 성공.
+   silent=true(잠금화면 자동 시도)면 실패해도 잠금화면에 에러를 안 띄우고 조용히 버튼 폴백으로 남긴다
+   (무제스처 거부 기기에서 프롬프트/에러 도배 금지). 진단 사유는 설정 힌트 채널(setBioDiag)에만 남긴다.
+   silent 미지정(버튼/키패드 수동 탭)이면 기존대로 잠금화면에 실패 사유를 표시. */
+async function bioUnlock(silent){
+  const id=localStorage.getItem("oguogu.lock.bio");if(!id)return false;
+  if(_bioBusy)return false;
   _bioBusy=true;
   const msgEl=document.getElementById("lockMsg");
-  msgEl.textContent="";
+  if(!silent) msgEl.textContent="";
   try{
     const a=await navigator.credentials.get({publicKey:{
       challenge:crypto.getRandomValues(new Uint8Array(32)),
       allowCredentials:[{type:"public-key",id:_b64uToBuf(id)}],
       userVerification:"preferred",timeout:120000
     }});
-    if(a) hideLock();
+    if(a){ hideLock(); return true; }
+    return false;
   }catch(e){
     console.error(e);
-    const name=(e && e.name)||"Error"; // 진단 채널: 실패 사유(name)를 잠금화면에 노출
+    const name=(e && e.name)||"Error";
+    if(silent){
+      // 자동 시도 거부(대개 무제스처 NotAllowedError) → 조용히 버튼 모드 유지. 사용자는 버튼 탭/PIN으로 진행.
+      setBioDiag("자동 인증 폴백: "+name);
+      return false;
+    }
     if(name==="NotAllowedError"){
       msgEl.textContent="인증 실패: NotAllowedError — 다시 시도하거나 비밀번호로 해제하세요";
     }else if(name==="SecurityError" || name==="InvalidStateError" || name==="NotSupportedError"){
@@ -1066,8 +1076,24 @@ async function bioUnlock(){
     }else{
       msgEl.textContent="인증 실패: "+name+" — 비밀번호로 해제하세요";
     }
+    return false;
   }finally{
     _bioBusy=false;
+  }
+}
+/* 잠금화면 표시 시 1회 자동 시도(탭 0회 해제 목표). 성공하면 잠금화면이 사라지고, 거부되면 조용히 버튼 모드.
+   재시도 루프 금지: showLock 1회당 _autoBioTried로 1번만. visibilitychange 재잠금마다 showLock→새 1회. */
+let _autoBioTried=false;
+async function autoBioUnlock(){
+  if(_autoBioTried) return;
+  _autoBioTried=true;
+  const bb=document.getElementById("lockBioBtn"), hi=document.getElementById("lockHi"), orig=bb?bb.textContent:"";
+  if(bb) bb.textContent="🙂 Face ID 확인 중…";
+  if(hi) hi.textContent="Face ID로 확인 중이에요… (원하면 비밀번호도 바로 입력할 수 있어요)";
+  const ok=await bioUnlock(true); // 자동=silent
+  if(!ok){ // 거부/실패 → 조용히 버튼 모드 복귀(에러 도배 없음)
+    if(bb) bb.textContent=orig||"🙂 지문·Face ID로 해제";
+    if(hi) hi.textContent="암호를 입력하세요";
   }
 }
 function lockMode(){return localStorage.getItem("oguogu.lock.mode")||(bioIsOn()?"bio":"pin");}
@@ -1096,8 +1122,10 @@ function showLock(){
   pin.value=""; renderLockDots(); document.getElementById("lockMsg").textContent="";
   const hi=document.getElementById("lockHi"); if(hi) hi.textContent="암호를 입력하세요";
   lockContentNow(); // 잠기는 즉시 대화 DOM에서 실제 내용 제거(진짜 비노출)
+  _autoBioTried=false; // 이번 잠금 표시분 자동 시도 1회 허용
   if(lockMode()==="bio" && bioIsOn()){
     pad.style.display="none"; bb.style.display="block"; fbk.style.display="block";
+    autoBioUnlock(); // 표시 즉시 1회 자동 시도(성공=탭0회). 거부되면 위 버튼/아래 PIN 폴백으로 조용히 남음.
   }else{
     pad.style.display="grid"; bb.style.display="none"; fbk.style.display="none";
   }
@@ -1181,7 +1209,7 @@ document.getElementById("lockModeBioBtn").onclick=()=>chooseLockMode("bio");
 document.getElementById("autoLock0Btn").onclick=()=>setAutoLockMs(0);
 document.getElementById("autoLock1Btn").onclick=()=>setAutoLockMs(60000);
 document.getElementById("autoLock5Btn").onclick=()=>setAutoLockMs(300000);
-document.getElementById("lockBioBtn").onclick=bioUnlock;
+document.getElementById("lockBioBtn").onclick=()=>bioUnlock(); // 수동(버튼) = silent 아님(실패 사유 표시)
 document.getElementById("lockPinFallback").onclick=showPinFallback;
 document.getElementById("lockInput").addEventListener("input",autoUnlockCheck);
 /* 잠금 키패드: lockInput 값에 반영 후 input 이벤트로 기존 해제 로직 재사용 */
