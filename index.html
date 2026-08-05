@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
 <!--
 ================================================================================
-  5959 (v0.5.4) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
+  5959 (v0.5.5) — 리디자인 + 꾸미기 + 짝 도움 복귀 + [일정·다이어리(사진)] 라운드
   · v0.5.3: 양쪽-솔로 합류(설정→받은 코드 입력, 합류 성공 후 내 솔로 정리) + 초대 저장실패 문구 분리
     (permission-denied↔네트워크) + 케이스 I가 waiting 수용(구세대) + 설정에 앱/캐시 버전 표시.
   · v0.5.4: iOS 전송버튼 무반응 수리(touchstart preventDefault가 click 취소 → touchend/click 직접 전송+디바운스)
@@ -827,7 +827,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.5.4"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.5.5"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -2074,17 +2074,17 @@ document.getElementById("shareChip").onclick=async ()=>{
    기존엔 touchstart에서 preventDefault로 blur만 막으려 했으나, iOS Safari는 touchstart의
    preventDefault가 뒤따르는 click을 통째로 취소한다 → 버튼이 type=submit이어도 submit이 안 떠서
    sendMessage가 호출되지 않았다(전송 버튼 탭 무반응 = 사장님 "전송 안 됨"의 실제 원인. 데스크톱은
-   click이 살아 정상 → 폰만 실패하던 이유). 수리: 제스처(touchend/click/엔터)에서 전송을 "직접" 실행,
-   400ms 디바운스로 중복 방지. mousedown preventDefault는 데스크톱 blur 차단용으로만(클릭은 살림). */
-let _lastSendAt=0;
-function triggerSend(){ const t=Date.now(); if(t-_lastSendAt<400) return; _lastSendAt=t; sendMessage(); }
+   click이 살아 정상 → 폰만 실패하던 이유). 수리: 제스처(touchend/click/엔터)에서 전송을 "직접" 실행.
+   중복 방지는 별도 디바운스 없이 sendMessage의 빈 입력 가드가 담당한다 — touchend가 먼저 input.value를
+   동기적으로 비우므로, 뒤따르는 synthetic click은 text=""로 즉시 반환(빠른 연속 전송은 막지 않는다).
+   mousedown preventDefault는 데스크톱 blur 차단용으로만(클릭은 살림). */
 (function(){
   const sb=document.getElementById("sendBtn");
-  sb.addEventListener("touchend", e=>{ e.preventDefault(); triggerSend(); }, {passive:false}); // 모바일: 키보드 유지+전송
+  sb.addEventListener("touchend", e=>{ e.preventDefault(); sendMessage(); }, {passive:false}); // 모바일: 키보드 유지+전송
   sb.addEventListener("mousedown", e=>{ e.preventDefault(); }, {passive:false});                // 데스크톱: blur만 차단
-  sb.addEventListener("click", e=>{ e.preventDefault(); triggerSend(); });                       // 데스크톱: 전송
+  sb.addEventListener("click", e=>{ e.preventDefault(); sendMessage(); });                       // 데스크톱: 전송
 })();
-document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); triggerSend(); }); // 엔터키
+document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); }); // 엔터키
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 async function refreshApp(){
   try{
