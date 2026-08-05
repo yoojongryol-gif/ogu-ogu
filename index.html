@@ -384,8 +384,11 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   display:none; flex:none; align-items:stretch; background:var(--surface);
   border-top:1px solid var(--line); box-shadow:0 -1px 3px rgba(90,60,60,.05);
   padding-bottom:env(safe-area-inset-bottom,0px); z-index:3;
-  overflow:hidden; max-height:96px; transition:max-height .22s ease, opacity .18s ease;
+  overflow:hidden; max-height:96px; transition:opacity .15s ease;
 }
+/* ⚠️max-height는 트랜지션에서 제외(즉시 접힘). max-height 트랜지션이 이 조합(flex-none 항목)에서
+   값이 목표(0)에 도달하지 못하고 96px에 고정되는 브라우저 버그를 실측 → 즉시 접힘으로 신뢰성 확보.
+   opacity만 살짝 페이드(복귀 시 팝 방지). 키보드 슬라이드 애니메이션이 즉시성을 가려 체감 자연스러움. */
 .tabbar.on{display:flex}
 /* 키보드가 올라오면 하단 탭바를 부드럽게 접어(입력바가 자연스럽게 바닥까지 내려옴), 내려가면 복귀.
    visualViewport로 키보드 높이 감지 → body.kb-open 토글(채팅·일정·다이어리 입력 공통). */
@@ -866,7 +869,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.6.1"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.6.2"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
