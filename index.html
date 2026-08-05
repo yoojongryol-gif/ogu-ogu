@@ -492,6 +492,39 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 </div>
 
+<!-- 로그인 게이트(구글로 시작하기) — 1인 1계정: 어떤 기기/브라우저든 같은 나 -->
+<div class="screen center mid" id="screenAuth">
+  <div class="brandmark">
+    <div class="logo">5959</div>
+    <div class="logo-sub">오구오구라고 읽어요</div>
+  </div>
+  <h1 class="h">우리 둘만의 공간</h1>
+  <div class="sub">한 번 로그인해두면 폰을 바꾸거나 앱을 지워도<br>같은 우리 공간으로 다시 들어와요</div>
+  <div class="spring"></div>
+  <button class="primary-btn" id="btnGoogleSignin">
+    <span style="display:inline-flex;align-items:center;gap:10px;justify-content:center">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5h-1.9V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.6 34.6 26.9 36 24 36c-5.2 0-9.6-3.3-11.2-8l-6.6 5.1C9.6 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H24v8h11.3c-.8 2.2-2.2 4.1-4 5.4l6.6 5.6C41 36.2 44 30.6 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>
+      구글로 시작하기
+    </span>
+  </button>
+  <!-- 애플 로그인은 유료 개발자 계정이 필요해 보류(자리만 표시). 활성화 시 Sign in with Apple provider + 아래 버튼 노출.
+  <button class="secondary-btn" id="btnAppleSignin" style="display:none"> Apple로 계속하기</button>
+  -->
+  <div class="errline" id="authErr" style="min-height:16px"></div>
+  <div class="notice">이메일 주소만 확인해요. 연락처·친구 목록은 절대 가져오지 않아요. 로그인은 폰을 바꿔도 우리 공간을 다시 여는 열쇠로만 써요.</div>
+</div>
+
+<!-- 이사 안내(구 github.io 배포) -->
+<div class="screen center mid" id="screenMoved">
+  <div class="brandmark"><div class="logo">5959</div></div>
+  <h1 class="h">새 주소로 이사했어요</h1>
+  <div class="sub">이제 여기서 로그인해서 써요.<br>새 주소를 열고 <b>홈 화면에 다시 추가</b>해주세요</div>
+  <div class="spring"></div>
+  <button class="primary-btn" id="btnOpenNewAddr">새 주소 열기 →</button>
+  <button class="ghost-btn" id="btnStayLegacy">기존 대화 계속 보기</button>
+  <div class="notice">기존 대화는 여기서 계속 볼 수 있어요. 다만 새로운 시작·기록은 새 주소에서 이어가주세요.</div>
+</div>
+
 <!-- 시작 화면 -->
 <div class="screen center mid" id="screenStart">
   <div class="brandmark">
@@ -499,9 +532,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div class="logo-sub">오구오구라고 읽어요</div>
   </div>
   <h1 class="h">우리 둘만의 공간,<br>혼자 먼저 열어봐요</h1>
-  <div class="sub">이메일이나 전화번호 없이 바로 시작해요.<br>나중에 초대코드를 보내면 둘만의 공간이 돼요</div>
+  <div class="sub">먼저 내 공간을 만들어요.<br>나중에 초대코드를 보내면 둘만의 공간이 돼요</div>
   <div class="spring"></div>
-  <button class="primary-btn" id="btnStart">시작하기</button>
+  <button class="primary-btn" id="btnStart">내 공간 만들기</button>
   <button class="secondary-btn" id="btnJoin">받은 초대코드가 있어요</button>
   <button class="ghost-btn" id="btnRejoin">예전에 쓰던 공간이 있나요? · 다시 연결 코드 입력</button>
 </div>
@@ -758,6 +791,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div><div class="label">앱 새로고침</div><div class="desc">최신 버전 확인 후 다시 불러와요</div></div>
       <button class="link-btn" id="btnRefreshSettings">🔄</button>
     </div>
+    <div class="set-row" id="signoutRow" style="display:none">
+      <div><div class="label">로그아웃</div><div class="desc" id="signoutDesc">이 기기에서만 나가요. 우리 공간과 기록은 그대로 남고, 다시 로그인하면 이어져요</div></div>
+      <button class="link-btn" id="btnSignout">로그아웃</button>
+    </div>
   </div>
 
   <div class="set-group danger">
@@ -869,18 +906,24 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.6.2"; // 이 index.html의 버전(설정 하단 표시). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.0"; // 1인 1계정(구글 로그인)+Firebase Hosting 이전. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
+/* authDomain은 "서빙 오리진과 동일"해야 iOS standalone에서 signInWithRedirect가 same-site로 동작한다
+   (교차도메인 시 Safari 16.1+/Chrome 115+ 서드파티 쿠키 차단으로 결과 회수 실패 — 공식 이슈 #8329).
+   Firebase Hosting 도메인(web.app/firebaseapp.com)에서 서빙되면 그 호스트를 그대로 authDomain으로 써서
+   앱 오리진==authDomain을 성립시킨다. 그 외(localhost=에뮬레이터, 레거시 github.io=구글로그인 미사용)는 기본값. */
+const _HOST = (typeof location!=="undefined") ? location.hostname : "";
 const firebaseConfig = {
   apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
-  authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
+  authDomain: (_HOST.endsWith(".web.app") || _HOST.endsWith(".firebaseapp.com")) ? _HOST : "ogu-ogu-app-e4193.firebaseapp.com",
   projectId: "ogu-ogu-app-e4193",
   storageBucket: "ogu-ogu-app-e4193.firebasestorage.app",
   messagingSenderId: "663259886074",
   appId: "1:663259886074:web:dfa2eecf74034bfe923443"
 };
+const IS_LEGACY_ORIGIN = _HOST.endsWith("github.io"); // 구 배포(이사 안내 대상)
 const USE_EMULATOR = (location.hostname==="localhost" || location.hostname==="127.0.0.1");
 
 let pairId = localStorage.getItem("oguogu.pairId") || null;
@@ -1302,15 +1345,66 @@ async function initFirebase(){
     try{ M.connectAuthEmulator(fb.auth, "http://127.0.0.1:9099", {disableWarnings:true}); }catch(e){}
     try{ M.connectFirestoreEmulator(fb.db, "127.0.0.1", 8080); }catch(e){}
   }
-  await new Promise((res,rej)=>{
-    M.onAuthStateChanged(fb.auth, async user=>{
-      if(user){ fb.uid=user.uid; res(); }
-      else{
-        try{ await M.signInAnonymously(fb.auth); }
-        catch(err){ console.error(err); rej(err); }
+  // 자동 익명 로그인은 여기서 하지 않는다 — 인증은 boot()의 auth 게이트가 구동한다(1인 1계정).
+}
+
+/* ===== 인증(1인 1계정): 구글 로그인 기본·필수 경로 =====
+   - 신규/기기변경/재설치 어디서든 같은 구글 계정 = 같은 uid → 같은 우리 공간.
+   - iOS standalone에선 popup이 인앱 브라우저로 격리돼 결과 회수가 실패하므로 redirect 우선.
+     redirect는 authDomain==서빙오리진(web.app)일 때 same-site로 동작(위 firebaseConfig 참고). */
+async function googleSignIn(){
+  const errEl=document.getElementById("authErr"); if(errEl) errEl.textContent="";
+  let provider;
+  try{ provider = new M.GoogleAuthProvider(); }
+  catch(e){ console.error(e); if(errEl) errEl.textContent="로그인을 준비하지 못했어요"; return; }
+  try{
+    if(isStandalone()){
+      await M.signInWithRedirect(fb.auth, provider); // 홈화면 앱 → 리다이렉트(같은 창)
+    }else{
+      try{ await M.signInWithPopup(fb.auth, provider); }        // 브라우저 탭 → 팝업
+      catch(e){
+        if(e && (e.code==="auth/popup-blocked" || e.code==="auth/cancelled-popup-request" || e.code==="auth/operation-not-supported-in-this-environment")){
+          await M.signInWithRedirect(fb.auth, provider);         // 팝업 차단 → 리다이렉트 폴백
+        } else { throw e; }
       }
-    }, err=>{ console.error(err); rej(err); });
-  });
+    }
+  }catch(err){
+    console.error(err);
+    if(errEl){
+      if(err && err.code==="auth/operation-not-allowed"){ errEl.textContent="구글 로그인이 아직 켜지지 않았어요. 잠시 후 다시 시도해주세요"; }
+      else if(err && err.code==="auth/popup-closed-by-user"){ /* 사용자가 닫음 — 조용히 */ }
+      else if(err && err.code==="auth/unauthorized-domain"){ errEl.textContent="이 주소에서는 로그인이 허용되지 않았어요"; }
+      else { errEl.textContent="로그인에 실패했어요. 다시 시도해주세요"; }
+    }
+  }
+}
+async function doSignOut(){
+  try{
+    if(unsubPair) unsubPair(); if(unsubMsgs) unsubMsgs(); if(unsubEvents) unsubEvents(); if(unsubDiary) unsubDiary();
+    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
+    // 로그아웃: 이 기기의 공간 포인터·알림 토큰만 비운다(서버의 공간/기록은 보존). 다른 구글 계정이 이어서
+    //   로그인해도 남의 공간이 잘못 붙지 않도록 pairId를 반드시 비운다.
+    localStorage.removeItem("oguogu.pairId");
+    localStorage.removeItem("oguogu.notify.on");
+    localStorage.removeItem("oguogu.notify.token");
+    pairId=null;
+    await M.signOut(fb.auth); // onAuthStateChanged가 screenAuth로 전환
+  }catch(e){ console.error(e); toast("로그아웃에 실패했어요"); }
+}
+/* 로그인 완료 후 진입 결정: localStorage 포인터 → 없으면 내 uid가 든 기존 pair 조회(기기 무관 복귀) → 없으면 시작 메뉴 */
+async function onSignedIn(){
+  const so=document.getElementById("signoutRow"); if(so) so.style.display=""; // 설정에 로그아웃 노출
+  if(pairId){ watchPair(); return; }
+  try{
+    const q=M.query(M.collection(fb.db,"pairs"), M.where("memberUids","array-contains",fb.uid));
+    const snap=await M.getDocs(q);
+    const rank=(x)=> x.status==="paired"?2 : (x.status==="solo"||x.status==="waiting")?1 : 0;
+    const cms=(x)=>{ const c=x.createdAt; if(!c) return 0; if(typeof c.toMillis==="function") return c.toMillis(); if(c.seconds) return c.seconds*1000; return +new Date(c)||0; };
+    const cand=snap.docs.map(d=>({id:d.id,data:d.data()})).filter(x=>x.data.status!=="dissolved");
+    cand.sort((a,b)=> (rank(b.data)-rank(a.data)) || (cms(b.data)-cms(a.data)));
+    if(cand.length){ pairId=cand[0].id; localStorage.setItem("oguogu.pairId",pairId); watchPair(); return; }
+  }catch(e){ console.error("기존 공간 조회 실패(비치명):", e); }
+  show("screenStart"); // 없으면 시작 메뉴(내 공간 만들기 / 받은 코드 / 다시 연결 코드)
 }
 
 /* ===== 페어링 ===== */
@@ -2161,6 +2255,11 @@ function recoverFromDeadPair(){
 function isDeniedErr(err){ return !!(err && (err.code==="permission-denied" || err.code==="firestore/permission-denied")); }
 
 /* ===== 이벤트 바인딩 ===== */
+document.getElementById("btnGoogleSignin").onclick=()=>googleSignIn();
+document.getElementById("btnSignout").onclick=()=>doSignOut();
+// 이사 안내(구 배포)
+document.getElementById("btnOpenNewAddr").onclick=()=>{ location.href="https://ogu-ogu-app-e4193.web.app/"; };
+document.getElementById("btnStayLegacy").onclick=()=>legacyContinue();
 document.getElementById("btnStart").onclick=()=>createSolo().catch(err=>{console.error(err); toast("시작하지 못했어요. 잠시 후 다시 시도해주세요");});
 /* 코드 입력 화면은 두 진입점을 공유한다:
    · 첫 화면 "받은 초대코드가 있어요"(_joinFromSolo=false) → 공간이 없는 새 기기가 합류(joinPair).
@@ -2373,13 +2472,47 @@ function showConnectionPending(){
   document.getElementById("loadingPendingMsg").style.display="block";
   toast("연결에 실패했어요. 새로고침 해주세요");
 }
+let _lastAuthUid=null;
+async function bootLegacy(){
+  /* 구 github.io 배포: 기존 익명 사용자의 대화 열람은 유지하되, 신규 시작은 새 주소로 유도.
+     먼저 이사 안내를 띄우고, "계속 보기"를 누르면 익명 흐름으로 진입한다. */
+  show("screenMoved");
+}
+function legacyContinue(){
+  // 익명 로그인 유지(하위호환) 후 기존 진입 로직으로.
+  M.onAuthStateChanged(fb.auth, async user=>{
+    if(user){ fb.uid=user.uid;
+      if(_lastAuthUid===user.uid) return; _lastAuthUid=user.uid;
+      if(pairId){ watchPair(); } else { show("screenStart"); }
+    } else {
+      try{ await M.signInAnonymously(fb.auth); }catch(e){ console.error(e); showConnectionPending(); }
+    }
+  }, err=>{ console.error(err); showConnectionPending(); });
+}
 (async function boot(){
   document.title="5959"; // 탭 타이틀 불변 원칙
   applyThemeFromData(); // 페어링 전에도 마지막 팔레트 취향 반영
   try{
     await initFirebase();
-    if(pairId){ watchPair(); }
-    else { show("screenStart"); }
+    if(IS_LEGACY_ORIGIN){ await bootLegacy(); return; }
+    // 리다이렉트 로그인 결과 마무리(에러만 표면화 — 성공 세션은 onAuthStateChanged가 처리)
+    M.getRedirectResult(fb.auth).catch(err=>{
+      console.error(err);
+      const e=document.getElementById("authErr");
+      if(e && err && err.code==="auth/operation-not-allowed") e.textContent="구글 로그인이 아직 켜지지 않았어요. 잠시 후 다시 시도해주세요";
+    });
+    // 인증 게이트: 로그인 상태면 진입, 아니면 구글 로그인 화면.
+    M.onAuthStateChanged(fb.auth, user=>{
+      if(user){
+        if(_lastAuthUid===user.uid) return; // 이미 처리한 세션(토큰 갱신 등)
+        _lastAuthUid=user.uid; fb.uid=user.uid;
+        onSignedIn();
+      }else{
+        _lastAuthUid=null; fb.uid=null;
+        const so=document.getElementById("signoutRow"); if(so) so.style.display="none";
+        show("screenAuth");
+      }
+    }, err=>{ console.error(err); showConnectionPending(); });
   }catch(err){ console.error(err); showConnectionPending(); }
 })();
 

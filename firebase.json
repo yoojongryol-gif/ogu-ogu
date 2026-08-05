@@ -8,7 +8,24 @@
   },
   "hosting": {
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      ".git/**",
+      "**/.git/**",
+      ".firebase/**",
+      "**/node_modules/**",
+      "dev/**",
+      "scripts/**",
+      "firestore.rules",
+      "storage.rules",
+      "firestore.indexes.json"
+    ],
+    "headers": [
+      { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    ]
   },
   "emulators": {
     "auth": { "port": 9099 },
