@@ -1232,12 +1232,12 @@ function renderHomeUpcoming(){
     body=top.map(({ev,occ})=>{
       const n=daysBetween(today,occ);
       const isAnniv = ev._synthetic || ev.type==="annual";
-      const soon = n<=7;
+      const soon = n<=7; // D-7 이내 임박 = 채운 배지(.soon)로 강조
       const ddl=ddLabel(occ);
       const rl=(!ev._synthetic && ev.type!=="annual" && ev.endDate) ? rangeLabel(ev.date, ev.endDate) : null;
       const sub=[rl || isoDate(occ).replace(/-/g,"."), (ev._synthetic?"기념일":(ev.type==="annual"?"매년":"")), ev.memo].filter(Boolean).join(" · ");
-      const title = (isAnniv && soon) ? (ddl+" "+esc(ev.title)) : esc(ev.title); // 기념일 임박=강조 표기
-      return '<div class="home-evt'+(soon?' soon':'')+'"><div class="dd">'+ddl+'</div>'
+      const title = (isAnniv && soon) ? ("🎉 "+esc(ev.title)) : esc(ev.title); // 임박 기념일=제목에 강조 마커(D-일수는 배지가 담당)
+      return '<div class="home-evt'+(soon?' soon':'')+(isAnniv?' anniv':'')+'"><div class="dd">'+ddl+'</div>'
         +'<div class="info"><div class="t">'+title+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div></div>';
     }).join("");
   }
