@@ -534,6 +534,15 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .cap-note{font-size:12.5px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.65; margin-bottom:var(--s4)}
 .photo-count{font-size:12px; color:var(--muted); font-weight:var(--w-med)}
 .file-btn{display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--w-med); color:var(--accent); background:var(--accent-soft); padding:10px 14px; border-radius:var(--r-md); cursor:pointer}
+/* 다이어리 편집 모드 — 기존 사진 개별 삭제(× 오버레이) */
+.diary-edit-photos{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px}
+.edit-photo{position:relative; width:72px; height:72px}
+.edit-photo img{width:100%; height:100%; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
+.edit-photo button{position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; background:var(--danger); color:#fff; font-size:13px; line-height:1; display:grid; place-items:center; box-shadow:var(--shadow)}
+
+/* 오프라인 배너 — 탭바 바로 위, 작게. navigator.onLine 기준 표시/자동 해제 */
+.offline-banner{display:none; flex:none; align-items:center; justify-content:center; gap:6px; background:var(--surface2); color:var(--muted); font-size:12px; font-weight:var(--w-med); padding:7px 14px; text-align:center; border-top:1px solid var(--line)}
+.offline-banner.show{display:flex}
 
 /* 합류 요청 배너 — 초대한 멤버 화면 상단 고정(수락/거절) */
 .joinreq-banner{
@@ -779,6 +788,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <button type="button" class="form-back" id="diaryFormBack">← 닫기</button>
       <input class="fi" id="diaryDate" type="date">
       <textarea class="fi" id="diaryText" maxlength="2000" placeholder="오늘 우리 이야기를 적어봐요"></textarea>
+      <div class="diary-edit-photos" id="diaryEditPhotos" style="display:none"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <label class="file-btn" id="diaryFileLabel">🖼️ 사진 담기<input type="file" id="diaryPhotos" accept="image/*" multiple style="display:none"></label>
         <label class="file-btn" id="diaryCamLabel">📷 바로 찍기<input type="file" id="diaryCamera" accept="image/*" capture="environment" style="display:none"></label>
@@ -866,7 +876,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="set-label">잠금 · 알림</div>
   <div class="set-group">
     <div class="set-row">
-      <div><div class="label">암호 잠금</div><div class="desc" id="lockStatusLabel">꺼짐</div></div>
+      <div><div class="label">암호 잠금</div><div class="desc" id="lockStatusLabel">꺼짐</div><div class="desc" id="lockExplainNote">잠금은 다른 사람이 화면을 열어보지 못하게 가려주는 기능이에요. 오간 이야기 자체를 암호화해 주는 기능은 아니에요.</div></div>
       <button class="toggle" id="lockToggle"><span class="knob"></span></button>
     </div>
     <div class="set-row set-col" id="lockModeRow" style="display:none">
@@ -1005,6 +1015,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </span>
 </div>
 
+<!-- 오프라인 배너 — 탭바 바로 위, 작게. navigator.onLine 기준 표시/복구 시 자동 해제 -->
+<div class="offline-banner" id="offlineBanner">📶 지금 연결이 끊겼어요 — 다시 연결되면 자동으로 이어질게요</div>
+
 <!-- 하단 탭 바 (앱 내부에서만 노출) -->
 <nav class="tabbar" id="tabbar">
   <button class="tab" data-tab="home"><span class="ti">🏠</span><span>홈</span></button>
@@ -1037,7 +1050,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.7"; // 보안 재설계: codeIndex 역인덱스 + pairs LIST 차단 + rejoin 코드검증(rejoinProof). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.8"; // 보완: 잠금=화면가림 안내 + 다이어리 편집 사진 추가·삭제 + 오프라인 배너. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -1072,7 +1085,7 @@ let currentPairData = null;
 const PHOTO_CAP=50;
 let _events=[], _diary=[];
 let _calY=null, _calM=null, _selDate=null;
-let _evtType="once", _diaryView="list", _diarySel=[], _editingDiaryId=null;
+let _evtType="once", _diaryView="list", _diarySel=[], _editingDiaryId=null, _editingPhotos=[];
 const _thumbUrlCache={};
 let _lastAnimatedId=null;
 let _prevRejoinOpen=false;
@@ -1087,6 +1100,7 @@ function show(id){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   const tb=document.getElementById("tabbar"); if(tb) tb.classList.remove("on"); // 앱 밖 화면에선 탭 숨김
+  renderOfflineBanner();
 }
 
 /* ===== 내비게이션 스택 (단일 출처) =====
@@ -1175,7 +1189,19 @@ function showTab(tab){
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
   else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); renderAppVersion(); }
+  renderOfflineBanner();
 }
+
+/* ===== 오프라인 배너 — navigator.onLine + online/offline 이벤트.
+   전송 실패 시 기존 상태별 토스트(v0.5.5, "~하지 못했어요")와는 별개 채널이다:
+   배너는 "지금 연결이 끊겼다"는 지속 상태만 작게 보여주고, 실패 토스트 문구는 그대로 둔다(중복 안내 금지).
+   탭 화면(채팅·일정·다이어리·설정 등) 안에서만 노출 — 온보딩/잠금 화면 등은 전체화면 오버레이라 가려짐. */
+function renderOfflineBanner(){
+  const el=document.getElementById("offlineBanner"); if(!el) return;
+  el.classList.toggle("show", !navigator.onLine && inAppTabs());
+}
+window.addEventListener("online", renderOfflineBanner);
+window.addEventListener("offline", renderOfflineBanner);
 
 /* ===== 홈 탭 — 커플 카드·안 읽은 메시지·다가오는 일정·최근 다이어리 미리보기 =====
    (읽기 전용 요약; 탭하면 해당 탭/엔트리로 이동. 데이터는 이미 구독 중인 _events/_diary/스냅샷 재사용.) */
@@ -1537,7 +1563,7 @@ async function autoUnlockCheck(){
   else if(pin.length>=6){document.getElementById("lockMsg").textContent="암호가 틀렸어요";document.getElementById("lockInput").value="";renderLockDots();}
 }
 async function setupPin(){
-  const pin=prompt("설정할 암호 (4~6자리 숫자)");
+  const pin=prompt("설정할 암호 (4~6자리 숫자)\n\n잠금은 다른 사람이 화면을 열어보지 못하게 가려주는 기능이에요. 오간 이야기 자체를 암호화해 주는 기능은 아니에요.");
   if(pin==null)return false;
   if(!/^\d{4,6}$/.test(pin)){toast("4~6자리 숫자로 입력하세요");return false;}
   localStorage.setItem("oguogu.lock",await hashPin(pin));
@@ -1629,7 +1655,16 @@ document.addEventListener("visibilitychange",()=>{
   }
 });
 
-/* ===== Firebase 초기화 ===== */
+/* ===== Firebase 초기화 =====
+   ⚠️Firestore 오프라인 persistence(v0.7.8 검토, 미적용): initializeFirestore + persistentLocalCache로
+   전환하면 재접속 없이도 마지막 캐시로 뜨는 이점은 있으나, 이번 라운드에서는 적용하지 않았다 — 이유:
+     ① 멀티탭 안전판(persistentMultipleTabManager)까지 넣어야 데스크톱에서 탭 2개 열렸을 때 조용한
+        캐시 잠금 실패가 안 생기는데, 그 경로를 검증할 실기(폰/여러 탭) 테스트가 이번 세션엔 없다.
+     ② getFirestore(fb.app) 한 줄이 목/실 SDK 공용 초기화 경로 — 여기 손대면 라이브 커플 1쌍이 쓰는
+        모든 Firestore 호출(채팅·잠금·다이어리 전부)의 기반이 바뀐다. 실기 검증 없이 건드릴 범위가 아님.
+     ③ 목 e2e(dev/mock-server.js)는 실제 IndexedDB/네트워크 단절을 흉내내지 않아 이 경로를 커버 못 함.
+   결론: 낮은 위험으로 켤 수 있는 상태가 아니라고 판단 — 다음에 재검토하려면 실기 오프라인 왕복 +
+   데스크톱 2탭 동시 접속 시나리오를 먼저 확보할 것. (오프라인 배너는 §renderOfflineBanner로 별도 적용됨) */
 async function initFirebase(){
   if (window.__OGUOGU_MOCK__){
     Object.assign(M, window.__OGUOGU_MOCK__);
@@ -2557,20 +2592,50 @@ function closeDiaryForm(){
   document.getElementById("diaryCamLabel").style.display="";
   document.getElementById("btnCancelDiaryEdit").style.display="none";
   document.getElementById("btnAddDiary").textContent="저장하기";
-  _diarySel=[]; _editingDiaryId=null;
+  _diarySel=[]; _editingDiaryId=null; _editingPhotos=[];
+  const box=document.getElementById("diaryEditPhotos"); if(box){ box.style.display="none"; box.innerHTML=""; }
 }
 function startEditDiary(id){
   const en=_diary.find(e=>e.id===id); if(!en) return;
   _editingDiaryId=id;
+  _editingPhotos=(en.thumbs||[]).map(t=>({...t})); // 편집용 로컬 사본 — 삭제는 이 배열에서 즉시 반영
   document.getElementById("diaryDate").value=en.date||todayStr();
   document.getElementById("diaryText").value=en.text||"";
-  document.getElementById("diaryFileLabel").style.display="none"; // 수정 시: 텍스트만, 사진은 유지
-  document.getElementById("diaryCamLabel").style.display="none";
-  document.getElementById("diarySelCount").textContent="사진은 그대로 유지돼요";
+  document.getElementById("diaryFileLabel").style.display=""; // 편집 중에도 사진 추가 가능(기존: 텍스트만 → 확장)
+  document.getElementById("diaryCamLabel").style.display="";
+  document.getElementById("diarySelCount").textContent="";
+  renderEditPhotos();
   document.getElementById("btnAddDiary").textContent="수정하기";
   document.getElementById("btnCancelDiaryEdit").style.display="";
   openDiaryForm();
   document.getElementById("diaryForm").scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+/* 편집 중인 엔트리의 "현재 사진"을 썸네일+× 삭제 버튼으로 그린다. 새로 담을 사진(_diarySel)과는 별개 채널. */
+function renderEditPhotos(){
+  const box=document.getElementById("diaryEditPhotos"); if(!box) return;
+  if(!_editingDiaryId || !_editingPhotos.length){ box.style.display="none"; box.innerHTML=""; return; }
+  box.style.display="flex";
+  box.innerHTML=_editingPhotos.map(t=>'<div class="edit-photo"><img src="'+thumbUrl(t)+'"><button type="button" data-delphoto="'+t.photoId+'" aria-label="사진 삭제">×</button></div>').join("");
+  box.querySelectorAll("[data-delphoto]").forEach(b=>b.onclick=()=>deleteDiaryPhoto(b.dataset.delphoto));
+}
+/* 편집 중 사진 1장 즉시 삭제 — photos 서브컬렉션 원본 삭제 + 엔트리 thumbs 반영 + pair.photoCount 공용 캡 -1.
+   배치(저장 시 일괄) 아닌 즉시 반영: 새 기록 흐름과 달리 편집은 이미 서버에 존재하는 자원을 다루므로
+   "삭제했다"는 되돌릴 수 없는 확정 동작으로 다루는 편이 사진 뷰어·다른 화면과의 정합에 안전하다. */
+async function deleteDiaryPhoto(photoId){
+  if(!_editingDiaryId) return;
+  if(!confirm("이 사진을 지울까요?")) return;
+  const entryId=_editingDiaryId;
+  try{
+    await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"photos",photoId));
+    _editingPhotos=_editingPhotos.filter(t=>t.photoId!==photoId);
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId), {
+      thumbs:_editingPhotos.map(t=>({photoId:t.photoId, w:t.w, h:t.h, bytes:t.bytes})),
+      photoCount:_editingPhotos.length, updatedAt:M.serverTimestamp()
+    });
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {photoCount: Math.max(0, photoCount()-1)});
+    renderEditPhotos();
+    toast("사진을 지웠어요");
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"삭제 권한이 없어요":"지우지 못했어요"); }
 }
 async function saveDiary(){
   if(!pairId){ toast("먼저 시작해주세요"); return; }
@@ -2578,8 +2643,31 @@ async function saveDiary(){
   const date=document.getElementById("diaryDate").value || todayStr();
   const text=document.getElementById("diaryText").value.trim();
   if(_editingDiaryId){
-    try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",_editingDiaryId), {text, date, updatedAt:M.serverTimestamp()}); toast("수정했어요"); }
-    catch(e){ console.error(e); toast(isDeniedErr(e)?"수정 권한이 없어요":"수정하지 못했어요"); return; }
+    const entryId=_editingDiaryId;
+    const remaining=PHOTO_CAP-photoCount();
+    if(_diarySel.length>remaining){ toast("사진 용량이 가득 찼어요"); return; }
+    const ebtn=document.getElementById("btnAddDiary"); ebtn.disabled=true; ebtn.textContent="수정 중...";
+    try{
+      const newThumbs=[], newFulls=[];
+      for(const f of _diarySel){
+        let full, thumb;
+        try{ full=await compressImage(f,1280,0.75); thumb=await compressImage(f,320,0.65); }
+        catch(err){ console.error(err); toast("일부 사진을 처리하지 못했어요"); continue; }
+        if(full.bytes.length>950000){ toast("너무 큰 사진은 건너뛰었어요"); continue; } // 1MiB 문서 상한 방어
+        const photoId=M.doc(M.collection(fb.db,"pairs",pairId,"diary",entryId,"photos")).id;
+        newThumbs.push({photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes)});
+        newFulls.push({photoId, bytes:M.Bytes.fromUint8Array(full.bytes), w:full.w, h:full.h});
+      }
+      const mergedThumbs=_editingPhotos.map(t=>({photoId:t.photoId, w:t.w, h:t.h, bytes:t.bytes})).concat(newThumbs);
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId), {text, date, thumbs:mergedThumbs, photoCount:mergedThumbs.length, updatedAt:M.serverTimestamp()});
+      for(const p of newFulls){
+        await M.setDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"photos",p.photoId),
+          {bytes:p.bytes, mime:"image/jpeg", w:p.w, h:p.h, authorUid:fb.uid, createdAt:M.serverTimestamp()});
+      }
+      if(newFulls.length){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {photoCount: photoCount()+newFulls.length}); }
+      toast("수정했어요");
+    }catch(e){ console.error(e); toast(isDeniedErr(e)?"수정 권한이 없어요":"수정하지 못했어요"); ebtn.disabled=false; ebtn.textContent="수정하기"; return; }
+    ebtn.disabled=false; ebtn.textContent="수정하기";
     navCloseSelf("diaryForm", closeDiaryForm); return;
   }
   if(!text && !_diarySel.length){ toast("내용이나 사진을 담아주세요"); return; }
