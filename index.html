@@ -273,6 +273,27 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .meta .rd::before{content:"● "; font-size:8px; vertical-align:1px}
 .msg-empty{margin:auto; text-align:center; color:var(--muted); font-size:13.5px; line-height:1.8}
 .msg-empty .empty-emoji{font-size:40px; margin-bottom:10px}
+/* 채팅 메시지 수정 — (수정됨) 표시 + hover 편집 아이콘(데스크톱) + 롱프레스 메뉴(터치) */
+.edited-tag{font-size:10px; opacity:.6; margin-left:4px; font-weight:var(--w-reg)}
+.editIco{
+  display:none; align-self:flex-end; margin:0 4px 3px 0; width:26px; height:26px; border-radius:var(--r-full);
+  background:var(--surface2); color:var(--muted); font-size:12px; flex:none; align-items:center; justify-content:center;
+}
+@media (hover:hover) and (pointer:fine){
+  .row.me:hover .editIco.has{display:flex}
+}
+.msgMenu{
+  position:fixed; z-index:60; background:var(--surface); border-radius:var(--r-md); box-shadow:var(--shadow);
+  padding:4px; display:none; min-width:120px;
+}
+.msgMenu.show{display:block}
+.msgMenu button{display:block; width:100%; padding:10px 16px; font-size:13.5px; color:var(--text); text-align:left; border-radius:8px}
+.msgMenu button:active{background:var(--surface2)}
+.msgEditBar{
+  flex:none; display:flex; align-items:center; justify-content:space-between;
+  padding:7px 16px; background:var(--accent-soft); color:var(--accent); font-size:12.5px; font-weight:var(--w-med);
+}
+.msgEditBar button{color:var(--accent); font-weight:var(--w-bold); padding:2px 8px}
 
 .inbar{
   flex:none; display:flex; align-items:flex-end; gap:var(--s2); padding:var(--s2) var(--s3);
@@ -727,6 +748,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <label class="attach-opt">🖼️ 앨범에서<input type="file" id="chatAlbum" accept="image/*" multiple></label>
     <label class="attach-opt">📷 사진 찍기<input type="file" id="chatCamera" accept="image/*" capture="environment"></label>
   </div>
+  <div class="msgEditBar" id="msgEditBar" style="display:none">
+    <span>✎ 메시지 수정 중</span>
+    <button type="button" id="btnCancelMsgEdit">취소</button>
+  </div>
   <form class="inbar" id="chatForm">
     <button type="button" id="btnAttach" aria-label="사진 첨부">＋</button>
     <textarea id="msgInput" placeholder="메시지 보내기" autocomplete="off" maxlength="1000" rows="1" enterkeyhint="enter"></textarea>
@@ -1042,6 +1067,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="pv-indicator" id="photoModalIndicator"></div>
 </div>
 
+<div class="msgMenu" id="msgMenu"><button type="button" id="msgMenuEdit">✎ 수정</button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1050,7 +1076,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.8"; // 보완: 잠금=화면가림 안내 + 다이어리 편집 사진 추가·삭제 + 오프라인 배너. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.9"; // 보완: 보낸 채팅 메시지 수정(본인 텍스트만, 길게누르기/hover) + (수정됨) 표시. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -2064,6 +2090,7 @@ function enterChat(){   // 앱 진입 = 홈 탭부터(구성은 renderHome). 이
 
 /* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
 let _lastMsgSnapshotDocs=null;
+let _editingMsgId=null; // 현재 수정 중인 내 메시지 id(있으면 sendMessage가 addDoc 대신 updateDoc으로 분기)
 function tsMillis(v){
   if(v==null) return 0;
   if(typeof v==="number") return v;
@@ -2115,10 +2142,12 @@ function renderMessages(){
         ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
         : '<div class="meta"><span>'+time+'</span></div>';
     }
+    const editable = mine && !m.thumb; // 내 텍스트 메시지만 수정 가능 — 상대 메시지·사진 메시지는 제외
+    const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
     const bubbleHtml = m.thumb
       ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
-      : '<div class="bubble">'+esc(m.text)+'</div>';
-    row.innerHTML = mine ? (metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
+      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+'>'+esc(m.text)+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
+    row.innerHTML = mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
     list.appendChild(row);
   }
@@ -2129,6 +2158,9 @@ function renderMessages(){
     const idx=photoMsgs.findIndex(x=>x.id===el.dataset.chatmsg);
     openPhotoViewer(photoItems, Math.max(0, idx));
   });
+  // 내 텍스트 메시지 수정 진입 — 데스크톱: hover로 드러나는 연필 아이콘 클릭 / 터치: 말풍선 길게 누르기(메뉴)
+  list.querySelectorAll("[data-editmsg]").forEach(el=>{ el.onclick=(e)=>{ e.stopPropagation(); startEditMessage(el.dataset.editmsg); }; });
+  list.querySelectorAll("[data-editbubble]").forEach(el=>bindMsgLongPress(el));
   list.scrollTop = list.scrollHeight;
 }
 function watchMessages(){
@@ -2158,6 +2190,7 @@ async function sendMessage(){
   const input=document.getElementById("msgInput");
   const text=input.value.trim();
   if(!text || !pairId) return;
+  if(_editingMsgId){ await saveEditedMessage(input, text); return; }
   input.value=""; autoGrowMsg(); // 전송 후 입력창 높이 1줄로 복귀
   try{ input.focus(); }catch(e){}
   await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
@@ -2172,6 +2205,60 @@ async function sendMessage(){
     toast("전송에 실패했어요 — 잠시 후 다시 시도해주세요");
   });
 }
+
+/* 채팅 메시지 수정 — 본인 텍스트 메시지만(상대·사진 메시지는 진입 자체를 막음). 입력창을 재사용해
+   기존 텍스트를 로드하고, 저장 시 addDoc이 아닌 updateDoc(text·editedAt만)으로 기존 문서를 갱신 →
+   양쪽 onSnapshot이 그대로 반영(상대 화면도 자동 갱신). "(수정됨)"은 editedAt 존재 여부로 표시. */
+function startEditMessage(id){
+  if(!_lastMsgSnapshotDocs) return;
+  const d=_lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
+  const data=d.data();
+  if(data.sender!==fb.uid || data.thumb) return; // 안전 가드 — 상대·사진 메시지는 수정 진입 불가
+  _editingMsgId=id;
+  const input=document.getElementById("msgInput");
+  input.value=data.text||""; autoGrowMsg();
+  try{ input.focus(); }catch(e){}
+  const bar=document.getElementById("msgEditBar"); if(bar) bar.style.display="flex";
+}
+function cancelEditMessage(){
+  _editingMsgId=null;
+  const input=document.getElementById("msgInput");
+  input.value=""; autoGrowMsg();
+  const bar=document.getElementById("msgEditBar"); if(bar) bar.style.display="none";
+}
+async function saveEditedMessage(input, text){
+  const msgId=_editingMsgId;
+  const bar=document.getElementById("msgEditBar");
+  input.value=""; autoGrowMsg(); if(bar) bar.style.display="none"; _editingMsgId=null;
+  try{ input.focus(); }catch(e){}
+  await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",msgId), { text, editedAt: M.serverTimestamp() }).catch(err=>{
+    console.error(err);
+    _editingMsgId=msgId; input.value=text; autoGrowMsg(); if(bar) bar.style.display="flex"; // 실패 시 수정 모드 복원(침묵 금지)
+    toast(isDeniedErr(err) ? "수정 권한이 없어요" : "수정하지 못했어요");
+  });
+}
+/* 롱프레스(터치 전용 — 마우스는 hover로 드러나는 연필 아이콘이 담당) → 작은 메뉴에서 "수정" 선택 */
+function bindMsgLongPress(el){
+  let timer=null, sx=0, sy=0;
+  el.addEventListener("pointerdown", e=>{
+    if(e.pointerType!=="touch") return;
+    sx=e.clientX; sy=e.clientY;
+    timer=setTimeout(()=>{ timer=null; try{ navigator.vibrate && navigator.vibrate(12); }catch(_){ } showMsgMenu(el.dataset.editbubble, e.clientX, e.clientY); }, 480);
+  });
+  const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
+  el.addEventListener("pointermove", e=>{ if(timer && (Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10)) cancel(); });
+  el.addEventListener("pointerup", cancel);
+  el.addEventListener("pointercancel", cancel);
+  el.addEventListener("contextmenu", e=>{ if(_prefersTouchEnter()) e.preventDefault(); }); // 롱프레스 시 브라우저 기본 메뉴(선택/복사) 억제
+}
+function showMsgMenu(id, x, y){
+  const m=document.getElementById("msgMenu");
+  m.dataset.target=id;
+  m.style.left=Math.min(Math.max(x-60,8), window.innerWidth-136)+"px";
+  m.style.top=Math.max(y-64,8)+"px";
+  m.classList.add("show");
+}
+function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.classList.remove("show"); }
 
 /* 채팅 사진 전송 — 다이어리와 동일 규격(1280 q75 + 썸네일 320 q65). 썸네일은 메시지 문서에 인라인,
    원본은 messages/{id}/photos/{photoId}에 Bytes. 캡은 pair.photoCount 합산(다이어리+채팅 공용 50장). */
@@ -2974,6 +3061,17 @@ document.getElementById("btnAttach").onclick=()=>{ const m=document.getElementBy
   const files=[...e.target.files]; e.target.value=""; document.getElementById("attachMenu").style.display="none";
   if(files.length) sendChatPhotos(files);
 }));
+/* 채팅 메시지 수정 — 취소 버튼 + 롱프레스 메뉴("수정" 선택 시 진입) + 메뉴 바깥 탭 시 닫힘 */
+document.getElementById("btnCancelMsgEdit").addEventListener("click", cancelEditMessage);
+document.getElementById("msgMenuEdit").addEventListener("click", ()=>{
+  const id=document.getElementById("msgMenu").dataset.target;
+  hideMsgMenu();
+  if(id) startEditMessage(id);
+});
+document.addEventListener("pointerdown", e=>{
+  const m=document.getElementById("msgMenu");
+  if(m && m.classList.contains("show") && !m.contains(e.target)) hideMsgMenu();
+});
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 document.getElementById("btnHomeSettings").onclick=()=>{ showTab("settings"); };
 ["btnHomeRefresh"].forEach(id=>{ const el=document.getElementById(id); if(el) el.onclick=refreshApp; });

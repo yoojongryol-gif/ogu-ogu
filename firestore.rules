@@ -199,7 +199,16 @@ service cloud.firestore {
         allow read: if isMember(pairOf(pairId));
         allow create: if isMember(pairOf(pairId)) && request.resource.data.sender == request.auth.uid
           && pairOf(pairId).status != "dissolved";
-        allow update: if false;
+        // 메시지 수정(2026-08-07): 본인이 보낸 "텍스트" 메시지만, text/editedAt 두 필드만 갱신 가능.
+        //   · resource.data.get('hasPhoto', false)==false → 사진 메시지는 애초에 수정 대상이 아니다(사진 자체가 아닌
+        //     텍스트만 바뀌는 기능이라 사진 메시지엔 의미가 없고, thumb/hasPhoto 위조 경로도 막는다).
+        //   · diff().affectedKeys().hasOnly(['text','editedAt']) → sender/ts/hasPhoto/thumb 등 다른 필드는
+        //     이 update 경로로 절대 바꿀 수 없다(작성자 위조·사진 끼워넣기 원천 차단).
+        allow update: if isMember(pairOf(pairId))
+          && resource.data.sender == request.auth.uid
+          && pairOf(pairId).status != "dissolved"
+          && resource.data.get('hasPhoto', false) == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','editedAt']);
         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
