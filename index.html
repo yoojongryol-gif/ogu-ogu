@@ -1076,7 +1076,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.9"; // 보완: 보낸 채팅 메시지 수정(본인 텍스트만, 길게누르기/hover) + (수정됨) 표시. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.10"; // 수리: 메시지 수정 시 텍스트 무변경이면 updateDoc 미호출(헛"(수정됨)" 방지). sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
@@ -2229,8 +2229,11 @@ function cancelEditMessage(){
 async function saveEditedMessage(input, text){
   const msgId=_editingMsgId;
   const bar=document.getElementById("msgEditBar");
+  const orig=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===msgId);
+  const unchanged = !!orig && (orig.data().text||"").trim()===text; // trim 비교(sendMessage가 text를 이미 trim해서 넘김)
   input.value=""; autoGrowMsg(); if(bar) bar.style.display="none"; _editingMsgId=null;
   try{ input.focus(); }catch(e){}
+  if(unchanged) return; // 그대로 다시 보낸 경우 — updateDoc 미호출(editedAt 안 찍힘="(수정됨)" 미표시), 조용히 수정 모드만 종료
   await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",msgId), { text, editedAt: M.serverTimestamp() }).catch(err=>{
     console.error(err);
     _editingMsgId=msgId; input.value=text; autoGrowMsg(); if(bar) bar.style.display="flex"; // 실패 시 수정 모드 복원(침묵 금지)
