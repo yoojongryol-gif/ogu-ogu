@@ -267,6 +267,21 @@ service cloud.firestore {
           allow delete: if isMember(pairOf(pairId))
             && (resource.data.authorUid == request.auth.uid || pairOf(pairId).status == "dissolved");
         }
+
+        // 댓글(2026-08-08) — 다이어리 항목에 짧은 댓글. 필드는 sender(uid)/text/ts만(다른 필드 끼워넣기 차단).
+        //   수정은 지원하지 않음(단순화, allow update: false). 삭제는 본인 댓글만 — 단 이별(dissolved) 시에는
+        //   누구든 삭제 가능(purgeDiaryAll의 전량 소거가 여기 걸려 "기록 인질" 상태가 되지 않도록, messages/diary와 동일 원칙).
+        match /comments/{commentId} {
+          allow read: if isMember(pairOf(pairId));
+          allow create: if isMember(pairOf(pairId))
+            && request.resource.data.sender == request.auth.uid
+            && request.resource.data.text is string && request.resource.data.text.size() > 0
+            && request.resource.data.keys().hasOnly(['sender','text','ts'])
+            && pairOf(pairId).status != "dissolved";
+          allow update: if false;
+          allow delete: if isMember(pairOf(pairId))
+            && (resource.data.sender == request.auth.uid || pairOf(pairId).status == "dissolved");
+        }
       }
     }
   }

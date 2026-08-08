@@ -550,6 +550,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .dentry .acts{display:flex; gap:16px; margin-top:12px}
 .dentry .acts button{font-size:12.5px; font-weight:var(--w-med); color:var(--muted)}
 .dentry .acts button.dngr{color:var(--danger)}
+/* 다이어리 댓글(2026-08-08) — 항목 카드 하단에 가볍게: 토글 뱃지 + 펼치면 목록·입력줄 */
+.dentry .cbtn{margin-top:10px; font-size:12.5px; font-weight:var(--w-med); color:var(--muted)}
+.dcomments{margin-top:8px; padding-top:10px; border-top:1px solid var(--line)}
+.dcomments .clist{display:flex; flex-direction:column; gap:6px; margin-bottom:8px}
+.ccard{display:flex; align-items:baseline; gap:6px; font-size:12.5px; line-height:1.5; background:var(--surface2); border-radius:var(--r-md); padding:7px 10px}
+.ccard .cwho{font-weight:var(--w-bold); color:var(--accent); flex:none}
+.ccard .ctx{flex:1; min-width:0; word-break:break-word; white-space:pre-wrap; color:var(--text)}
+.ccard .cdel{flex:none; color:var(--muted); font-size:14px; padding:0 2px}
+.cempty{font-size:12px; color:var(--muted); padding:2px 2px 4px}
+.cinput{display:flex; gap:6px}
+.cinput input{flex:1; min-width:0; background:var(--surface2); border:none; border-radius:var(--r-full); padding:8px 14px; font-size:12.5px; color:var(--text); font-family:inherit}
+.cinput button{flex:none; font-size:12.5px; font-weight:var(--w-bold); color:var(--accent); padding:0 6px}
 .grid-photos{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
 .grid-photos img{width:100%; aspect-ratio:1; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
 .cap-note{font-size:12.5px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.65; margin-bottom:var(--s4)}
@@ -1076,7 +1088,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.11"; // 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
+const APP_VERSION = "0.7.12"; // 신규: 다이어리 항목 댓글(diary/{id}/comments 서브컬렉션, 본인 삭제만, 이별 소거 포함). sw.js VER과 함께 올릴 것.
+// 이전(v0.7.11) 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
 // 기능 코드는 무변경, 회귀 테스트만 보강. 캐시 강제 갱신(사장님 폰이 구버전 캐시를 보고 있었을 가능성 배제)용 버전 올림. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
@@ -1111,6 +1124,13 @@ let currentPairData = null;
 /* 일정·다이어리 상태 */
 const PHOTO_CAP=50;
 let _events=[], _diary=[];
+/* 다이어리 댓글(2026-08-08) — diary/{entryId}/comments 서브컬렉션. 뱃지(개수)는 비실시간(getDocs, _commentCounts) —
+   댓글 목록을 펼친 항목만 실시간 구독(onSnapshot, _commentUnsubs)해서 리스너를 아껴쓴다. */
+let _commentUnsubs={}, _commentsCache={}, _commentCounts={}, _expandedComments=new Set();
+function resetCommentState(){
+  Object.values(_commentUnsubs).forEach(fn=>{ try{ fn(); }catch(e){} });
+  _commentUnsubs={}; _commentsCache={}; _commentCounts={}; _expandedComments=new Set();
+}
 let _calY=null, _calM=null, _selDate=null;
 let _evtType="once", _diaryView="list", _diarySel=[], _editingDiaryId=null, _editingPhotos=[];
 const _thumbUrlCache={};
@@ -1744,7 +1764,7 @@ async function googleSignIn(){
 async function doSignOut(){
   try{
     if(unsubPair) unsubPair(); if(unsubMsgs) unsubMsgs(); if(unsubEvents) unsubEvents(); if(unsubDiary) unsubDiary();
-    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
+    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false; resetCommentState();
     // 로그아웃: 이 기기의 공간 포인터·알림 토큰만 비운다(서버의 공간/기록은 보존). 다른 구글 계정이 이어서
     //   로그인해도 남의 공간이 잘못 붙지 않도록 pairId를 반드시 비운다.
     localStorage.removeItem("oguogu.pairId");
@@ -2555,11 +2575,21 @@ function renderDiaryList(body){
     const au = mine ? "내 기록" : ((partnerNick()||"상대")+" 기록");
     const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
     const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
+    const cn=_commentCounts[en.id];
+    const cLabel = cn>0 ? "💬 "+cn : "💬 댓글";
+    const expanded=_expandedComments.has(en.id);
     return '<div class="dentry"><div class="top"><span class="dt">'+esc(fmtDateK(en.date))+'</span><span class="au">'+esc(au)+'</span></div>'
       +(en.text?'<div class="tx">'+esc(en.text)+'</div>':"")
-      +(thumbs?'<div class="thumbs">'+thumbs+'</div>':"")+acts+'</div>';
+      +(thumbs?'<div class="thumbs">'+thumbs+'</div>':"")+acts
+      +'<button type="button" class="cbtn" data-ctoggle="'+en.id+'">'+cLabel+'</button>'
+      +'<div class="dcomments" data-entry="'+en.id+'" style="display:'+(expanded?"block":"none")+'">'
+        +'<div class="clist"></div>'
+        +'<form class="cinput" data-cform="'+en.id+'"><input type="text" data-cinput="'+en.id+'" placeholder="댓글 달기" maxlength="300" autocomplete="off"><button type="submit">보내기</button></form>'
+      +'</div></div>';
   }).join("");
   wireDiaryBody(body);
+  _expandedComments.forEach(id=>{ if(_diary.some(e=>e.id===id)) renderComments(id); }); // 펼친 항목은 다시 그린 DOM에 캐시 즉시 반영
+  refreshCommentCounts(); // 비실시간 뱃지 갱신(펼친 항목은 실시간 구독이 이미 정확한 값을 유지)
 }
 function renderDiaryGrid(body){
   const all=[];
@@ -2578,6 +2608,78 @@ function wireDiaryBody(body){
   });
   body.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>startEditDiary(b.dataset.edit));
   body.querySelectorAll("[data-deldiary]").forEach(b=>b.onclick=()=>deleteDiaryEntry(b.dataset.deldiary));
+  body.querySelectorAll("[data-ctoggle]").forEach(b=>b.onclick=()=>toggleComments(b.dataset.ctoggle));
+  body.querySelectorAll("[data-cform]").forEach(f=>f.addEventListener("submit", e=>{ e.preventDefault(); sendComment(f.dataset.cform); }));
+}
+/* ---- 다이어리 댓글(2026-08-08): diary/{entryId}/comments 서브컬렉션. 펼친 항목만 실시간 구독. ---- */
+function toggleComments(entryId){
+  const box=document.querySelector('.dcomments[data-entry="'+entryId+'"]'); if(!box) return;
+  const opening = box.style.display==="none" || !box.style.display;
+  if(opening){ box.style.display="block"; _expandedComments.add(entryId); watchComments(entryId); }
+  else { box.style.display="none"; _expandedComments.delete(entryId); unwatchComments(entryId); }
+}
+function watchComments(entryId){
+  if(_commentUnsubs[entryId] || !pairId) return; // 이미 구독 중
+  const q=M.query(M.collection(fb.db,"pairs",pairId,"diary",entryId,"comments"), M.orderBy("ts","asc"));
+  _commentUnsubs[entryId]=M.onSnapshot(q, snap=>{
+    const list = snap.empty ? [] : snap.docs.map(d=>({id:d.id, data:d.data()}));
+    _commentsCache[entryId]=list; _commentCounts[entryId]=list.length;
+    renderComments(entryId);
+    const btn=document.querySelector('[data-ctoggle="'+entryId+'"]');
+    if(btn) btn.textContent = list.length>0 ? "💬 "+list.length : "💬 댓글";
+  }, err=>{ console.error(err); });
+}
+function unwatchComments(entryId){
+  if(_commentUnsubs[entryId]){ _commentUnsubs[entryId](); delete _commentUnsubs[entryId]; }
+}
+function renderComments(entryId){
+  const box=document.querySelector('.dcomments[data-entry="'+entryId+'"]'); if(!box) return;
+  const list=_commentsCache[entryId]||[];
+  const list_html = list.length ? list.map(c=>{
+    const d=c.data, mine=d.sender===fb.uid;
+    const who = mine ? "나" : ((partnerNick()||"짝")+" "+(partnerEmoji()||"🩷"));
+    const delBtn = mine ? '<button type="button" class="cdel" data-delcomment="'+c.id+'" aria-label="댓글 삭제">×</button>' : "";
+    return '<div class="ccard"><span class="cwho">'+esc(who)+'</span><span class="ctx">'+esc(d.text)+'</span>'+delBtn+'</div>';
+  }).join("") : '<div class="cempty">아직 댓글이 없어요</div>';
+  const clist=box.querySelector(".clist"); if(clist) clist.innerHTML=list_html;
+  box.querySelectorAll("[data-delcomment]").forEach(b=>b.onclick=()=>deleteComment(entryId, b.dataset.delcomment));
+}
+/* 뱃지(개수)는 비실시간 — 접힌 카드마다 리스너를 켜두는 대신 리스트 재렌더 시점에만 getDocs로 셈(가볍게).
+   펼친 항목은 watchComments의 실시간 구독이 이미 정확한 값을 유지하므로 다시 세지 않는다. */
+async function refreshCommentCounts(){
+  if(!pairId) return;
+  for(const en of _diary){
+    if(_expandedComments.has(en.id)) continue;
+    try{
+      const snap=await M.getDocs(M.collection(fb.db,"pairs",pairId,"diary",en.id,"comments"));
+      _commentCounts[en.id]=snap.docs.length;
+    }catch(e){ /* 뱃지는 부가 정보 — 실패해도 조용히 스킵 */ }
+  }
+  document.querySelectorAll("[data-ctoggle]").forEach(b=>{
+    const n=_commentCounts[b.dataset.ctoggle];
+    if(n!=null) b.textContent = n>0 ? "💬 "+n : "💬 댓글";
+  });
+}
+async function sendComment(entryId){
+  const input=document.querySelector('[data-cinput="'+entryId+'"]'); if(!input || !pairId) return;
+  const text=input.value.trim(); if(!text) return;
+  input.value="";
+  try{
+    await M.addDoc(M.collection(fb.db,"pairs",pairId,"diary",entryId,"comments"), { sender:fb.uid, text, ts:M.serverTimestamp() });
+    // 훅 지점(범위 밖): 상대에게 "새 댓글" 푸시가 필요해지면 ogu_push_relay.py가 messages와 같은 방식으로
+    //   diary/{entryId}/comments를 폴링·판별하도록 확장 — 이번 범위에선 미구현(메시지 알림만 유지).
+  }catch(err){
+    console.error(err);
+    input.value=text;
+    if(isDeniedErr(err)){
+      toast(currentPairData && currentPairData.status==="dissolved" ? "이 공간은 정리된 상태라 댓글을 달 수 없어요" : "댓글을 달 권한이 없어요");
+    } else toast("댓글을 달지 못했어요");
+  }
+}
+async function deleteComment(entryId, commentId){
+  if(!pairId) return;
+  try{ await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"comments",commentId)); }
+  catch(err){ console.error(err); toast(isDeniedErr(err) ? "삭제 권한이 없어요" : "지우지 못했어요"); }
 }
 /* 사진 뷰어 — 좌우 스와이프/화살표/키보드로 연속 열람. 인디케이터(n/N). */
 /* 손가락 추적(drag-follow) 3슬라이드 캐러셀 + 양옆 프리로드.
@@ -2815,7 +2917,10 @@ async function purgeCollection(pathSegs){
 }
 async function purgeDiaryAll(id){
   const snap=await M.getDocs(M.collection(fb.db,"pairs",id,"diary"));
-  for(const d of snap.docs){ await purgeCollection(["pairs",id,"diary",d.id,"photos"]); }
+  for(const d of snap.docs){
+    await purgeCollection(["pairs",id,"diary",d.id,"photos"]);
+    await purgeCollection(["pairs",id,"diary",d.id,"comments"]); // 댓글(2026-08-08) — 이별 소거에 반드시 포함(기록 인질 방지 원칙, v0.5.0 교훈)
+  }
   await purgeCollection(["pairs",id,"diary"]);
 }
 
@@ -2959,7 +3064,7 @@ function handleDissolved(){
   if(unsubMsgs) unsubMsgs();
   if(unsubEvents) unsubEvents();
   if(unsubDiary) unsubDiary();
-  _events=[]; _diary=[];
+  _events=[]; _diary=[]; resetCommentState();
   closeBreakup();
   hideLock();
   localStorage.removeItem("oguogu.pairId");
@@ -2979,7 +3084,7 @@ function recoverFromDeadPair(){
   if(unsubMsgs) unsubMsgs();
   if(unsubEvents) unsubEvents();
   if(unsubDiary) unsubDiary();
-  _events=[]; _diary=[];
+  _events=[]; _diary=[]; resetCommentState();
   localStorage.removeItem("oguogu.pairId");
   pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false;
   hideLock();
