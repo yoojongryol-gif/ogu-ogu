@@ -1076,7 +1076,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.10"; // 수리: 메시지 수정 시 텍스트 무변경이면 updateDoc 미호출(헛"(수정됨)" 방지). sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.11"; // 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
+// 기능 코드는 무변경, 회귀 테스트만 보강. 캐시 강제 갱신(사장님 폰이 구버전 캐시를 보고 있었을 가능성 배제)용 버전 올림. sw.js VER과 함께 올릴 것.
 const M = {};
 const fb = { app:null, auth:null, db:null, uid:null };
 
