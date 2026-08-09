@@ -1088,7 +1088,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.15"; // 탭바 미노출 근본 수리: showTab()에서 이전 포커스 명시적 blur()(display:none만으론
+const APP_VERSION = "0.7.16"; // 같은 뿌리 확장 수리: "화면 절반만 써진다" — body.style.height가 키보드 열림
+// 당시 값(visualViewport)에 고착되는 경로 발견, _healKbOpen이 레이아웃 높이도 함께 재동기화. 이전(v0.7.15):
+// showTab()에서 이전 포커스 명시적 blur()(display:none만으론
 // activeElement 안 바뀜을 실측) + kb-open 자가치유(1초 타이머+visibilitychange). 이전(v0.7.14) 대응 기록:
 // markRead() 동기 흐름과 setTimeout으로 완전 분리(원인 미확정이나 방어적 하드닝) 재적용. sw.js VER과 함께 올릴 것.
 // 이전(v0.7.11) 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
@@ -3385,6 +3387,21 @@ if(window.visualViewport){
 function _healKbOpen(){
   if(document.body.classList.contains("kb-open") && !_isTextField(document.activeElement)){
     document.body.classList.remove("kb-open"); // 트랜지션 없이 즉시(불변식 위반은 즉시 교정)
+  }
+  // 레이아웃 높이 고착 확장(2026-08-10, "화면 절반만 써진다" 신고 — kb-open과 같은 뿌리로 추정).
+  //   applyVV()가 body.style.height=vv.height+"px"(키보드 열림 시 축소값)를 인라인으로 박아두는데,
+  //   iOS standalone에서 키보드가 닫힐 때 visualViewport resize가 안 오면(위 "★수리" 주석에 이미
+  //   기록된 동일 이력 — 탭바 접힘 미동작과 같은 불안정성) 이 인라인 높이가 영원히 고착된다.
+  //   실제 포커스가 없는데(키보드가 열려있을 이유가 없는데) 저장된 높이가 창의 진짜 높이
+  //   (window.innerHeight — JS가 절대 건드리지 않는 브라우저 네이티브 값)와 크게 어긋나면(80px 초과,
+  //   URL바 접힘 등 사소한 오차는 무시) 강제로 다시 맞춘다.
+  if(!_isTextField(document.activeElement)){
+    const trueH = window.innerHeight;
+    const curH = parseFloat(document.body.style.height) || 0;
+    if(curH>0 && Math.abs(curH-trueH)>80){
+      document.body.style.height = trueH+"px";
+      window.scrollTo(0,0);
+    }
   }
 }
 setInterval(_healKbOpen, 1000);
