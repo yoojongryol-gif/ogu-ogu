@@ -1088,11 +1088,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.16"; // 같은 뿌리 확장 수리: "화면 절반만 써진다" — body.style.height가 키보드 열림
-// 당시 값(visualViewport)에 고착되는 경로 발견, _healKbOpen이 레이아웃 높이도 함께 재동기화. 이전(v0.7.15):
-// showTab()에서 이전 포커스 명시적 blur()(display:none만으론
-// activeElement 안 바뀜을 실측) + kb-open 자가치유(1초 타이머+visibilitychange). 이전(v0.7.14) 대응 기록:
-// markRead() 동기 흐름과 setTimeout으로 완전 분리(원인 미확정이나 방어적 하드닝) 재적용. sw.js VER과 함께 올릴 것.
+const APP_VERSION = "0.7.17"; // v0.7.16 마무리(스크린샷2호 — 재시작해도 화면 절반 잘림 유지 반영): 초기 렌더/
+// 미포커스 기준을 항상 window.innerHeight로(visualViewport는 입력 포커스 중에만 반영) + 힐러 임계값을
+// 절대px(80)에서 상대비율(<90%)로 교체. 버전을 올리는 이유는 sw.js 캐시 무효화(VER 변경) 때문 — 문자열만
+// 다르고 실제 배포 바이트가 다르면 "v0.7.16"이 두 종류가 되어 혼란(이전 이력은 git으로 추적). sw.js VER 동반.
 // 이전(v0.7.11) 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
 // 기능 코드는 무변경, 회귀 테스트만 보강. 캐시 강제 갱신(사장님 폰이 구버전 캐시를 보고 있었을 가능성 배제)용 버전 올림. sw.js VER과 함께 올릴 것.
 const M = {};
@@ -3368,7 +3367,18 @@ document.addEventListener("focusout", e=>{
 if(window.visualViewport){
   const vv=window.visualViewport;
   const applyVV=()=>{
-    document.body.style.height = vv.height+"px"; // 입력바를 키보드 위로(셸 높이 보정)
+    // 원칙(2026-08-10, "화면 절반만 써진다" 스크린샷 2호 — 재시작해도 유지되는 잘림 증거 반영):
+    //   초기 렌더/입력 미포커스 상태의 기준은 항상 window.innerHeight(=CSS의 100dvh/100%와 동급) —
+    //   visualViewport 기반 축소 높이는 "입력요소가 실제로 포커스된 동안"에만 반영한다. iOS standalone은
+    //   앱 기동 직후에도 visualViewport.height가 일시적으로 잘못(축소)된 값을 보고하는 사례가 알려져
+    //   있어(포커스 없이 이 리스너가 발화하는 경우), 그 값을 그대로 믿고 body.style.height에 박으면
+    //   재시작해도 잘린 채로 고착될 수 있다 — 포커스 없을 땐 항상 innerHeight로 되돌린다.
+    if(!_isTextField(document.activeElement)){
+      document.body.style.height = window.innerHeight+"px";
+      window.scrollTo(0,0);
+      return;
+    }
+    document.body.style.height = vv.height+"px"; // 입력바를 키보드 위로(셸 높이 보정) — 포커스 중에만
     window.scrollTo(0,0);
     const diff = window.innerHeight - vv.height;
     if(diff > 120){ _kbConfirmedOpen=true; document.body.classList.add("kb-open"); }            // 키보드 확실히 열림(보조 강화)
@@ -3388,17 +3398,17 @@ function _healKbOpen(){
   if(document.body.classList.contains("kb-open") && !_isTextField(document.activeElement)){
     document.body.classList.remove("kb-open"); // 트랜지션 없이 즉시(불변식 위반은 즉시 교정)
   }
-  // 레이아웃 높이 고착 확장(2026-08-10, "화면 절반만 써진다" 신고 — kb-open과 같은 뿌리로 추정).
+  // 레이아웃 높이 고착 확장(2026-08-10, "화면 절반만 써진다" 신고 — kb-open과 같은 뿌리).
   //   applyVV()가 body.style.height=vv.height+"px"(키보드 열림 시 축소값)를 인라인으로 박아두는데,
-  //   iOS standalone에서 키보드가 닫힐 때 visualViewport resize가 안 오면(위 "★수리" 주석에 이미
-  //   기록된 동일 이력 — 탭바 접힘 미동작과 같은 불안정성) 이 인라인 높이가 영원히 고착된다.
-  //   실제 포커스가 없는데(키보드가 열려있을 이유가 없는데) 저장된 높이가 창의 진짜 높이
-  //   (window.innerHeight — JS가 절대 건드리지 않는 브라우저 네이티브 값)와 크게 어긋나면(80px 초과,
-  //   URL바 접힘 등 사소한 오차는 무시) 강제로 다시 맞춘다.
+  //   iOS standalone에서 키보드가 닫힐 때(또는 앱 기동 직후) visualViewport 값이 불안정하면(위 "★수리"
+  //   주석에 이미 기록된 동일 이력) 이 인라인 높이가 축소된 채로 고착된다 — 스크린샷 2호로 재시작해도
+  //   유지됨을 확인. 실제 포커스가 없는데(키보드가 열려있을 이유가 없는데) 저장된 높이가 창의 진짜 높이
+  //   (window.innerHeight — JS가 절대 건드리지 않는 브라우저 네이티브 값)의 90% 미만이면(URL바 접힘 등
+  //   사소한 변동은 통과, 절반 잘림 같은 실제 고착만 포착) 강제로 다시 맞추고 잔여 스크롤도 정리한다.
   if(!_isTextField(document.activeElement)){
     const trueH = window.innerHeight;
     const curH = parseFloat(document.body.style.height) || 0;
-    if(curH>0 && Math.abs(curH-trueH)>80){
+    if(curH>0 && curH < trueH*0.9){
       document.body.style.height = trueH+"px";
       window.scrollTo(0,0);
     }
