@@ -560,8 +560,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .ccard .ctx{flex:1; min-width:0; word-break:break-word; white-space:pre-wrap; color:var(--text)}
 .ccard .cdel{flex:none; color:var(--muted); font-size:14px; padding:0 2px}
 .cempty{font-size:12px; color:var(--muted); padding:2px 2px 4px}
-.cinput{display:flex; gap:6px}
-.cinput input{flex:1; min-width:0; background:var(--surface2); border:none; border-radius:var(--r-full); padding:8px 14px; font-size:12.5px; color:var(--text); font-family:inherit}
+.cinput{display:flex; gap:6px; align-items:flex-end}
+.cinput textarea{flex:1; min-width:0; background:var(--surface2); border:none; border-radius:var(--r-lg); padding:8px 14px; font-size:12.5px; color:var(--text); font-family:inherit; line-height:1.4; resize:none; max-height:88px; overflow-y:auto}
+.cinput textarea::placeholder{color:var(--muted)}
 .cinput button{flex:none; font-size:12.5px; font-weight:var(--w-bold); color:var(--accent); padding:0 6px}
 .grid-photos{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
 .grid-photos img{width:100%; aspect-ratio:1; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
@@ -603,6 +604,11 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .photo-modal .pv-prev{left:12px}
 .photo-modal .pv-next{right:12px}
 .photo-modal .pv-indicator{position:absolute; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); color:#fff; font-size:13px; font-weight:var(--w-bold); background:rgba(0,0,0,.45); padding:5px 14px; border-radius:var(--r-full); display:none}
+.pv-status{position:absolute; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px; z-index:3; pointer-events:none}
+.pv-status.show{display:flex}
+.pv-status .pv-err{display:none; flex-direction:column; align-items:center; gap:10px}
+.pv-status .pv-err-text{color:#fff; font-size:13px}
+.pv-status .pv-retry-btn{pointer-events:auto; color:#fff; background:rgba(255,255,255,.16); padding:8px 18px; border-radius:var(--r-full); font-size:13px; font-weight:var(--w-bold)}
 </style>
 </head>
 <body>
@@ -1078,6 +1084,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
   <button class="pv-arrow pv-next" id="photoNext" aria-label="다음 사진">›</button>
   <div class="pv-indicator" id="photoModalIndicator"></div>
+  <div class="pv-status" id="pvStatus">
+    <div class="spinner pv-spin"></div>
+    <div class="pv-err">
+      <div class="pv-err-text">사진을 불러오지 못했어요</div>
+      <button type="button" class="pv-retry-btn" id="pvRetryBtn">다시 시도</button>
+    </div>
+  </div>
 </div>
 
 <div class="msgMenu" id="msgMenu"><button type="button" id="msgMenuEdit">✎ 수정</button></div>
@@ -2646,7 +2659,7 @@ function renderDiaryList(body){
       +'<button type="button" class="cbtn" data-ctoggle="'+en.id+'">'+cLabel+'</button>'
       +'<div class="dcomments" data-entry="'+en.id+'" style="display:'+(expanded?"block":"none")+'">'
         +'<div class="clist"></div>'
-        +'<form class="cinput" data-cform="'+en.id+'"><input type="text" data-cinput="'+en.id+'" placeholder="댓글 달기" maxlength="300" autocomplete="off"><button type="submit">보내기</button></form>'
+        +'<form class="cinput" data-cform="'+en.id+'"><textarea data-cinput="'+en.id+'" placeholder="댓글 달기" maxlength="300" rows="1"></textarea><button type="submit">보내기</button></form>'
       +'</div></div>';
   }).join("");
   wireDiaryBody(body);
@@ -2722,10 +2735,11 @@ async function refreshCommentCounts(){
     if(n!=null) b.textContent = n>0 ? "💬 "+n : "💬 댓글";
   });
 }
+function autoGrowComment(ta){ if(!ta) return; ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,88)+"px"; }
 async function sendComment(entryId){
   const input=document.querySelector('[data-cinput="'+entryId+'"]'); if(!input || !pairId) return;
   const text=input.value.trim(); if(!text) return;
-  input.value="";
+  input.value=""; autoGrowComment(input);
   try{
     await M.addDoc(M.collection(fb.db,"pairs",pairId,"diary",entryId,"comments"), { sender:fb.uid, text, ts:M.serverTimestamp() });
     // 훅 지점(범위 밖): 상대에게 "새 댓글" 푸시가 필요해지면 ogu_push_relay.py가 messages와 같은 방식으로
@@ -2800,12 +2814,34 @@ async function _pvLoadURL(item){
 }
 function _pvViewportW(){ const vp=document.getElementById("pvViewport"); return (vp&&vp.clientWidth)||window.innerWidth; }
 function _pvSetX(px, anim){ const t=document.getElementById("pvTrack"); t.classList.toggle("anim", !!anim); t.style.transform="translateX("+px+"px)"; }
+/* 로딩/오류 상태(v0.7.18) — 원본 사진 로드(Firestore getDoc)가 느리거나 실패할 때 화면에 아무 표시도
+   없이 어두운 배경만 보이면 "사진이 사라졌다"로 오인되기 쉬움(신고 사례). 로드 시작 즉시 스피너를 보여
+   침묵 구간을 없애고, 실패 시 오류 문구+재시도 버튼으로 명시한다. */
+function _pvShowLoading(){
+  const st=document.getElementById("pvStatus"); if(!st) return;
+  st.classList.add("show");
+  st.querySelector(".pv-spin").style.display="block";
+  st.querySelector(".pv-err").style.display="none";
+}
+function _pvShowError(){
+  const st=document.getElementById("pvStatus"); if(!st) return;
+  st.classList.add("show");
+  st.querySelector(".pv-spin").style.display="none";
+  st.querySelector(".pv-err").style.display="flex";
+}
+function _pvHideStatus(){
+  const st=document.getElementById("pvStatus"); if(!st) return;
+  st.classList.remove("show");
+}
 async function _pvRender(){
   _pvW=_pvViewportW();
   _zReset(); // 슬라이드가 바뀔 때마다 확대 상태 초기화(이전 사진의 확대가 다음 사진에 넘어가지 않도록)
   const cur=_viewerList[_viewerIdx];
   const curImg=document.getElementById("pvCur"), prevImg=document.getElementById("pvPrev"), nextImg=document.getElementById("pvNext");
-  curImg.src = (await _pvLoadURL(cur)) || "";
+  _pvShowLoading();
+  const url = await _pvLoadURL(cur);
+  curImg.src = url || "";
+  if(url) _pvHideStatus(); else _pvShowError();
   _pvLoadURL(_viewerList[_viewerIdx-1]).then(u=>{ prevImg.src=u||""; }); // 프리로드 → 넘어간 순간 공백 없음
   _pvLoadURL(_viewerList[_viewerIdx+1]).then(u=>{ nextImg.src=u||""; });
   _pvSetX(-_pvW, false); // 가운데(cur) 정렬
@@ -2838,7 +2874,7 @@ function _closeViewerRaw(){
   modal.classList.remove("show"); modal.style.background="";
   Object.values(_pvCache).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _pvCache={};
   _viewerList=[]; document.getElementById("pvTrack").style.transform="";
-  _zReset();
+  _zReset(); _pvHideStatus();
 }
 function closePhotoViewer(){ navCloseSelf("photoViewer", _closeViewerRaw); } // UI 트리거(X·배경·아래로 밀기) 공통 — history 정합
 
@@ -3350,6 +3386,7 @@ document.getElementById("btnToggleDiaryForm").onclick=()=>{
   else { navBack(); }
 };
 document.getElementById("diaryFormBack").onclick=()=>navBack();
+document.addEventListener("input", e=>{ if(e.target && e.target.matches && e.target.matches("[data-cinput]")) autoGrowComment(e.target); }); // 댓글 입력창 자동 높이(Enter=줄바꿈, v0.7.18)
 document.getElementById("diaryPhotos").addEventListener("change", onDiaryFileSelect);
 document.getElementById("diaryCamera").addEventListener("change", onDiaryFileSelect); // 📷 바로 찍기(단일 촬영)
 document.getElementById("btnAddDiary").onclick=saveDiary;
@@ -3358,6 +3395,12 @@ document.getElementById("photoModalClose").onclick=closePhotoViewer;
 document.getElementById("photoModal").addEventListener("click",e=>{ if(e.target.id==="photoModal") closePhotoViewer(); });
 document.getElementById("photoPrev").onclick=e=>{ e.stopPropagation(); viewerNav(-1); };
 document.getElementById("photoNext").onclick=e=>{ e.stopPropagation(); viewerNav(1); };
+document.getElementById("pvRetryBtn").onclick=e=>{
+  e.stopPropagation();
+  const cur=_viewerList[_viewerIdx];
+  if(cur && cur.ref) delete _pvCache[cur.ref.join("/")]; // 실패는 캐시에 안 남지만 방어적으로 한 번 더 비움
+  _pvRender();
+};
 /* 사진 뷰어 드래그(손가락 추적): 이동 중 트랙이 손가락 따라옴, 놓으면 임계/양끝 고무줄 기준 스냅. 아래=닫기.
    초기 이동 방향으로 축 잠금(좌우=넘기기 / 상하=닫기 프리뷰). */
 (function(){
