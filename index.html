@@ -262,6 +262,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 }
 .me .bubble{background:var(--me-bg); color:var(--me-ink)}
 .you .bubble{background:var(--you-bg); color:var(--you-ink)}
+.msg-link{color:inherit; text-decoration:underline; text-underline-offset:2px; word-break:break-all}
 .me.tail .bubble{border-bottom-right-radius:6px}
 .you.tail .bubble{border-bottom-left-radius:6px}
 .me.grp .bubble{border-top-right-radius:8px}
@@ -1088,10 +1089,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.7.17"; // v0.7.16 마무리(스크린샷2호 — 재시작해도 화면 절반 잘림 유지 반영): 초기 렌더/
-// 미포커스 기준을 항상 window.innerHeight로(visualViewport는 입력 포커스 중에만 반영) + 힐러 임계값을
-// 절대px(80)에서 상대비율(<90%)로 교체. 버전을 올리는 이유는 sw.js 캐시 무효화(VER 변경) 때문 — 문자열만
-// 다르고 실제 배포 바이트가 다르면 "v0.7.16"이 두 종류가 되어 혼란(이전 이력은 git으로 추적). sw.js VER 동반.
+const APP_VERSION = "0.7.18"; // v0.7.18(2026-08-11, 사장님 지시 — 채팅 UX 2건): ①메시지 내 URL 자동 링크화
+// (텍스트 노드 분할+<a> 요소 생성 방식, innerHTML에 사용자 텍스트 직접 주입 금지 — XSS 안전) ②채팅 사진 뷰어
+// 핀치줌+더블탭줌+팬(기존 스와이프 캐러셀과 별개 레이어, 확대 중엔 스와이프 대신 팬 우선 — 다이어리 뷰어도
+// 같은 코드 재사용이라 자동 적용). 버전을 올리는 이유는 sw.js 캐시 무효화(VER 변경) 때문. sw.js VER 동반.
 // 이전(v0.7.11) 확인: 채팅 등 비홈 탭→뒤로가기=홈은 기존 코드(v0.7.6 navStack+pushState)에 이미 구현·실측 통과 —
 // 기능 코드는 무변경, 회귀 테스트만 보강. 캐시 강제 갱신(사장님 폰이 구버전 캐시를 보고 있었을 가능성 배제)용 버전 올림. sw.js VER과 함께 올릴 것.
 const M = {};
@@ -2137,6 +2138,33 @@ function fmtTime(ms){ const d=new Date(ms); let h=d.getHours(); const m=d.getMin
 function fmtDay(ms){ const d=new Date(ms); const w=["일","월","화","수","목","금","토"]; return d.getFullYear()+"년 "+(d.getMonth()+1)+"월 "+d.getDate()+"일 "+w[d.getDay()]+"요일"; }
 function sameDay(a,b){ const x=new Date(a),y=new Date(b); return x.getFullYear()===y.getFullYear()&&x.getMonth()===y.getMonth()&&x.getDate()===y.getDate(); }
 function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+/* 채팅 메시지 내 URL 자동 링크화(v0.7.18) — XSS 안전 원칙: 사용자 텍스트를 innerHTML에 절대 넣지 않는다.
+   컨테이너는 항상 빈 상태로 시작해 텍스트는 createTextNode(자동 이스케이프), URL 구간만 <a> 요소를
+   생성(href는 정규식이 http/https만 매치하므로 javascript: 등 위험 스킴이 애초에 들어올 수 없음)해 채운다. */
+const CHAT_URL_RE = /(https?:\/\/[^\s<>"']+)/gi;
+function linkifyInto(container, text){
+  container.textContent = ""; // 이전 렌더 잔재 제거(재렌더 시 중복 방지)
+  const s = text || "";
+  let last = 0, m;
+  CHAT_URL_RE.lastIndex = 0;
+  while((m = CHAT_URL_RE.exec(s))){
+    if(m.index > last) container.appendChild(document.createTextNode(s.slice(last, m.index)));
+    let url = m[0], trail = "";
+    const tm = url.match(/[).,!?;:\]}'"]+$/); // 문장 끝 문장부호가 URL에 바로 붙은 경우 링크에서 제외
+    if(tm){ trail = tm[0]; url = url.slice(0, url.length - trail.length); }
+    if(url){
+      const a = document.createElement("a");
+      a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.className = "msg-link";
+      a.textContent = url; // 텍스트도 DOM 프로퍼티로만 설정(문자열 조립·이스케이프 불필요)
+      container.appendChild(a);
+    } else {
+      container.appendChild(document.createTextNode(m[0])); // 전부 문장부호였던 예외 케이스는 원문 그대로
+    }
+    if(trail) container.appendChild(document.createTextNode(trail));
+    last = m.index + m[0].length;
+  }
+  if(last < s.length) container.appendChild(document.createTextNode(s.slice(last)));
+}
 function renderMessages(){
   const list=document.getElementById("msgList");
   if(!list) return;
@@ -2175,8 +2203,9 @@ function renderMessages(){
     const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
     const bubbleHtml = m.thumb
       ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
-      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+'>'+esc(m.text)+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
+      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+'><span class="msgtext"></span>'+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
     row.innerHTML = mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
+    if(!m.thumb){ const mt=row.querySelector(".msgtext"); if(mt) linkifyInto(mt, m.text); } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
     list.appendChild(row);
   }
@@ -2719,6 +2748,42 @@ async function deleteComment(entryId, commentId){
    좌우 스와이프=넘기기(임계/거리 스냅·양끝 고무줄), 아래=닫기, 화살표/키보드도. */
 let _viewerList=[], _viewerIdx=0, _pvCache={}, _pvW=0;
 let _dragX0=0, _dragY0=0, _dragging=false, _dragAxis=null, _dragDX=0;
+/* 확대(핀치·더블탭·팬, v0.7.18) — 스와이프 캐러셀/닫기 드래그와 별개 레이어.
+   확대 중(scale>1)에는 손가락 1개 이동이 팬으로 전용되고 기존 스와이프/닫기 판정은 건너뛴다(우선순위 분리).
+   채팅·다이어리가 openPhotoViewer/_pvRender를 공유하므로 별도 배선 없이 양쪽에 동일 적용된다. */
+let _zScale=1, _zTX=0, _zTY=0;
+let _zPinching=false, _zPinchDist0=0, _zPinchScale0=1;
+let _zPanning=false, _zPanX0=0, _zPanY0=0, _zPanTX0=0, _zPanTY0=0;
+let _zLastTapT=0, _zLastTapX=0, _zLastTapY=0;
+function _zDist(a,b){ return Math.hypot(b.clientX-a.clientX, b.clientY-a.clientY); }
+function _zApply(anim){
+  const img=document.getElementById("pvCur");
+  if(!img) return;
+  img.style.transition = anim ? "transform .22s cubic-bezier(.22,.61,.36,1)" : "none";
+  img.style.transform = _zScale===1 ? "" : "translate("+_zTX+"px,"+_zTY+"px) scale("+_zScale+")";
+}
+function _zClamp(){
+  const img=document.getElementById("pvCur"), vp=document.getElementById("pvViewport");
+  if(!img || !vp) return;
+  const w=img.offsetWidth*_zScale, h=img.offsetHeight*_zScale;
+  const maxX=Math.max(0,(w-vp.clientWidth)/2), maxY=Math.max(0,(h-vp.clientHeight)/2);
+  _zTX=Math.min(maxX, Math.max(-maxX, _zTX));
+  _zTY=Math.min(maxY, Math.max(-maxY, _zTY));
+}
+function _zReset(){ _zScale=1; _zTX=0; _zTY=0; _zPinching=false; _zPanning=false; _zApply(false); }
+function _zToggleDoubleTap(clientX, clientY){
+  const vp=document.getElementById("pvViewport");
+  if(!vp) return;
+  const rect=vp.getBoundingClientRect();
+  if(_zScale>1){ _zScale=1; _zTX=0; _zTY=0; }
+  else{
+    _zScale=2.5;
+    const cx=clientX-(rect.left+rect.width/2), cy=clientY-(rect.top+rect.height/2);
+    _zTX=-cx*(_zScale-1)/_zScale; _zTY=-cy*(_zScale-1)/_zScale;
+    _zClamp();
+  }
+  _zApply(true);
+}
 async function _pvLoadURL(item){
   // item.ref = pairs/{pairId} 하위 원본 사진 문서 경로(다이어리/채팅 공용). 예: ["diary",e,"photos",p] / ["messages",m,"photos",p]
   if(!item || !item.ref) return "";
@@ -2737,6 +2802,7 @@ function _pvViewportW(){ const vp=document.getElementById("pvViewport"); return 
 function _pvSetX(px, anim){ const t=document.getElementById("pvTrack"); t.classList.toggle("anim", !!anim); t.style.transform="translateX("+px+"px)"; }
 async function _pvRender(){
   _pvW=_pvViewportW();
+  _zReset(); // 슬라이드가 바뀔 때마다 확대 상태 초기화(이전 사진의 확대가 다음 사진에 넘어가지 않도록)
   const cur=_viewerList[_viewerIdx];
   const curImg=document.getElementById("pvCur"), prevImg=document.getElementById("pvPrev"), nextImg=document.getElementById("pvNext");
   curImg.src = (await _pvLoadURL(cur)) || "";
@@ -2772,6 +2838,7 @@ function _closeViewerRaw(){
   modal.classList.remove("show"); modal.style.background="";
   Object.values(_pvCache).forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); _pvCache={};
   _viewerList=[]; document.getElementById("pvTrack").style.transform="";
+  _zReset();
 }
 function closePhotoViewer(){ navCloseSelf("photoViewer", _closeViewerRaw); } // UI 트리거(X·배경·아래로 밀기) 공통 — history 정합
 
@@ -3296,11 +3363,36 @@ document.getElementById("photoNext").onclick=e=>{ e.stopPropagation(); viewerNav
 (function(){
   const vp=document.getElementById("pvViewport"), modal=document.getElementById("photoModal");
   vp.addEventListener("touchstart",e=>{
+    if(e.touches.length===2){
+      // 핀치 시작 — 스와이프/닫기 드래그와 배타적(동시 판정 방지, 진행 중이던 드래그는 취소)
+      e.preventDefault();
+      _dragging=false; _zPanning=false; _zPinching=true;
+      _zPinchDist0=_zDist(e.touches[0], e.touches[1]); _zPinchScale0=_zScale;
+      return;
+    }
     if(e.touches.length!==1) return;
+    if(_zScale>1){
+      // 확대 상태에서 손가락 1개 = 팬 전용(스와이프/닫기로 해석하지 않음)
+      _zPanning=true; _zPanX0=e.touches[0].clientX; _zPanY0=e.touches[0].clientY; _zPanTX0=_zTX; _zPanTY0=_zTY;
+      return;
+    }
     _dragX0=e.touches[0].clientX; _dragY0=e.touches[0].clientY; _dragging=true; _dragAxis=null; _dragDX=0;
     _pvW=_pvViewportW(); document.getElementById("pvTrack").classList.remove("anim");
   },{passive:false});
   vp.addEventListener("touchmove",e=>{
+    if(_zPinching && e.touches.length===2){
+      e.preventDefault();
+      const d=_zDist(e.touches[0], e.touches[1]);
+      _zScale=Math.min(4, Math.max(1, _zPinchScale0 * (d/(_zPinchDist0||1))));
+      _zClamp(); _zApply(false);
+      return;
+    }
+    if(_zPanning){
+      e.preventDefault();
+      _zTX=_zPanTX0+(e.touches[0].clientX-_zPanX0); _zTY=_zPanTY0+(e.touches[0].clientY-_zPanY0);
+      _zClamp(); _zApply(false);
+      return;
+    }
     if(!_dragging) return;
     const dx=e.touches[0].clientX-_dragX0, dy=e.touches[0].clientY-_dragY0;
     if(_dragAxis===null && (Math.abs(dx)>8 || Math.abs(dy)>8)) _dragAxis = Math.abs(dx)>Math.abs(dy) ? "x" : "y";
@@ -3315,9 +3407,25 @@ document.getElementById("photoNext").onclick=e=>{ e.stopPropagation(); viewerNav
     }
   },{passive:false});
   vp.addEventListener("touchend",e=>{
+    if(_zPinching){
+      if(e.touches.length<2){
+        _zPinching=false;
+        if(_zScale<=1.02){ _zScale=1; _zTX=0; _zTY=0; } else { _zClamp(); }
+        _zApply(true);
+      }
+      return;
+    }
+    if(_zPanning){ if(e.touches.length===0) _zPanning=false; return; }
     if(!_dragging) return; _dragging=false;
     const dy=e.changedTouches[0].clientY-_dragY0;
     if(_dragAxis==="y"){ modal.style.background=""; if(dy>90) closePhotoViewer(); return; }
+    if(_dragAxis===null){
+      // 이동 없는 탭 — 더블탭 확대/축소 판정(단일 탭은 아무 동작 없음, 기존 동작 그대로 유지)
+      const t=Date.now(), x=e.changedTouches[0].clientX, y=e.changedTouches[0].clientY;
+      if(t-_zLastTapT<320 && Math.hypot(x-_zLastTapX,y-_zLastTapY)<30){ _zLastTapT=0; _zToggleDoubleTap(x,y); }
+      else{ _zLastTapT=t; _zLastTapX=x; _zLastTapY=y; }
+      return;
+    }
     if(_dragAxis!=="x") return;
     const th=_pvW*0.22;
     if(_dragDX < -th && _viewerIdx < _viewerList.length-1) viewerNav(1);
