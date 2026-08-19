@@ -56,10 +56,15 @@ service cloud.firestore {
       allow list: if signedIn() && (request.auth.uid in resource.data.memberUids);
 
       // 생성: 본인 uid 1명 솔로로 시작 (페어링 게이트 없이 바로 입장). 짝은 초대코드로 나중에 합류.
+      //   ★premium 금지(2026-08-19 응원팩): premium은 "입금 확인한 관리자(Admin SDK)"만 켤 수 있는 필드다.
+      //     update 경로들은 모두 diff().affectedKeys().hasOnly([...])로 필드를 화이트리스트하므로 premium이
+      //     끼어들 수 없지만, create에는 필드 제한이 없어 "처음부터 premium:true인 pair"를 만들 수 있었다.
+      //     이 한 줄이 그 유일한 클라이언트 쓰기 경로를 막는다(= premium은 클라이언트에게 읽기 전용).
       allow create: if signedIn()
         && request.resource.data.memberUids.size() == 1
         && request.resource.data.memberUids[0] == request.auth.uid
-        && request.resource.data.status == "solo";
+        && request.resource.data.status == "solo"
+        && !("premium" in request.resource.data);
 
       // 이별 프로토콜(v1): 일단 dissolved로 전환된 문서는 그 무엇으로도 되돌리거나 추가 수정할 수 없다(툼스톤 고정).
       //   → 전체 allow update에 "현재 상태가 dissolved가 아닐 것"을 선행 조건으로 건다.
@@ -84,16 +89,20 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme","profile"]))
         ||
-        // 케이스 J: 사진 카운트(커플당 50장 캡 관리) — 멤버만, photoCount 필드만, 0~50 정수.
+        // 케이스 J: 사진 카운트(커플당 캡 관리) — 멤버만, photoCount 필드만, 0~캡 정수.
+        //   캡 = 무료 50장 / 응원팩 구매 커플(premium==true) 150장 (2026-08-19).
+        //   premium은 이 문서의 기존 값(resource.data)에서 읽는다 — 같은 write로 premium을 켜면서 캡을 올리는
+        //   자기승격은 불가능하다(affectedKeys hasOnly(["photoCount"])가 premium 동시 변경을 이미 막고,
+        //   premium 단독 변경 경로도 존재하지 않는다).
         //   ⚠️정직한 한계: rules는 photos 서브컬렉션 문서 수를 셀 수 없어 "실제 사진 수 == photoCount"를
         //   완전 강제하지 못한다(클라이언트가 카운트를 정직히 올린다는 전제). 다만 photoCount 자체의
-        //   상한(<=50)은 rules로 강제되어, 이 값을 근거로 한 캡 UX가 50을 넘겨 기록되는 일은 막는다.
+        //   상한은 rules로 강제되어, 이 값을 근거로 한 캡 UX가 상한을 넘겨 기록되는 일은 막는다.
         (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["photoCount"])
           && request.resource.data.photoCount is int
           && request.resource.data.photoCount >= 0
-          && request.resource.data.photoCount <= 50)
+          && request.resource.data.photoCount <= (resource.data.get("premium", false) == true ? 150 : 50))
         ||
         // 케이스 R: 비멤버가 "합류 요청"만 기록(joinRequest 필드). 수락 전 접근은 여기서 끝난다.
         //   ★보안 핵심(사장님 "코드만 있으면 다 들어오나?" 대응): 이 케이스는 memberUids/status를 절대 바꾸지
@@ -283,6 +292,31 @@ service cloud.firestore {
             && (resource.data.sender == request.auth.uid || pairOf(pairId).status == "dissolved");
         }
       }
+    }
+
+    // ── purchase_requests/{pairId} : "응원팩"(1회성 ₩4,900) 입금 접수 (2026-08-19) ─────
+    //   문서 id = pairId → 커플당 접수 1건. 클라이언트는 create/get만 할 수 있고 update·delete는 전면 금지다.
+    //   ★설계: 결제 자체는 앱 밖(토스 송금)에서 일어나고, 이 문서는 "송금했어요"라는 사용자 신고일 뿐이다.
+    //     따라서 이 문서에 premium을 켜는 힘은 없다 — 관리자가 입금을 눈으로 확인한 뒤 Admin SDK
+    //     (scripts/grant_premium.py, rules 우회)로 pairs/{pairId}.premium=true를 쓴다.
+    //     "돈 안 내고 이 문서만 만들면 premium이 켜지는" 경로는 구조적으로 존재하지 않는다.
+    //   ★열거 차단: list는 pairs/codeIndex와 같은 원칙으로 전면 금지(get은 본인 커플 멤버만).
+    //   ★위조 차단: 문서의 pairId는 doc-id와 일치해야 하고, requestedBy는 본인 uid여야 하며,
+    //     필드는 화이트리스트(hasOnly)로 고정 — premium·status 같은 필드를 끼워 넣을 수 없다.
+    match /purchase_requests/{pairId} {
+      allow get: if signedIn() && (request.auth.uid in pairMembers(pairId));
+      allow list: if false;
+      allow create: if signedIn()
+        && (request.auth.uid in pairOf(pairId).memberUids)
+        && pairOf(pairId).status != "dissolved"
+        && request.resource.data.keys().hasOnly(["pairId","orderCode","productId","requestedBy","requestedAt"])
+        && request.resource.data.pairId == pairId
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.orderCode is string
+        && request.resource.data.orderCode.size() > 0
+        && request.resource.data.productId is string;
+      allow update: if false;   // 접수 내용은 만든 뒤 바꿀 수 없다(사후 위조 차단)
+      allow delete: if false;   // 입금 대사 근거이므로 클라이언트 삭제 금지
     }
   }
 }
