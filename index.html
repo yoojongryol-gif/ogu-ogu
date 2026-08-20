@@ -612,8 +612,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .pay-code-box{background:var(--accent-soft); border-radius:var(--r-md); padding:11px 12px; margin-bottom:14px}
 .pay-code-label{font-size:11px; color:var(--muted); font-weight:var(--w-med)}
 .pay-code{font-size:18px; font-weight:var(--w-bold); letter-spacing:.06em; margin:3px 0 3px; word-break:break-all}
-.pay-code-hint{font-size:11.5px; color:var(--muted); line-height:1.5}
-.pay-soon{font-size:12.5px; color:var(--muted); background:var(--surface2); border-radius:var(--r-md); padding:11px 12px; line-height:1.6}
+.pay-code-hint{font-size:11.5px; color:var(--muted); line-height:1.55}
+/* 입금 계좌(2026-08-20, 송금링크 → 계좌이체 전환) */
+.pay-acct-box{background:var(--surface2); border-radius:var(--r-md); padding:11px 12px; margin-bottom:12px}
+.pay-acct-no{font-size:19px; font-weight:var(--w-bold); letter-spacing:.03em; margin:3px 0 2px; word-break:break-all}
+.pay-acct-sub{font-size:12px; color:var(--muted); line-height:1.5}
+.pay-copy{margin-top:9px}
 .pay-status{font-size:12.5px; color:var(--accent); line-height:1.6; margin-top:10px; font-weight:var(--w-med)}
 .pay-on{font-size:13px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md); padding:12px 14px; line-height:1.75}
 .photo-count{font-size:12px; color:var(--muted); font-weight:var(--w-med)}
@@ -1115,13 +1119,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div class="pay-price" id="payPrice">₩4,900</div>
       <div class="pay-once">한 번만 결제하면 두 사람 공간에 계속 남아요</div>
       <div class="pay-benefit">📷 사진 보관 <b>50 → 150장</b><br>🎨 프리미엄 꾸미기 세트 해금<br>　<span style="color:var(--muted)">테마 2종(노을·밤벚꽃) · 채팅 배경 2종(별밤·물결) · 아이콘 6종</span></div>
+      <div class="pay-acct-box">
+        <div class="pay-code-label">입금 계좌</div>
+        <div class="pay-acct-no" id="payAcctNo">—</div>
+        <div class="pay-acct-sub" id="payAcctSub">—</div>
+        <button class="copychip pay-copy" id="payCopyAcct">⧉ 계좌번호 복사</button>
+      </div>
       <div class="pay-code-box">
         <div class="pay-code-label">우리 주문코드</div>
         <div class="pay-code" id="payOrderCode">—</div>
-        <div class="pay-code-hint">송금 메시지에 이 코드를 그대로 적어주세요</div>
+        <div class="pay-code-hint">이체할 때 <b>받는분에게 표시</b>(이체 메모)에 이 코드를 그대로 적어주세요. 코드가 없으면 어느 커플의 입금인지 확인할 수 없어요.</div>
+        <button class="copychip pay-copy" id="payCopyCode">⧉ 주문코드 복사</button>
       </div>
-      <button class="primary-btn" id="payTossBtn" style="max-width:none">토스로 송금하기</button>
-      <div class="pay-soon" id="paySoonNote" style="display:none">결제 오픈 준비 중이에요. 조금만 기다려 주세요 🙏</div>
       <button class="secondary-btn" id="payDoneBtn" style="max-width:none;margin-top:10px">결제 완료했어요</button>
       <div class="pay-status" id="payStatusNote"></div>
     </div>
@@ -1199,12 +1208,15 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.0"; // v0.8.0(2026-08-19, 사장님 GO — 유료화 ⓑ안 1회성 결제 MVP): "응원팩" ₩4,900
+const APP_VERSION = "0.8.1"; // v0.8.1(2026-08-20, 사장님 확정 — 결제수단 변경): 토스 송금링크 방식 폐기
+// (토스아이디 미보유) → 결제 모달에 입금 계좌 직접 표시(토스뱅크 1001-5838-5182, 예금주 유종렬) +
+// 계좌번호·주문코드 복사 버튼 + "이체 메모(받는분에게 표시)에 주문코드" 안내. "결제 오픈 준비 중" 게이트
+// 해제 = 결제 오픈. 접수 흐름·rules·premium 해금 로직은 v0.8.0 그대로(무변경).
+// ↓ v0.8.0(2026-08-19, 사장님 GO — 유료화 ⓑ안 1회성 결제 MVP): "응원팩" ₩4,900
 // (커플 단위 1회 결제·영구) — ①결제 모달 + 진입점 2곳(사진 캡 도달 안내 / 설정 "5959 응원하기")
 // ②purchase_requests/{pairId} 접수 1건(클라 create·get만, update·delete 금지) ③pairs.premium은 클라 쓰기
 // 전면 차단(rules) — 입금 확인 후 관리자만 scripts/grant_premium.py로 해금 ④premium=사진 캡 50→150 +
-// 프리미엄 꾸미기(테마 2·채팅배경 2·아이콘 6, 기존 무료 아이템 강등 없음). TOSS_PAY_LINK가 빈 값이면
-// "결제 오픈 준비 중"으로 노출되고 송금·접수 버튼이 잠긴다(링크 수령 전 안전 배포).
+// 프리미엄 꾸미기(테마 2·채팅배경 2·아이콘 6, 기존 무료 아이템 강등 없음).
 // ↓ 이전 이력
 // v0.7.18(2026-08-11, 사장님 지시 — 채팅 UX 2건): ①메시지 내 URL 자동 링크화
 // (텍스트 노드 분할+<a> 요소 생성 방식, innerHTML에 사용자 텍스트 직접 주입 금지 — XSS 안전) ②채팅 사진 뷰어
@@ -1252,10 +1264,12 @@ const PHOTO_CAP_FREE=50, PHOTO_CAP_PREMIUM=150;
 function isPremium(){ return !!(currentPairData && currentPairData.premium===true); }
 function photoCap(){ return isPremium() ? PHOTO_CAP_PREMIUM : PHOTO_CAP_FREE; }
 Object.defineProperty(globalThis, "PHOTO_CAP", { get: photoCap, configurable: true });
-/* 응원팩 상품 정의 + 결제 수단. TOSS_PAY_LINK가 빈 값이면 "결제 오픈 준비 중"으로 노출되고 송금 버튼이
-   비활성화된다(링크 없이도 안전 배포 가능). 토스 송금링크를 받으면 이 한 줄만 교체하면 오픈된다. */
+/* 응원팩 상품 정의 + 결제 수단.
+   2026-08-20 사장님 확정: 토스 송금링크 방식 폐기(토스아이디 미보유) → 입금 계좌를 모달에 직접 표시하고
+   사용자가 은행앱에서 이체한다. 앱은 계좌·금액·주문코드를 보여주고 "결제 완료했어요" 접수만 받는다.
+   ★대사(對査)의 유일한 열쇠 = 이체 메모에 적힌 주문코드. 문구에서 이 점을 강하게 안내한다. */
 const SUPPORT_PACK={ id:"support_pack_v1", price:4900, priceLabel:"₩4,900" };
-const TOSS_PAY_LINK="";
+const PAY_ACCOUNT={ bank:"토스뱅크", no:"1001-5838-5182", holder:"유종렬" };
 let _payRequested=false, _payChecked=false, _prevPremium=false, _premSeen=false;
 /* 공간이 바뀌거나(로그아웃·관계정리·재연결) 하면 결제 접수 캐시도 함께 비운다 — 남의/이전 공간의 상태가 새지 않도록. */
 function resetPayState(){ _payRequested=false; _payChecked=false; _prevPremium=false; _premSeen=false; }
@@ -1636,7 +1650,7 @@ function renderSupportPackUI(){
   }else{
     lbl.textContent="응원팩";
     desc.textContent="사진 보관 150장 + 프리미엄 꾸미기 세트 · 한 번 결제로 계속";
-    btn.textContent=TOSS_PAY_LINK ? SUPPORT_PACK.priceLabel : "보기";
+    btn.textContent=SUPPORT_PACK.priceLabel;
   }
 }
 function _hidePayModal(){ document.getElementById("payModal").style.display="none"; }
@@ -1655,12 +1669,10 @@ function renderPayModal(){
   if(owned) return;
   document.getElementById("payPrice").textContent=SUPPORT_PACK.priceLabel;
   document.getElementById("payOrderCode").textContent=orderCode()||"—";
-  const tossBtn=document.getElementById("payTossBtn"), soon=document.getElementById("paySoonNote"), done=document.getElementById("payDoneBtn");
-  const open=!!TOSS_PAY_LINK;
-  tossBtn.style.display=open?"":"none";
-  soon.style.display=open?"none":"";
-  done.disabled=!open || _payRequested;          // 링크 없으면 접수도 받지 않는다(헛접수 방지)
-  done.style.display=open?"":"none";
+  document.getElementById("payAcctNo").textContent=PAY_ACCOUNT.no;
+  document.getElementById("payAcctSub").textContent=PAY_ACCOUNT.bank+" · 예금주 "+PAY_ACCOUNT.holder;
+  const done=document.getElementById("payDoneBtn");
+  done.disabled=_payRequested;                   // 이미 접수한 커플만 잠근다(중복 접수 방지)
   const st=document.getElementById("payStatusNote");
   st.textContent=_payRequested ? "접수됐어요 · 입금 확인 후 열어드릴게요 (보통 하루 안)" : "";
 }
@@ -1675,7 +1687,6 @@ async function checkPurchaseRequest(){
 }
 async function submitPurchase(){
   if(!pairId){ toast("우리 공간이 만들어진 뒤에 이용할 수 있어요"); return; }
-  if(!TOSS_PAY_LINK){ toast("결제 오픈 준비 중이에요"); return; }
   if(_payRequested){ toast("이미 접수돼 있어요. 확인 중이에요"); return; }
   const btn=document.getElementById("payDoneBtn"); if(btn) btn.disabled=true;
   try{
@@ -3598,10 +3609,15 @@ document.getElementById("myEmojiPicker").addEventListener("click",e=>{ const b=e
 document.getElementById("btnSupportPack").onclick=openPayModal;
 document.getElementById("payCloseBtn").onclick=closePayModal;
 document.getElementById("payModal").addEventListener("click",e=>{ if(e.target.id==="payModal") closePayModal(); });
-document.getElementById("payTossBtn").onclick=()=>{
-  if(!TOSS_PAY_LINK){ toast("결제 오픈 준비 중이에요"); return; }
-  try{ window.open(TOSS_PAY_LINK, "_blank", "noopener"); }catch(e){ location.href=TOSS_PAY_LINK; }
-};
+/* 복사는 기존 초대코드 복사(copyChip)와 동일 패턴 — 화면에 실제 표시된 DOM에서만 읽는다(표시==복사 보장). */
+async function _payCopy(elId, label){
+  const v=(document.getElementById(elId).textContent||"").trim();
+  if(!v || v==="—"){ toast("표시된 내용을 확인해주세요"); return; }
+  try{ await navigator.clipboard.writeText(v); toast(label+"를 복사했어요"); }
+  catch(e){ toast("복사를 지원하지 않는 기기예요"); }
+}
+document.getElementById("payCopyAcct").onclick=()=>_payCopy("payAcctNo","계좌번호");
+document.getElementById("payCopyCode").onclick=()=>_payCopy("payOrderCode","주문코드");
 document.getElementById("payDoneBtn").onclick=submitPurchase;
 document.getElementById("myNickInput").addEventListener("change",e=>{ setProfile({nicks:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
 document.getElementById("annivInput").addEventListener("change",e=>{ setProfile({anniversary:e.target.value}); });
