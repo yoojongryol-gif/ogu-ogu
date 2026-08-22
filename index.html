@@ -320,7 +320,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .msgMenu.show{display:block}
 .msgMenu button{display:block; width:100%; padding:10px 16px; font-size:13.5px; color:var(--text); text-align:left; border-radius:8px}
 .msgMenu button:active{background:var(--surface2)}
-/* 정보 줄(보낸시간·읽은시간, 2026-08-22) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선 */
+/* 정보 줄(읽은시간만, 2026-08-22 14:52 — 보낸시간은 인라인과 중복이라 제거) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선 */
 .msgMenuInfo{padding:8px 12px 6px; font-size:12px; color:var(--muted); line-height:1.6}
 .msgMenuInfo:empty{display:none}
 .msgMenuInfo .rd{color:var(--read); font-weight:700}
@@ -1214,7 +1214,11 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.3"; // v0.8.3(2026-08-22 13:17, 사장님 후속지시): v0.8.2의 상시 "읽음 HH:MM"
+const APP_VERSION = "0.8.4"; // v0.8.4(2026-08-22 14:52, 사장님 피드백): 정보메뉴 "보낸 시간" 줄 제거
+// (인라인 시각과 이중표시라는 지적) — 메뉴엔 "읽은 시간"만: 내 메시지=상대가 읽은 시각
+// (otherReadMs), 상대 메시지=내가 읽은 시각(myReadMs, 신규) — 이전엔 상대 메시지에 "보낸 시각"만
+// 나와 "읽은 시각"이 아예 안 보였던 게 지적의 핵심. 메시지 시각보다 읽은 시각이 이르면 "안읽음".
+// ↓ v0.8.3(2026-08-22 13:17, 사장님 후속지시): v0.8.2의 상시 "읽음 HH:MM"
 // 인라인 노출 롤백 → "읽음" 유무만 다시 인라인, 시각(보낸시간+읽은시간/안읽음)은 말풍선 롱프레스
 // (터치)·길게누름/우클릭(데스크톱)의 정보메뉴에서만 노출. 기존 메시지수정 롱프레스 진입과 통합
 // (같은 메뉴에 정보+조건부 수정 버튼), 스크롤 오발동 방지(10px 임계값) 유지. 신규 필드 없음(lastReadAt 재사용).
@@ -2642,20 +2646,22 @@ function bindMsgLongPress(el, id, mine, editable){
   });
 }
 function otherReadMs(){ return currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[otherUid()]) : 0; }
+function myReadMs(){ return currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[fb.uid]) : 0; }
 function showMsgMenu(id, mine, editable, x, y){
+  // 2026-08-22 14:52 피드백: "보낸 시간"은 인라인(말풍선 아래 시각)과 이중표시라 제거 — 메뉴엔
+  // "읽은 시간"만. 내 메시지=상대가 읽은 시각(otherReadMs), 상대 메시지=내가 읽은 시각(myReadMs).
+  // 그 시각이 메시지 시각(ms)보다 이르면(=아직 이 메시지 전에 읽음) "안읽음" — lastReadAt 판정 그대로.
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x2=>x2.id===id);
   const info=document.getElementById("msgMenuInfo");
   info.innerHTML=""; // 매번 재구성 — 사용자 입력이 아닌 우리가 만든 시간 문자열만 textContent로 조립(XSS 무관)
   if(d){
     const ms=tsMillis(d.data().ts)||Date.now();
-    const l1=document.createElement("div"); l1.textContent="보낸 "+fmtTime(ms); info.appendChild(l1);
-    if(mine){
-      const oread=otherReadMs(), read = oread>0 && ms<=oread;
-      const l2=document.createElement("div");
-      l2.className = read ? "rd" : "unread";
-      l2.textContent = read ? ("읽음 "+fmtTime(oread)) : "안읽음";
-      info.appendChild(l2);
-    }
+    const readAt = mine ? otherReadMs() : myReadMs();
+    const read = readAt>0 && ms<=readAt;
+    const l1=document.createElement("div");
+    l1.className = read ? "rd" : "unread";
+    l1.textContent = read ? ("읽음 "+fmtTime(readAt)) : "안읽음";
+    info.appendChild(l1);
   }
   const m=document.getElementById("msgMenu");
   const editBtn=document.getElementById("msgMenuEdit");
@@ -2663,7 +2669,7 @@ function showMsgMenu(id, mine, editable, x, y){
   m.classList.toggle("has-edit", !!editable);
   m.dataset.target=id;
   m.style.left=Math.min(Math.max(x-70,8), window.innerWidth-166)+"px";
-  m.style.top=Math.max(y-(editable?112:76),8)+"px";
+  m.style.top=Math.max(y-(editable?96:58),8)+"px"; // 정보 줄이 1개(읽은시간만)로 줄어 오프셋도 함께 축소
   m.classList.add("show");
 }
 function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.classList.remove("show"); }
