@@ -297,7 +297,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .you.tail .bubble{border-bottom-left-radius:6px}
 .me.grp .bubble{border-top-right-radius:8px}
 .you.grp .bubble{border-top-left-radius:8px}
-.meta{display:flex; flex-direction:column; flex:none; white-space:nowrap; font-size:10.5px; color:var(--muted); line-height:1.3; padding-bottom:2px}
+.meta{display:flex; flex-direction:column; font-size:10.5px; color:var(--muted); line-height:1.3; padding-bottom:2px}
 .me .meta{align-items:flex-end; order:-1}
 .you .meta{align-items:flex-start}
 .meta .rd{color:var(--read); font-weight:700}
@@ -315,11 +315,17 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 }
 .msgMenu{
   position:fixed; z-index:60; background:var(--surface); border-radius:var(--r-md); box-shadow:var(--shadow);
-  padding:4px; display:none; min-width:120px;
+  padding:4px; display:none; min-width:150px;
 }
 .msgMenu.show{display:block}
 .msgMenu button{display:block; width:100%; padding:10px 16px; font-size:13.5px; color:var(--text); text-align:left; border-radius:8px}
 .msgMenu button:active{background:var(--surface2)}
+/* 정보 줄(보낸시간·읽은시간, 2026-08-22) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선 */
+.msgMenuInfo{padding:8px 12px 6px; font-size:12px; color:var(--muted); line-height:1.6}
+.msgMenuInfo:empty{display:none}
+.msgMenuInfo .rd{color:var(--read); font-weight:700}
+.msgMenuInfo .unread{opacity:.75}
+.msgMenu.has-edit .msgMenuInfo{border-bottom:1px solid var(--line); margin-bottom:2px}
 .msgEditBar{
   flex:none; display:flex; align-items:center; justify-content:space-between;
   padding:7px 16px; background:var(--accent-soft); color:var(--accent); font-size:12.5px; font-weight:var(--w-med);
@@ -1199,7 +1205,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 </div>
 
-<div class="msgMenu" id="msgMenu"><button type="button" id="msgMenuEdit">✎ 수정</button></div>
+<div class="msgMenu" id="msgMenu"><div class="msgMenuInfo" id="msgMenuInfo"></div><button type="button" id="msgMenuEdit">✎ 수정</button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1208,7 +1214,11 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.2"; // v0.8.2(2026-08-22, 사장님 지시): 채팅 읽음 확인 "시각" 추가(otherRead 시각을
+const APP_VERSION = "0.8.3"; // v0.8.3(2026-08-22 13:17, 사장님 후속지시): v0.8.2의 상시 "읽음 HH:MM"
+// 인라인 노출 롤백 → "읽음" 유무만 다시 인라인, 시각(보낸시간+읽은시간/안읽음)은 말풍선 롱프레스
+// (터치)·길게누름/우클릭(데스크톱)의 정보메뉴에서만 노출. 기존 메시지수정 롱프레스 진입과 통합
+// (같은 메뉴에 정보+조건부 수정 버튼), 스크롤 오발동 방지(10px 임계값) 유지. 신규 필드 없음(lastReadAt 재사용).
+// ↓ v0.8.2(2026-08-22, 사장님 지시): 채팅 읽음 확인 "시각" 추가(otherRead 시각을
 // fmtTime으로 함께 표시, 신규 필드 없이 기존 lastReadAt 1개 재사용) + 날짜 구분선 표기 "(요일)" 형식 정리.
 // ↓ v0.8.1(2026-08-20, 사장님 확정 — 결제수단 변경): 토스 송금링크 방식 폐기
 // (토스아이디 미보유) → 결제 모달에 입금 계좌 직접 표시(토스뱅크 1001-5838-5182, 예금주 유종렬) +
@@ -2459,20 +2469,19 @@ function renderMessages(){
     let metaHtml="";
     if(!nextSame){
       const time=fmtTime(ms);
-      // 읽음 확인 시각(2026-08-22, 사장님 지시): 상대의 lastReadAt 1개를 그대로 재사용 — 메시지별
-      // readAt을 새로 기록하지 않는다(쓰기 비용 회피, 기존 D 케이스 rules 무변경). 이 메시지 시각(ms)
-      // 이전에 상대가 마지막으로 읽은 시점(otherRead)이면 "읽음"이고, 그 옆에 표시하는 시각도 상대가
-      // '실제로 읽은 시각'(otherRead)이지 메시지를 보낸 시각(ms)이 아니다 — 카톡과 같은 의미.
-      const readHtml = (otherRead>0 && ms<=otherRead) ? '<span class="rd">읽음 '+fmtTime(otherRead)+'</span>' : '';
+      // 읽음 표시는 다시 "읽음" 유무만(2026-08-22 13:17 후속지시로 상시 시각노출 v0.8.2 롤백) —
+      // 실제 시각은 말풍선 롱프레스/우클릭 메뉴(showMsgMenu)로만 노출한다.
       metaHtml = mine
-        ? '<div class="meta">'+readHtml+'<span>'+time+'</span></div>'
+        ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
         : '<div class="meta"><span>'+time+'</span></div>';
     }
     const editable = mine && !m.thumb; // 내 텍스트 메시지만 수정 가능 — 상대 메시지·사진 메시지는 제외
     const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
+    // data-msgid = 모든 말풍선 공통(내 것/상대 것, 텍스트/사진) — 롱프레스 정보메뉴(showMsgMenu) 대상 식별용.
+    // data-editbubble/data-chatmsg은 기존 용도(수정 진입/사진뷰어) 그대로 유지 — 회귀 없음.
     const bubbleHtml = m.thumb
-      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
-      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+'><span class="msgtext"></span>'+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
+      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
+      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'"><span class="msgtext"></span>'+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
     row.innerHTML = mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
     if(!m.thumb){ const mt=row.querySelector(".msgtext"); if(mt) linkifyInto(mt, m.text); } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
@@ -2482,11 +2491,17 @@ function renderMessages(){
   const photoMsgs = msgs.filter(x=>x.data && x.data.thumb);
   const photoItems = photoMsgs.map(x=>({ref:["messages", x.id, "photos", x.data.thumb.photoId]}));
   list.querySelectorAll("[data-chatmsg]").forEach(el=>el.onclick=()=>{
+    if(_msgLongPressed){ _msgLongPressed=false; return; } // 롱프레스로 정보메뉴를 막 띄운 직후의 클릭은 사진뷰어를 열지 않는다
     const idx=photoMsgs.findIndex(x=>x.id===el.dataset.chatmsg);
     openPhotoViewer(photoItems, Math.max(0, idx));
   });
   // 내 텍스트 메시지 수정 진입 — 데스크톱: hover로 드러나는 연필 아이콘 클릭 / 터치: 말풍선 길게 누르기(메뉴)
   list.querySelectorAll("[data-editmsg]").forEach(el=>{ el.onclick=(e)=>{ e.stopPropagation(); startEditMessage(el.dataset.editmsg); }; });
+  // 말풍선 롱프레스(터치)·길게 클릭 또는 우클릭(데스크톱) → 정보메뉴(보낸시간·읽은시간 + 조건부 수정, 2026-08-22)
+  list.querySelectorAll("[data-msgid]").forEach(el=>{
+    const mine = !!el.closest(".row.me");
+    bindMsgLongPress(el, el.dataset.msgid, mine, el.hasAttribute("data-editbubble"));
+  });
   list.querySelectorAll("[data-editbubble]").forEach(el=>bindMsgLongPress(el));
   list.scrollTop = list.scrollHeight;
 }
@@ -2592,25 +2607,63 @@ async function saveEditedMessage(input, text){
     toast(isDeniedErr(err) ? "수정 권한이 없어요" : "수정하지 못했어요");
   });
 }
-/* 롱프레스(터치 전용 — 마우스는 hover로 드러나는 연필 아이콘이 담당) → 작은 메뉴에서 "수정" 선택 */
-function bindMsgLongPress(el){
+/* 말풍선 롱프레스(터치)·길게 누름(마우스)·우클릭(데스크톱) → 정보메뉴(보낸시간·읽은시간 + 조건부 수정)
+   (2026-08-22 13:17 후속지시): v0.8.2의 상시 "읽음 HH:MM" 인라인 노출을 롤백하고, 시각 정보는
+   이 메뉴에서만 보여준다. 모든 말풍선(내 것/상대 것, 텍스트/사진)에 바인딩하되 "수정" 버튼은
+   기존과 동일하게 editable(본인 텍스트)에서만 노출 — 수정 진입 경로 자체는 무변경(회귀 없음).
+   스크롤 오발동 방지: pointerdown 후 10px 넘게 움직이면 타이머 취소(기존 v0.7.9 패턴 재사용).
+   데스크톱 우클릭(contextmenu)은 즉시 발동시키되, 터치가 파생시키는 contextmenu는 여기서 또
+   띄우면 중복(pointerdown 타이머가 이미 처리)이므로 기본 메뉴만 억제하고 return. */
+let _msgLongPressed=false; // 롱프레스로 메뉴가 막 열렸음을 표시 — 사진 말풍선의 클릭(뷰어 열기)과의 충돌 방지용, 사용 직후 소비
+function bindMsgLongPress(el, id, mine, editable){
   let timer=null, sx=0, sy=0;
+  const fire=(x,y)=>{
+    timer=null; try{ navigator.vibrate && navigator.vibrate(12); }catch(_){ }
+    _msgLongPressed=true; showMsgMenu(id, mine, editable, x, y);
+    // 안전망: 롱프레스 직후 파생되는 클릭(사진 뷰어 오픈 억제용)만 잡아야 하므로 곧바로 소비되지
+    // 않았더라도(예: 텍스트 말풍선 롱프레스) 잠시 뒤 스스로 해제 — 이후의 무관한 사진 탭까지
+    // 오억제하지 않도록 한다.
+    setTimeout(()=>{ _msgLongPressed=false; }, 350);
+  };
   el.addEventListener("pointerdown", e=>{
-    if(e.pointerType!=="touch") return;
+    if(e.pointerType!=="touch" && e.pointerType!=="mouse") return; // 터치+마우스 공통(펜 등은 제외)
     sx=e.clientX; sy=e.clientY;
-    timer=setTimeout(()=>{ timer=null; try{ navigator.vibrate && navigator.vibrate(12); }catch(_){ } showMsgMenu(el.dataset.editbubble, e.clientX, e.clientY); }, 480);
+    timer=setTimeout(()=>fire(e.clientX, e.clientY), 480);
   });
   const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
-  el.addEventListener("pointermove", e=>{ if(timer && (Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10)) cancel(); });
+  el.addEventListener("pointermove", e=>{ if(timer && (Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10)) cancel(); }); // 스크롤 등 이동 시 오발동 방지
   el.addEventListener("pointerup", cancel);
   el.addEventListener("pointercancel", cancel);
-  el.addEventListener("contextmenu", e=>{ if(_prefersTouchEnter()) e.preventDefault(); }); // 롱프레스 시 브라우저 기본 메뉴(선택/복사) 억제
+  el.addEventListener("pointerleave", cancel);
+  el.addEventListener("contextmenu", e=>{
+    e.preventDefault(); // 브라우저 기본 메뉴(선택/복사)는 항상 억제
+    if(_prefersTouchEnter()) return; // 터치 파생 contextmenu는 pointerdown 타이머가 이미 처리 — 중복 방지
+    cancel(); fire(e.clientX, e.clientY); // 데스크톱 실제 우클릭은 여기서 즉시 발동
+  });
 }
-function showMsgMenu(id, x, y){
+function otherReadMs(){ return currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[otherUid()]) : 0; }
+function showMsgMenu(id, mine, editable, x, y){
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x2=>x2.id===id);
+  const info=document.getElementById("msgMenuInfo");
+  info.innerHTML=""; // 매번 재구성 — 사용자 입력이 아닌 우리가 만든 시간 문자열만 textContent로 조립(XSS 무관)
+  if(d){
+    const ms=tsMillis(d.data().ts)||Date.now();
+    const l1=document.createElement("div"); l1.textContent="보낸 "+fmtTime(ms); info.appendChild(l1);
+    if(mine){
+      const oread=otherReadMs(), read = oread>0 && ms<=oread;
+      const l2=document.createElement("div");
+      l2.className = read ? "rd" : "unread";
+      l2.textContent = read ? ("읽음 "+fmtTime(oread)) : "안읽음";
+      info.appendChild(l2);
+    }
+  }
   const m=document.getElementById("msgMenu");
+  const editBtn=document.getElementById("msgMenuEdit");
+  editBtn.style.display = editable ? "" : "none";
+  m.classList.toggle("has-edit", !!editable);
   m.dataset.target=id;
-  m.style.left=Math.min(Math.max(x-60,8), window.innerWidth-136)+"px";
-  m.style.top=Math.max(y-64,8)+"px";
+  m.style.left=Math.min(Math.max(x-70,8), window.innerWidth-166)+"px";
+  m.style.top=Math.max(y-(editable?112:76),8)+"px";
   m.classList.add("show");
 }
 function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.classList.remove("show"); }
