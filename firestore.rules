@@ -218,6 +218,20 @@ service cloud.firestore {
           && pairOf(pairId).status != "dissolved"
           && resource.data.get('hasPhoto', false) == false
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','editedAt']);
+        // 케이스 H(2026-08-22 15:25): 메시지 최초 읽음 시각(readAt) 기록 — "수신자"만, 딱 1회만.
+        //   ★근본원인: pairs.lastReadAt(이동 포인터, 케이스 D)는 "지금 여기까지 읽었다"만 남기고 매번
+        //     최신 시각으로 갱신되므로, 옛 메시지를 오늘 다시 보면 "방금 읽은 것"처럼 보이는 구조적
+        //     한계가 실기기에서 확인됐다(2026-08-22 15:25). 메시지별 readAt을 최초 1회만 기록해 고정한다.
+        //   · resource.data.sender != request.auth.uid → 발신자 본인은 자기 메시지의 readAt을 못 씀
+        //     (과거를 "방금 읽은 척"으로 조작하거나 반대로 안 읽은 척 지우는 것 모두 차단, "수신자만" 원칙).
+        //   · !('readAt' in resource.data) → 이미 기록된 readAt은 그 무엇으로도(수신자 포함) 다시 못 바꾼다
+        //     = 최초 읽은 시각으로 영구 고정(불변).
+        //   · affectedKeys().hasOnly(['readAt']) → 이 경로로는 다른 필드를 절대 못 바꾼다.
+        allow update: if isMember(pairOf(pairId))
+          && resource.data.sender != request.auth.uid
+          && pairOf(pairId).status != "dissolved"
+          && !('readAt' in resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
