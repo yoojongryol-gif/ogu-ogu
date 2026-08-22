@@ -315,13 +315,16 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 }
 .msgMenu{
   position:fixed; z-index:60; background:var(--surface); border-radius:var(--r-md); box-shadow:var(--shadow);
-  padding:4px; display:none; min-width:150px;
+  padding:4px; display:none; min-width:150px; max-width:calc(100vw - 16px); /* 2026-08-22 18:32: 어떤 좌표
+  계산이 오더라도 메뉴 자체가 뷰포트보다 넓어질 수 없게(html{overflow:hidden}이라 넘치면 그대로 잘려 안 보임) */
 }
 .msgMenu.show{display:block}
 .msgMenu button{display:block; width:100%; padding:10px 16px; font-size:13.5px; color:var(--text); text-align:left; border-radius:8px}
 .msgMenu button:active{background:var(--surface2)}
-/* 정보 줄(읽은시간만, 2026-08-22 14:52 — 보낸시간은 인라인과 중복이라 제거) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선 */
-.msgMenuInfo{padding:8px 12px 6px; font-size:12px; color:var(--muted); line-height:1.6}
+/* 정보 줄(읽은시간만, 2026-08-22 14:52 — 보낸시간은 인라인과 중복이라 제거) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선.
+   white-space:nowrap(2026-08-22 18:32) — "읽음 오후 6:12"가 줄바꿈되지 않고 한 줄로 렌더돼야
+   showMsgMenu의 getBoundingClientRect() 폭 측정이 실제 필요한 만큼만 정확히 잡는다. */
+.msgMenuInfo{padding:8px 12px 6px; font-size:12px; color:var(--muted); line-height:1.6; white-space:nowrap}
 .msgMenuInfo:empty{display:none}
 .msgMenuInfo .rd{color:var(--read); font-weight:700}
 .msgMenuInfo .unread{opacity:.75}
@@ -1214,7 +1217,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.5"; // v0.8.5(2026-08-22 15:25, 실기기 피드백 근본수정): lastReadAt(이동
+const APP_VERSION = "0.8.6"; // v0.8.6(2026-08-22 18:32, 실기기 버그): 롱프레스/우클릭 정보메뉴
+// (#msgMenu)가 화면 밖으로 잘려 읽은시간이 안 보이던 버그 수리 — 좌표 클램프가 "메뉴는 항상
+// 166×96px 근처"라는 틀린 고정 가정을 썼던 게 근본원인(html{overflow:hidden}이라 넘친 부분은
+// 스크롤로도 접근 불가). getBoundingClientRect()로 실제 렌더 크기를 잰 뒤 좌우·상하 4방향 모두
+// 뷰포트 안으로 클램프 + CSS max-width:calc(100vw - 16px) 이중 안전장치.
+// ↓ v0.8.5(2026-08-22 15:25, 실기기 피드백 근본수정): lastReadAt(이동
 // 포인터) 판정의 구조적 한계 — "몇 시에 처음 읽었는지"를 못 남겨 옛 메시지를 오늘 다시 열어도
 // "방금 읽은 것"으로 나오던 문제. messages/{id}.readAt(수신자가 최초 1회만 기록, rules 케이스 H로
 // 불변 보장)을 신설해 진짜 최초 읽은 시각을 고정 — showMsgMenu는 readAt 있으면 정확한 시각을,
@@ -2699,9 +2707,23 @@ function showMsgMenu(id, mine, editable, x, y){
   editBtn.style.display = editable ? "" : "none";
   m.classList.toggle("has-edit", !!editable);
   m.dataset.target=id;
-  m.style.left=Math.min(Math.max(x-70,8), window.innerWidth-166)+"px";
-  m.style.top=Math.max(y-(editable?96:58),8)+"px"; // 정보 줄이 1개(읽은시간만)로 줄어 오프셋도 함께 축소
-  m.classList.add("show");
+  // 2026-08-22 18:32 실기기 버그 수리: 기존엔 "메뉴는 항상 166×96(or 58)px 근처"라고 가정한 고정
+  // 숫자로 좌표를 클램프했다 — 실제로는 읽은시간 텍스트 길이·수정버튼 유무에 따라 메뉴 실제 크기가
+  // 달라지므로(특히 "읽음 오후 6:12"처럼 긴 텍스트), 그 가정이 틀리면 메뉴 일부가 뷰포트 밖으로
+  // 나갔고 html{overflow:hidden}(143행) 때문에 그 잘린 부분은 스크롤로도 볼 수 없었다(내 메시지=
+  // 우측정렬이라 오른쪽 클리핑이 특히 잦았던 것도 이 때문). 고정 숫자 대신 실제 렌더된 크기를
+  // getBoundingClientRect()로 측정해 좌우·상하 4방향 전부 뷰포트 안으로 클램프한다(position:fixed
+  // 기준 유지 — 상위 요소에 transform 등이 없어 뷰포트 기준 그대로 안전, msgMenu는 body 최상위
+  // 자식이라 컨테이너 clipping도 없음).
+  m.style.left="0px"; m.style.top="0px"; m.classList.add("show"); // 우선 표시해야 실제 크기(w/h)를 잴 수 있음(같은 틱 안이라 깜빡임 없음)
+  const PAD=8;
+  const mw=m.offsetWidth||166, mh=m.offsetHeight||(editable?140:56);
+  const maxLeft=Math.max(PAD, window.innerWidth-mw-PAD);
+  const maxTop=Math.max(PAD, window.innerHeight-mh-PAD);
+  const left=Math.min(Math.max(x-70,PAD), maxLeft);
+  const top=Math.min(Math.max(y-(editable?96:58),PAD), maxTop);
+  m.style.left=left+"px";
+  m.style.top=top+"px";
 }
 function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.classList.remove("show"); }
 
