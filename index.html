@@ -846,6 +846,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="tabscroll">
     <div id="ddayCard"></div>
     <div class="cal" id="calBox"></div>
+    <div id="dayEventList"></div>
     <button class="secondary-btn" id="btnToggleEvtForm" style="max-width:none;margin-bottom:var(--s4)">＋ 일정 추가</button>
     <div class="form-card" id="evtForm" style="display:none">
       <button type="button" class="form-back" id="evtFormBack">← 닫기</button>
@@ -1217,7 +1218,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.7"; // v0.8.7(2026-08-23 12:48, 실기기 버그 근본수리): "상대 메시지는 되는데
+const APP_VERSION = "0.8.8"; // v0.8.8(2026-08-25 01:17, 실기기 버그): "등록한 일정을 확인하려고
+// 눌렀더니 '등록'만 나온다" — 달력 날짜 탭 핸들러가 eventsOnDay()로 그 날 일정 존재를 이미
+// 계산해 점(dot)까지 찍어놓고도, 그 결과를 전혀 안 쓰고 무조건 빈 등록폼만 열었던 게 원인(재현
+// 확인, ⓐ유형: 기존 일정 목록 자체가 안 뜸). renderDayEvents() 신설(기존 .evt 마크업 재사용,
+// 새 컴포넌트 없음) — 날짜 탭 시 그 날 일정이 있으면 제목·기간·메모 목록을 먼저 보여주고(탭=수정,
+// ✕=삭제, 기존 로직 그대로), 없는 날은 기존처럼 바로 등록폼(빈 날 빠른 추가 편의 유지).
+// ↓ v0.8.7(2026-08-23 12:48, 실기기 버그 근본수리): "상대 메시지는 되는데
 // 내 메시지만 안 됨" — v0.8.3 리팩터 때 지워졌어야 할 레거시 [data-editbubble] 단일인자
 // bindMsgLongPress(el) 호출이 지워지지 않고 남아, [data-msgid] 정상 바인딩과 함께 내 텍스트
 // 말풍선(=data-editbubble이 붙는 유일한 대상)에 리스너가 이중 등록됐다 — 롱프레스 시 두 타이머가
@@ -2816,7 +2823,7 @@ function watchDiary(){
 }
 
 /* ===== 일정 렌더 ===== */
-function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); }
+function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); renderDayEvents(_selDate); }
 function renderDday(){
   const el=document.getElementById("ddayCard"); if(!el) return;
   const base=parseYMD(profileOf().anniversary);
@@ -2868,13 +2875,21 @@ function renderCalendar(){
   document.getElementById("calPrev").onclick=()=>{ _calM--; if(_calM<0){_calM=11;_calY--;} renderCalendar(); };
   document.getElementById("calNext").onclick=()=>{ _calM++; if(_calM>11){_calM=0;_calY++;} renderCalendar(); };
   box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>{
-    // 달력 날짜 탭 = 그 날짜로 일정 추가 폼 열기(자연스러운 기대 동작). 날짜는 native picker 없이도 확정됨.
+    // 달력 날짜 탭(2026-08-25 수리): 그 날 등록된 일정이 있으면 먼저 그 목록(제목·기간·메모)을
+    // 보여준다 — 예전엔 무조건 빈 등록폼만 열려 "확인하려고 눌렀는데 등록 화면만 나온다"는 혼란이
+    // 있었다. 일정이 없는 날은 기존처럼 바로 등록폼을 열어준다(빈 날 빠른 추가 편의는 그대로 유지).
     _selDate=el.dataset.day;
-    setEvtDate(_selDate);
-    document.getElementById("evtForm").style.display="block";
     renderCalendar();
-    const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
-    const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
+    const hasEvt = eventsOnDay(parseYMD(_selDate)).length>0;
+    renderDayEvents(_selDate);
+    if(hasEvt){
+      const list=document.getElementById("dayEventList"); if(list) list.scrollIntoView({behavior:"smooth", block:"center"});
+    } else {
+      setEvtDate(_selDate);
+      document.getElementById("evtForm").style.display="block";
+      const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
+      const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
+    }
   });
 }
 /* 일정 날짜 = native date picker에 의존하지 않는 단일 출처. 달력 탭·‹ ›·(되면)picker 모두 이 값을 갱신. */
@@ -2928,6 +2943,34 @@ function renderUpcoming(){
   }).join("");
   el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
   el.querySelectorAll("[data-edit-evt]").forEach(b=>b.onclick=()=>startEditEvent(b.dataset.editEvt)); // 탭=수정(날짜 변경 가능)
+}
+/* 선택한 날짜(_selDate)에 등록된 일정 목록 — 2026-08-25 실기기 버그 수리.
+   기존엔 달력 날짜를 탭하면(이미 일정이 있는 날이어도) 무조건 빈 등록폼만 열려 "확인하려고
+   눌렀는데 등록 화면만 나온다"는 혼란이 있었다(재현 확인: eventsOnDay()로 그 날 일정 존재를
+   이미 계산해 점(dot)까지 찍어놓고도 tap 핸들러가 그 결과를 전혀 안 썼음 — 목록 표시 자체가
+   누락돼 있던 것이 근본원인). "다가오는 일정"(renderUpcoming)은 오늘 이후 전체를 시간순으로만
+   보여줘 특정 날짜 확인용이 아니라 서로 다른 화면 — 이 함수가 그 빈틈을 메운다.
+   렌더는 renderUpcoming과 동일한 .evt/.info/.sub 마크업 재사용(새 컴포넌트 없음, 과잉 리디자인
+   금지) — 제목·기간(또는 날짜)·메모가 한 줄에, 내 일정이면 탭=수정·✕=삭제(기존 로직 그대로). */
+function renderDayEvents(dateStr){
+  const el=document.getElementById("dayEventList"); if(!el) return;
+  const dt=dateStr && parseYMD(dateStr);
+  const list=dt ? eventsOnDay(dt) : [];
+  if(!list.length){ el.innerHTML=""; return; }
+  const heading='<div class="sec-label">'+fmtDateK(dateStr)+'의 일정</div>';
+  el.innerHTML=heading+list.map(ev=>{
+    const mine=ev.createdBy===fb.uid;
+    const typeLabel=ev.type==="annual" ? "매년" : "";
+    const rl=(ev.type!=="annual" && ev.endDate) ? rangeLabel(ev.date, ev.endDate) : null;
+    const sub=[rl, typeLabel, ev.memo].filter(Boolean).join(" · ");
+    const editable=mine;
+    const del= editable ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
+    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+esc(ev.title)+'</div>'
+      +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
+    return '<div class="evt">'+info+del+'</div>';
+  }).join("");
+  el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
+  el.querySelectorAll("[data-edit-evt]").forEach(b=>b.onclick=()=>startEditEvent(b.dataset.editEvt));
 }
 /* profile.anniversary 기반 합성 기념일(다음 100일 단위 + 다음 주년) — 저장 없이 표시만 */
 function anniversaryItems(){
