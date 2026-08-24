@@ -978,7 +978,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
         </div>
       </div>
       <div class="set-row set-col">
-        <div class="label">서로 부르는 애칭</div>
+        <div class="label">상대방 애칭</div>
+        <div class="desc">내가 상대를 부르는 이름 — 내 화면에 이렇게 보여요(다이어리 작성자 표시 등)</div>
+        <input class="field-input" id="partnerNickInput" maxlength="12" placeholder="예) 린이, 우리 애기" autocomplete="off">
+      </div>
+      <div class="set-row set-col">
+        <div class="label">내 애칭</div>
         <div class="desc">상대 화면 상단에 이렇게 보여요</div>
         <input class="field-input" id="myNickInput" maxlength="12" placeholder="예) 자기, 여봉" autocomplete="off">
       </div>
@@ -1218,7 +1223,15 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.9"; // v0.8.9(2026-08-25 02:26, UX 버그): "채팅 입력 시 키보드가 대화창을
+const APP_VERSION = "0.8.10"; // v0.8.10(2026-08-25 03:36, 실기기 버그 확정수리): "상대방 애칭을
+// 린이로 설정했는데 린이가 쓴 다이어리 작성자가 려리로 표시된다" — 실데이터 대조로 가설 확정:
+// 기존 "서로 부르는 애칭"(myNickInput)은 실제로는 nicks[본인uid]에만 저장되는 "내 자기소개 애칭"
+// 이었다(상대 화면에 보임) — "상대방 애칭"으로 오해하기 쉬운 문구였다. profile.partnerLabel[본인
+// uid](신설, "내가 상대를 부르는 이름") 필드를 추가하고 다이어리 작성자·홈 커플헤더·안읽음 배지·
+// 채팅헤더·댓글 작성자의 "상대 표시" 전부를 myPartnerLabel()(partnerLabel 우선, 없으면 기존
+// partnerNick()로 자연 폴백)로 교체. rules 무변경(케이스 E가 이미 profile 전체 허용). 사장님
+// 커플의 오기록값(nicks[본인]="리니")은 스냅샷 백업 후 partnerLabel[본인]="리니"로 이전+정리.
+// ↓ v0.8.9(2026-08-25 02:26, UX 버그): "채팅 입력 시 키보드가 대화창을
 // 덮어 마지막 대화가 안 보인다" — 키보드 열림(applyVV의 body 높이 축소)·여러 줄 입력(inbar 성장)
 // 둘 다 msgList(flex:1)를 줄이는데 scrollTop을 다시 안 붙여줘서 생김. pinChatBottomIfNear() 신설
 // (_chatNearBottom 플래그로 "바닥 근처였을 때만" 재고정 — 과거 스크롤 중엔 방해 안 함) —
@@ -1478,7 +1491,7 @@ function renderHome(){
   } else {
     const dd=ddayText();
     cp.innerHTML='<div class="home-couple"><div class="faces"><span>'+esc(myEmoji()||"🙂")+'</span><span class="lk">🩷</span><span>'+esc(partnerEmoji()||"🙂")+'</span></div>'
-      +'<div class="nicks">'+esc(myNick()||"나")+' · '+esc(partnerNick()||"짝")+'</div>'
+      +'<div class="nicks">'+esc(myNick()||"나")+' · '+esc(myPartnerLabel()||"짝")+'</div>'
       +(dd?'<div class="dplus">'+esc(dd)+'</div>':'')
       +(dd?'<div class="since">우리가 함께한 날</div>':'<div class="since" style="margin-top:10px">설정 → 꾸미기에서 애칭·기념일을 정해봐요</div>')
       +'</div>';
@@ -1487,7 +1500,7 @@ function renderHome(){
   const uw=document.getElementById("homeUnread"); const un=unreadFromPartner();
   if(un>0){
     uw.innerHTML='<button class="home-unread" id="homeUnreadBtn"><span class="badge">'+(un>99?"99+":un)+'</span>'
-      +'<span class="uw"><span class="ut">새 메시지가 왔어요</span><span class="us">'+(partnerNick()||"짝")+'이 보낸 메시지 '+un+'개</span></span><span class="go">보기 →</span></button>';
+      +'<span class="uw"><span class="ut">새 메시지가 왔어요</span><span class="us">'+(myPartnerLabel()||"짝")+'이 보낸 메시지 '+un+'개</span></span><span class="go">보기 →</span></button>';
     const b=document.getElementById("homeUnreadBtn"); if(b) b.onclick=()=>{ showTab("chat"); };
     uw.style.display="";
   } else { uw.innerHTML=""; uw.style.display="none"; }
@@ -1531,7 +1544,7 @@ function renderHomeDiary(){
   else {
     body=recent.map(en=>{
       const th=(en.thumbs&&en.thumbs[0])?'<img loading="lazy" src="'+thumbUrl(en.thumbs[0])+'" alt="">':'';
-      const who=(en.authorUid===fb.uid)?"내 기록":((partnerNick()||"짝")+" 기록");
+      const who=(en.authorUid===fb.uid)?"내 기록":((myPartnerLabel()||"짝")+" 기록");
       const tx=en.text ? esc(en.text) : (en.thumbs&&en.thumbs.length?"사진 "+en.thumbs.length+"장":"");
       return '<div class="home-diary" data-entry="'+en.id+'">'+th
         +'<div class="dwrap"><div class="dmeta">'+esc(fmtDateK(en.date))+' · '+esc(who)+'</div><div class="dtx">'+tx+'</div></div></div>';
@@ -1595,6 +1608,16 @@ function myEmoji(){ const p=profileOf(); return (p.emojis && p.emojis[fb.uid]) |
 function myNick(){ const p=profileOf(); return (p.nicks && p.nicks[fb.uid]) || ""; }
 function partnerNick(){ const p=profileOf(); const o=otherUid(); return (o && p.nicks && p.nicks[o]) || ""; }
 function partnerEmoji(){ const p=profileOf(); const o=otherUid(); return (o && p.emojis && p.emojis[o]) || "🩷"; }
+/* 상대방 애칭 — "내가 상대를 부르는 이름"(2026-08-25 신설, 사장님 실기기 버그 수리).
+   ★근본원인(실데이터로 확정): 기존 "서로 부르는 애칭"(myNickInput→nicks[fb.uid])은 실제로는
+   "내 자신을 뭐라 부를지(상대 화면에 보임)"만 저장한다 — nicks[fb.uid]는 항상 "본인" 키다.
+   그런데 이 필드 문구("서로 부르는 애칭")가 "내가 상대를 부르는 이름"으로 오해되기 쉬워, 사장님이
+   상대 애칭 "리니"를 입력했지만 실제로는 본인 uid 키에 저장돼(nicks[사장님uid]="리니") 다이어리
+   작성자 라벨이 뒤집혀 보였다(상대 글에는 상대가 스스로 정한 값 "려리"만 표시됨).
+   해법: "내가 상대를 부르는 이름"을 별도 필드(profile.partnerLabel[내uid])로 신설 — 커플앱 상식대로
+   "내가 정한 상대 이름이 내 화면에 보이는" 구조. 아직 아무도 안 정했으면 상대의 자기소개 애칭
+   (partnerNick, 기존 필드)으로 자연 폴백해 회귀 없이 점진 전환된다. */
+function myPartnerLabel(){ const p=profileOf(); return (p.partnerLabel && p.partnerLabel[fb.uid]) || partnerNick() || ""; }
 function ddayText(){
   const a=profileOf().anniversary; if(!a) return "";
   const start=new Date(a+"T00:00:00"); if(isNaN(start.getTime())) return "";
@@ -1607,7 +1630,7 @@ function applyChatHeader(){
   if(!nk) return;
   const solo = pairId && !otherUid();
   av.textContent=partnerEmoji();
-  nk.textContent=partnerNick() || "우리 공간";
+  nk.textContent=myPartnerLabel() || "우리 공간";
   const t=ddayText();
   if(t){ dd.textContent=t; dd.style.display=""; } else { dd.style.display="none"; }
   if(stt) stt.textContent = solo ? "혼자 둘러보는 중 · 짝을 초대해보세요" : "단둘이 쓰는 우리만의 공간";
@@ -1635,6 +1658,7 @@ async function setProfile(patch){
   const prof=Object.assign({}, cur, patch);
   if(patch.nicks) prof.nicks=Object.assign({}, cur.nicks||{}, patch.nicks);
   if(patch.emojis) prof.emojis=Object.assign({}, cur.emojis||{}, patch.emojis);
+  if(patch.partnerLabel) prof.partnerLabel=Object.assign({}, cur.partnerLabel||{}, patch.partnerLabel); // 상대방 애칭(2026-08-25 신설)
   if(currentPairData) currentPairData.profile=prof;  // 낙관적 반영
   applyChatHeader(); renderDecorUI();
   try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {profile:prof}); }
@@ -1648,6 +1672,7 @@ function renderDecorUI(){
   document.querySelectorAll("#bubblePicker [data-bub]").forEach(el=>el.classList.toggle("on", (t.bubble||"round")===el.dataset.bub));
   document.querySelectorAll("#myEmojiPicker [data-emo]").forEach(el=>el.classList.toggle("on", (myEmoji()||"🩷")===el.dataset.emo));
   const nick=document.getElementById("myNickInput"); if(nick && document.activeElement!==nick) nick.value=myNick();
+  const pnick=document.getElementById("partnerNickInput"); if(pnick && document.activeElement!==pnick) pnick.value=((profileOf().partnerLabel && profileOf().partnerLabel[fb.uid]) || "");
   const anniv=document.getElementById("annivInput"); if(anniv && document.activeElement!==anniv) anniv.value=(profileOf().anniversary||"");
   renderPremiumDecorUI();
   renderSupportPackUI();
@@ -3097,7 +3122,7 @@ function renderDiaryList(body){
   if(!_diary.length){ body.innerHTML='<div class="empty-note">아직 기록이 없어요.<br>오늘의 우리를 남겨봐요 📖</div>'; return; }
   body.innerHTML=_diary.map(en=>{
     const mine=en.authorUid===fb.uid;
-    const au = mine ? "내 기록" : ((partnerNick()||"상대")+" 기록");
+    const au = mine ? "내 기록" : ((myPartnerLabel()||"상대")+" 기록");
     const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
     const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
     const cn=_commentCounts[en.id];
@@ -3162,7 +3187,7 @@ function renderComments(entryId){
   const list=_commentsCache[entryId]||[];
   const list_html = list.length ? list.map(c=>{
     const d=c.data, mine=d.sender===fb.uid;
-    const who = mine ? "나" : ((partnerNick()||"짝")+" "+(partnerEmoji()||"🩷"));
+    const who = mine ? "나" : ((myPartnerLabel()||"짝")+" "+(partnerEmoji()||"🩷"));
     const delBtn = mine ? '<button type="button" class="cdel" data-delcomment="'+c.id+'" aria-label="댓글 삭제">×</button>' : "";
     return '<div class="ccard"><span class="cwho">'+esc(who)+'</span><span class="ctx">'+esc(d.text)+'</span>'+delBtn+'</div>';
   }).join("") : '<div class="cempty">아직 댓글이 없어요</div>';
@@ -3830,6 +3855,7 @@ document.getElementById("payCopyAcct").onclick=()=>_payCopy("payAcctNo","계좌�
 document.getElementById("payCopyCode").onclick=()=>_payCopy("payOrderCode","주문코드");
 document.getElementById("payDoneBtn").onclick=submitPurchase;
 document.getElementById("myNickInput").addEventListener("change",e=>{ setProfile({nicks:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
+document.getElementById("partnerNickInput").addEventListener("change",e=>{ setProfile({partnerLabel:{[fb.uid]:e.target.value.trim().slice(0,12)}}); }); // 2026-08-25 신설
 document.getElementById("annivInput").addEventListener("change",e=>{ setProfile({anniversary:e.target.value}); });
 
 /* 일정 컨트롤 */
