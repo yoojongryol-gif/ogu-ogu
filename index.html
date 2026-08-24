@@ -1218,7 +1218,12 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.8"; // v0.8.8(2026-08-25 01:17, 실기기 버그): "등록한 일정을 확인하려고
+const APP_VERSION = "0.8.9"; // v0.8.9(2026-08-25 02:26, UX 버그): "채팅 입력 시 키보드가 대화창을
+// 덮어 마지막 대화가 안 보인다" — 키보드 열림(applyVV의 body 높이 축소)·여러 줄 입력(inbar 성장)
+// 둘 다 msgList(flex:1)를 줄이는데 scrollTop을 다시 안 붙여줘서 생김. pinChatBottomIfNear() 신설
+// (_chatNearBottom 플래그로 "바닥 근처였을 때만" 재고정 — 과거 스크롤 중엔 방해 안 함) —
+// v0.7.15~17의 kb-open/applyVV 가드는 전혀 안 건드리고 그 위에만 얹음(회귀 없음, 재확인 완료).
+// ↓ v0.8.8(2026-08-25 01:17, 실기기 버그): "등록한 일정을 확인하려고
 // 눌렀더니 '등록'만 나온다" — 달력 날짜 탭 핸들러가 eventsOnDay()로 그 날 일정 존재를 이미
 // 계산해 점(dot)까지 찍어놓고도, 그 결과를 전혀 안 쓰고 무조건 빈 등록폼만 열었던 게 원인(재현
 // 확인, ⓐ유형: 기존 일정 목록 자체가 안 뜸). renderDayEvents() 신설(기존 .evt 마크업 재사용,
@@ -2426,6 +2431,21 @@ function enterChat(){   // 앱 진입 = 홈 탭부터(구성은 renderHome). 이
 /* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
 let _lastMsgSnapshotDocs=null;
 let _editingMsgId=null; // 현재 수정 중인 내 메시지 id(있으면 sendMessage가 addDoc 대신 updateDoc으로 분기)
+/* 키보드/입력창이 대화창을 덮는 문제(2026-08-25 02:26 지시) — "바닥 근처에 있으면 새 공간이 줄어도
+   계속 바닥에 붙어있는다"는 통용 채팅 UX(카톡 등)를 흉내낸다. 기존 v0.7.15~17의 kb-open/applyVV
+   가드(포커스 없을 땐 항상 innerHeight로 복귀, diff 임계값으로 열림/닫힘 판정, 자가치유 타이머)는
+   전혀 건드리지 않고 그 위에 "채팅 화면일 때만" 얹는다 — applyVV/autoGrowMsg가 이미 body/textarea
+   높이를 바꾸는 시점에 msgList를 다시 바닥으로 붙이기만 한다(일정·다이어리 입력에는 msgList가
+   없으므로 자연히 영향 없음). _chatNearBottom은 사용자가 과거 대화를 보려고 위로 스크롤했는지
+   추적하는 유일한 판단 근거 — true일 때만 강제 스크롤한다(요건 3: 과거 스크롤 중엔 방해 금지). */
+let _chatNearBottom=true;
+const CHAT_NEAR_BOTTOM_PX=96; // 메시지 1~2줄 높이 정도 — 이 안이면 "바닥 근처"로 간주
+function pinChatBottomIfNear(){
+  const list=document.getElementById("msgList");
+  const scr=document.getElementById("screenChat");
+  if(!list || !scr || !scr.classList.contains("active")) return; // 채팅 화면이 아니면 절대 손대지 않음
+  if(_chatNearBottom) list.scrollTop = list.scrollHeight;
+}
 function tsMillis(v){
   if(v==null) return 0;
   if(typeof v==="number") return v;
@@ -3723,9 +3743,22 @@ document.getElementById("shareChip").onclick=async ()=>{
 })();
 document.getElementById("chatForm").addEventListener("submit", e=>{ e.preventDefault(); sendMessage(); }); // sendBtn 클릭 폴백(터치/데스크톱 모두 직접 핸들러가 우선)
 /* 입력창(textarea): 자동 높이 확장 + Enter 정책. 터치 기기는 Enter=줄바꿈(전송은 ↑ 버튼만), 데스크톱은 Enter=전송·Shift+Enter=줄바꿈. */
-function autoGrowMsg(){ const ta=document.getElementById("msgInput"); if(!ta) return; ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,118)+"px"; }
+function autoGrowMsg(){
+  const ta=document.getElementById("msgInput"); if(!ta) return;
+  ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,118)+"px";
+  // 요건 2(2026-08-25): 여러 줄 입력으로 입력바(.inbar, flex:none)가 커지면 msgList(flex:1)가 그만큼
+  // 줄어든다 — 바닥 근처에 있었다면 다시 붙여준다(과거 스크롤 중이면 pinChatBottomIfNear가 스스로 무시).
+  pinChatBottomIfNear();
+}
 function _prefersTouchEnter(){ try{ return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }catch(e){ return false; } }
 document.getElementById("msgInput").addEventListener("input", autoGrowMsg);
+/* msgList 스크롤 위치로 "바닥 근처인지" 계속 추적(2026-08-25) — 카톡류 통용 UX: 사용자가 과거 대화를
+   보려고 위로 스크롤해두면(요건 3) 키보드가 열리거나 입력창이 커져도 강제로 끌어내리지 않는다.
+   최초 채팅 진입 시(스크롤 이벤트가 아직 한 번도 안 온 시점)는 _chatNearBottom 기본값 true 유지. */
+document.getElementById("msgList").addEventListener("scroll", ()=>{
+  const list=document.getElementById("msgList");
+  _chatNearBottom = (list.scrollHeight - list.scrollTop - list.clientHeight) < CHAT_NEAR_BOTTOM_PX;
+}, {passive:true});
 document.getElementById("msgInput").addEventListener("keydown", e=>{
   // IME 조합 중 Enter는 조합 확정이지 전송 아님. 터치 기기·Shift+Enter는 줄바꿈(기본 동작 유지). 데스크톱 Enter만 전송.
   if(e.key==="Enter" && !e.shiftKey && !e.isComposing && !_prefersTouchEnter()){ e.preventDefault(); sendMessage(); }
@@ -3982,6 +4015,9 @@ if(window.visualViewport){
     if(diff > 120){ _kbConfirmedOpen=true; document.body.classList.add("kb-open"); }            // 키보드 확실히 열림(보조 강화)
     else if(diff < 60 && _kbConfirmedOpen){ _kbConfirmedOpen=false; document.body.classList.remove("kb-open"); } // 열렸다 닫힘 보정(포커스 유지돼도)
     // ↑ 확인-후-닫힘일 때만 제거 → 키보드 여는 애니메이션 중(diff 작음)엔 깜빡이지 않음
+    // 요건 1(2026-08-25): body 높이가 막 줄어들어 msgList(flex:1)도 함께 줄어든 시점 — 바닥 근처였다면
+    // 다시 붙여 마지막 메시지가 계속 보이게 한다. 기존 kb-open/높이 로직에는 손대지 않고 그 뒤에만 얹음.
+    pinChatBottomIfNear();
   };
   vv.addEventListener("resize", applyVV);
   vv.addEventListener("scroll", applyVV);
