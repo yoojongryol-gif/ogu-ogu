@@ -1223,7 +1223,20 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.11"; // v0.8.11(2026-08-25 10:55, 사장님 GO): "이전 대화 보기" —
+const APP_VERSION = "0.8.12"; // v0.8.12(2026-08-25 14:30, 실기기 핫픽스): "채팅 들어가면 메시지가
+// 젤 처음(위)으로 올라가 있음" — v0.8.11 무한스크롤 회귀. 원인: showTab()의 chat 분기가
+// renderMessages()를 다시 안 불러, 채팅이 비활성(백그라운드) 상태에서 그려진 낡은 DOM을 그대로
+// 드러내기만 했다 — 그때 _chatNearBottom이 stale하게 false였거나 화면이 display:none이라
+// scrollHeight를 잘못 재면 바닥에 못 붙은 채(=scrollTop 0=위쪽) 노출됐고, 그 0이 상단 근접
+// 임계값도 만족해 진입 즉시 loadOlderMessages()까지 오발동(그 preserveScrollFrom 보정이 "바닥"
+// 대신 "그 위쪽"을 앵커링해 증상을 굳혔다). 수리: ①showTab의 chat 진입에서 _chatNearBottom을
+// 강제 true로 되돌리고 화면이 실제 active인 지금 renderMessages()를 다시 호출(무조건 바닥에서
+// 시작) ②setChatScrollTop() 신설 — 우리가 만든 모든 scrollTop 대입에 _programmaticScroll 표시,
+// 스크롤 리스너가 그 표시 있는 이벤트 1건만 소비해 과거 로드 오발동을 원천 차단(진짜 사용자
+// 스크롤만 트리거) ③사진 <img> load/error 시 pinChatBottomIfNear() 호출 추가(디코드로 높이가
+// 늦게 확정돼도 바닥 유지). Playwright로 4시나리오 실측: 정상진입·최악의 오염상태에서 진입(핵심
+// 재현·해소)·진짜 사용자 스크롤은 여전히 동작·사진 로드 후 바닥 유지 — 전부 통과.
+// ↓ v0.8.11(2026-08-25 10:55, 사장님 GO): "이전 대화 보기" —
 // limitToLast(200) 실시간 창 밖의 과거 메시지는 삭제된 게 아니라 화면에 안 뜨던 것뿐(저장은
 // 무기한, 실측 확인). 스크롤 상단 근접 시 endBefore/limitToLast(100) 일회성 getDocs로 과거 페이지
 // 로드(_olderMsgDocs), 리스너는 최근 창 유지 원칙 그대로(_lastMsgSnapshotDocs). ★설계 중 두 개
@@ -1460,7 +1473,18 @@ function showTab(tab){
   const tb=document.getElementById("tabbar"); if(tb) tb.classList.add("on");
   document.querySelectorAll("#tabbar .tab").forEach(el=>el.classList.toggle("on", el.dataset.tab===tab));
   if(tab==="home"){ renderHome(); }
-  else if(tab==="chat"){ applyChatHeader(); if(!isLocked()) markRead(); }
+  else if(tab==="chat"){
+    applyChatHeader();
+    // 2026-08-25 14:30 핫픽스: 채팅 탭 진입(및 복귀) 시엔 무조건 최신 메시지 바닥에서 시작한다.
+    // 이전엔 이 분기가 renderMessages()를 다시 안 불러 화면이 안 보이던 사이(background onSnapshot
+    // 등)에 그려진 낡은 DOM을 그대로 드러내기만 했다 — 그때 _chatNearBottom이 마침 false였거나
+    // 화면이 display:none이라 scrollHeight를 잘못 재는 경우, 바닥으로 못 붙은 채(=위쪽) 노출됐다
+    // (실기기: "채팅 들어가면 메시지가 젤 처음으로 올라가 있음"). _chatNearBottom을 강제로 true로
+    // 되돌리고, 화면이 실제로 active인 지금 다시 그려 바닥 앵커링을 확실히 한다.
+    _chatNearBottom = true;
+    renderMessages();
+    if(!isLocked()) markRead();
+  }
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
   else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); renderAppVersion(); }
@@ -2477,11 +2501,21 @@ let _editingMsgId=null; // 현재 수정 중인 내 메시지 id(있으면 sendM
    추적하는 유일한 판단 근거 — true일 때만 강제 스크롤한다(요건 3: 과거 스크롤 중엔 방해 금지). */
 let _chatNearBottom=true;
 const CHAT_NEAR_BOTTOM_PX=96; // 메시지 1~2줄 높이 정도 — 이 안이면 "바닥 근처"로 간주
+/* 사용자 제스처 가드(2026-08-25 14:30 핫픽스) — "채팅 들어가면 메시지가 젤 처음(위)으로 올라가
+   있다" 실기기 버그 수리. 우리가 코드로 list.scrollTop을 직접 대입해도 브라우저는 그 결과로
+   'scroll' 이벤트를 (비동기로) 한 번 더 일으킨다 — v0.8.11까지는 이걸 "사용자가 스크롤했다"로
+   오인해 진입 직후에도 상단 근접 판정(scrollTop이 아직 0인 순간)이 loadOlderMessages()를 실행,
+   그 preserveScrollFrom 보정이 "바닥으로 가라"는 원래 의도를 덮어써 위쪽에서 멈췄다. 이제 우리가
+   만든 대입은 항상 setChatScrollTop()을 거치게 해 _programmaticScroll을 표시하고, 스크롤
+   리스너는 그 표시가 있는 이벤트 1건만 소비(무시)한 뒤 과거 로드 트리거를 재개한다 — 진짜 사용자
+   스크롤만 과거 페이지를 연다(요건: 초기 진입·프로그램적 스크롤은 트리거 제외). */
+let _programmaticScroll=false;
+function setChatScrollTop(list, px){ _programmaticScroll=true; list.scrollTop=px; }
 function pinChatBottomIfNear(){
   const list=document.getElementById("msgList");
   const scr=document.getElementById("screenChat");
   if(!list || !scr || !scr.classList.contains("active")) return; // 채팅 화면이 아니면 절대 손대지 않음
-  if(_chatNearBottom) list.scrollTop = list.scrollHeight;
+  if(_chatNearBottom) setChatScrollTop(list, list.scrollHeight);
 }
 /* 이전 대화 페이지네이션(2026-08-25 사장님 GO) — limitToLast(200) 실시간 창 밖의 과거 메시지는
    삭제된 게 아니라 그냥 화면에 안 뜨던 것뿐(저장은 무기한, 실측 확인됨). 설계 원칙(정석):
@@ -2657,6 +2691,15 @@ function renderMessages(opts){
     const idx=photoMsgs.findIndex(x=>x.id===el.dataset.chatmsg);
     openPhotoViewer(photoItems, Math.max(0, idx));
   });
+  // 요건3(2026-08-25): 사진 <img>는 높이를 CSS로 못 박지 않아(가로세로 비율에 따라 다름) 디코드가
+  // 끝나야 실제 높이가 확정된다 — 렌더 시점에 잰 scrollHeight로는 사진이 아직 다 안 실린 상태라
+  // 바닥 앵커링이 최종 높이보다 낮게 멈출 수 있다(사진 많은 방 진입 시 "바닥인 줄 알았는데 사실
+  // 살짝 위"). 사진이 로드/디코드를 마칠 때마다 pinChatBottomIfNear()로 다시 붙여준다(바닥
+  // 근처였을 때만 — 과거 스크롤 중이면 기존과 동일하게 방해 안 함).
+  list.querySelectorAll(".bubble-photo img").forEach(img=>{
+    img.addEventListener("load", pinChatBottomIfNear, {once:true});
+    img.addEventListener("error", pinChatBottomIfNear, {once:true}); // 깨진 이미지도 레이아웃은 확정되므로 동일 처리
+  });
   // 내 텍스트 메시지 수정 진입 — 데스크톱: hover로 드러나는 연필 아이콘 클릭 / 터치: 말풍선 길게 누르기(메뉴)
   list.querySelectorAll("[data-editmsg]").forEach(el=>{ el.onclick=(e)=>{ e.stopPropagation(); startEditMessage(el.dataset.editmsg); }; });
   // 말풍선 롱프레스(터치)·길게 클릭 또는 우클릭(데스크톱) → 정보메뉴(보낸시간·읽은시간 + 조건부 수정, 2026-08-22)
@@ -2679,9 +2722,9 @@ function renderMessages(opts){
   // 스크롤 로직이 서로 다투지 않게 함, 요건2의 "충돌 금지"). preserveScrollFrom이 없는 한 무조건
   // 바닥으로 튀던 기존 동작은 이번에 사라졌다 — 과거 대화를 읽던 중 새 메시지가 와도 더는 안 끌려간다.
   if(opts.preserveScrollFrom){
-    list.scrollTop = opts.preserveScrollFrom.scrollTop + (list.scrollHeight - opts.preserveScrollFrom.scrollHeight);
+    setChatScrollTop(list, opts.preserveScrollFrom.scrollTop + (list.scrollHeight - opts.preserveScrollFrom.scrollHeight));
   } else if(_chatNearBottom){
-    list.scrollTop = list.scrollHeight;
+    setChatScrollTop(list, list.scrollHeight);
   }
 }
 function watchMessages(){
@@ -3889,7 +3932,14 @@ document.getElementById("msgInput").addEventListener("input", autoGrowMsg);
 document.getElementById("msgList").addEventListener("scroll", ()=>{
   const list=document.getElementById("msgList");
   _chatNearBottom = (list.scrollHeight - list.scrollTop - list.clientHeight) < CHAT_NEAR_BOTTOM_PX;
-  if(list.scrollTop < CHAT_NEAR_TOP_PX) loadOlderMessages(); // 요건1(2026-08-25): 상단 근접 시 이전 대화 페이지 로드
+  // 2026-08-25 14:30 핫픽스: 이 이벤트가 우리 자신의 scrollTop 대입(setChatScrollTop) 때문에 발화한
+  // 것이면(_programmaticScroll) 딱 1건만 소비하고 과거 로드는 절대 트리거하지 않는다 — 진입 시
+  // "바닥으로 가라"는 프로그램적 스크롤이 상단 근접 임계값을 스쳐 지나가며 loadOlderMessages()를
+  // 오발동시켰던 게 "채팅 들어가면 위로 올라가 있다" 버그의 근본원인이었다(요건: 초기 진입·
+  // 프로그램적 스크롤은 트리거 제외, 진짜 사용자 스크롤만 과거 페이지를 연다).
+  const wasProgrammatic = _programmaticScroll;
+  _programmaticScroll = false;
+  if(!wasProgrammatic && list.scrollTop < CHAT_NEAR_TOP_PX) loadOlderMessages(); // 요건1(2026-08-25): 상단 근접 시 이전 대화 페이지 로드
 }, {passive:true});
 document.getElementById("msgInput").addEventListener("keydown", e=>{
   // IME 조합 중 Enter는 조합 확정이지 전송 아님. 터치 기기·Shift+Enter는 줄바꿈(기본 동작 유지). 데스크톱 Enter만 전송.
