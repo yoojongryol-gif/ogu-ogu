@@ -1223,7 +1223,19 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.10"; // v0.8.10(2026-08-25 03:36, 실기기 버그 확정수리): "상대방 애칭을
+const APP_VERSION = "0.8.11"; // v0.8.11(2026-08-25 10:55, 사장님 GO): "이전 대화 보기" —
+// limitToLast(200) 실시간 창 밖의 과거 메시지는 삭제된 게 아니라 화면에 안 뜨던 것뿐(저장은
+// 무기한, 실측 확인). 스크롤 상단 근접 시 endBefore/limitToLast(100) 일회성 getDocs로 과거 페이지
+// 로드(_olderMsgDocs), 리스너는 최근 창 유지 원칙 그대로(_lastMsgSnapshotDocs). ★설계 중 두 개
+// 실버그를 Playwright 350개 메시지 시나리오로 직접 재현·확정 후 수정: ①실시간 구독 재앵커를
+// "older 중 가장 오래된" 문서로 걸면 그 다음부터 다시 구독해 실시간 창과 겹쳐 중복 로드됨 —
+// "older 중 가장 최근"(경계)으로 정정 ②scrollTop 보정이 유발하는 비동기 scroll 이벤트가 로딩
+// 가드 해제 직후 재트리거해 페이지가 중복 로드됨 — 가드 해제를 한 틱 지연, 그 시점에 재렌더까지
+// 해 "불러오는 중" pill이 눌어붙지 않게 정리. renderMessages(opts.preserveScrollFrom)로 v0.8.9
+// 바닥고정(_chatNearBottom)과 통합 — 과거 페이지 로드 시엔 늘어난 높이만큼 scrollTop 보정(픽셀
+// 단위로 위치 불변 확인), 신규 메시지 등 그 외엔 기존처럼 바닥 근처일 때만 고정. rules 무변경
+// (messages read는 이미 멤버 전원 허용, 커서/limit는 rules가 제약하지 않음).
+// ↓ v0.8.10(2026-08-25 03:36, 실기기 버그 확정수리): "상대방 애칭을
 // 린이로 설정했는데 린이가 쓴 다이어리 작성자가 려리로 표시된다" — 실데이터 대조로 가설 확정:
 // 기존 "서로 부르는 애칭"(myNickInput)은 실제로는 nicks[본인uid]에만 저장되는 "내 자기소개 애칭"
 // 이었다(상대 화면에 보임) — "상대방 애칭"으로 오해하기 쉬운 문구였다. profile.partnerLabel[본인
@@ -2097,7 +2109,7 @@ async function googleSignIn(){
 async function doSignOut(){
   try{
     if(unsubPair) unsubPair(); if(unsubMsgs) unsubMsgs(); if(unsubEvents) unsubEvents(); if(unsubDiary) unsubDiary();
-    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false; resetCommentState(); resetPayState();
+    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetCommentState(); resetPayState();
     // 로그아웃: 이 기기의 공간 포인터·알림 토큰만 비운다(서버의 공간/기록은 보존). 다른 구글 계정이 이어서
     //   로그인해도 남의 공간이 잘못 붙지 않도록 pairId를 반드시 비운다.
     localStorage.removeItem("oguogu.pairId");
@@ -2471,6 +2483,69 @@ function pinChatBottomIfNear(){
   if(!list || !scr || !scr.classList.contains("active")) return; // 채팅 화면이 아니면 절대 손대지 않음
   if(_chatNearBottom) list.scrollTop = list.scrollHeight;
 }
+/* 이전 대화 페이지네이션(2026-08-25 사장님 GO) — limitToLast(200) 실시간 창 밖의 과거 메시지는
+   삭제된 게 아니라 그냥 화면에 안 뜨던 것뿐(저장은 무기한, 실측 확인됨). 설계 원칙(정석):
+   "리스너는 최근 창 유지 + 과거는 일회성 get 페이지" — _lastMsgSnapshotDocs(실시간, limitToLast)는
+   그대로 두고, 스크롤로 요청한 과거 페이지만 _olderMsgDocs(일회성 getDocs, 구독 밖)에 별도로 쌓는다.
+   ★핵심 위험 ①(설계 시 미리 차단): 과거 페이지를 한 번이라도 불러온 뒤에도 실시간 리스너가 계속
+   limitToLast(200)이면, 새 메시지가 쌓여 "최근 200개" 창이 앞으로 흘러갈 때 _olderMsgDocs의 끝과
+   창의 시작 사이에 아무도 안 담는 "구멍"이 생긴다. 그래서 과거 페이지를 한 번이라도 불러온
+   뒤로는(_liveAnchorDoc 존재) watchMessages()가 limitToLast(200) 대신 startAfter(_liveAnchorDoc)
+   (무제한)로 재구독해, 구멍이 생길 수 있는 여지 자체를 없앤다.
+   ★핵심 위험 ②(Playwright 회귀 테스트 350개 시나리오로 실제 재현·확정): 앵커를 _olderMsgDocs의
+   "가장 오래된" 문서로 잡으면(직관적으로 끌리지만 틀림) 실시간 창이 그 지점 "다음부터" 전부를
+   가져오면서 방금 불러온 과거 페이지의 나머지 부분과 그대로 겹친다(예: 과거 100개를 불러온 뒤
+   가장 오래된 문서를 기준으로 재구독하면 그 100개 중 99개가 실시간 창에도 다시 잡혀 중복 렌더).
+   올바른 앵커는 _olderMsgDocs의 "가장 최근"(=older와 live의 경계) 문서 — 그 다음부터가 정확히
+   실시간 창의 시작점이다. */
+let _olderMsgDocs=[];      // 과거 페이지(오름차순, getDocs 일회성) — 실시간 구독 밖
+let _liveAnchorDoc=null;   // _olderMsgDocs 중 가장 최근 것(=older/live 경계) — watchMessages() 재구독 하한
+let _loadingOlder=false, _noMoreOlder=false;
+const OLDER_PAGE_SIZE=100;
+const CHAT_NEAR_TOP_PX=60;  // 이 안으로 스크롤하면 과거 페이지 로드 트리거
+function resetChatPagination(){ _olderMsgDocs=[]; _liveAnchorDoc=null; _loadingOlder=false; _noMoreOlder=false; }
+function allChatMsgDocs(){ return _olderMsgDocs.concat(_lastMsgSnapshotDocs||[]); } // _olderMsgDocs는 항상 _lastMsgSnapshotDocs[0]보다 이전(endBefore 커서로 보장) → 단순 concat으로 오름차순 유지
+async function loadOlderMessages(){
+  if(_loadingOlder || _noMoreOlder || !pairId) return;
+  const list=document.getElementById("msgList"); if(!list) return;
+  const cursorDoc = _olderMsgDocs[0] || (_lastMsgSnapshotDocs && _lastMsgSnapshotDocs[0]); // 다음 과거 페이지 커서 = 지금까지 불러온 것 중 "가장 오래된" 문서
+  if(!cursorDoc) return; // 아직 실시간 창이 한 번도 안 채워졌으면(=대화 자체가 없음) 페이지네이션 불가
+  _loadingOlder=true;
+  const before={ scrollTop:list.scrollTop, scrollHeight:list.scrollHeight };
+  renderMessages({preserveScrollFrom:before}); // 로딩 표시(daysep 재사용 pill) 즉시 반영
+  try{
+    const q=M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.endBefore(cursorDoc), M.limitToLast(OLDER_PAGE_SIZE));
+    const snap=await M.getDocs(q);
+    if(snap.empty){ _noMoreOlder=true; }
+    else{
+      _olderMsgDocs=snap.docs.concat(_olderMsgDocs);
+      _liveAnchorDoc=_olderMsgDocs[_olderMsgDocs.length-1]; // "가장 최근"(경계) — 위 핵심 위험② 참조, [0](가장 오래된) 아님
+      if(snap.docs.length<OLDER_PAGE_SIZE) _noMoreOlder=true;
+      watchMessages(); // 앵커(_liveAnchorDoc) 갱신 → 실시간 구독 하한도 함께 이동(구멍·중복 방지, 위 설계 메모)
+    }
+  }catch(e){ console.error(e); toast("이전 대화를 불러오지 못했어요"); }
+  finally{
+    const after={ scrollTop:list.scrollTop, scrollHeight:list.scrollHeight };
+    renderMessages({preserveScrollFrom:after}); // 요건2: 늘어난 높이만큼 보정 — 화면이 위로 안 튐(이 시점엔 "불러오는 중" pill 그대로)
+    // ★재발방지 ①(Playwright 회귀 테스트로 실제 재현·확정된 버그): scrollTop 보정 자체가 브라우저의
+    // 'scroll' 이벤트를 (비동기로) 한 번 더 일으킨다 — 보정 후에도 여전히 상단 근접 임계값
+    // (CHAT_NEAR_TOP_PX) 안이면 그 이벤트가 loadOlderMessages()를 즉시 재호출해, _loadingOlder를
+    // 여기서 곧장 false로 풀면 그 재호출이 가드를 통과해 같은 페이지를 중복 로드했다(실측: 100개
+    // 페이지가 한 번에 150개+실시간창 349개로 불어나며 중복 다수 발생). 그래서 _loadingOlder는
+    // 이 렌더가 만든 비동기 scroll 이벤트가 먼저 도착해 가드에 걸리도록 매크로태스크 한 틱 뒤에만
+    // 내린다.
+    setTimeout(()=>{
+      _loadingOlder=false;
+      // ★재발방지 ②(Playwright 회귀 테스트로 실제 재현·확정된 버그): 위에서 false로 내리기만 하고
+      // 다시 렌더하지 않으면, 바로 위 renderMessages()가 그려둔 "이전 대화 불러오는 중…" pill이
+      // 그대로 화면에 눌어붙는다(다음에 뭔가 다른 이유로 재렌더될 때까지 안 사라짐 — 실측: 로드가
+      // 끝났는데도 "대화의 시작이에요"로 안 바뀌고 로딩 문구가 계속 떠 있었음). 같은 위치를
+      // 유지한 채 한 번 더 그려 pill을 최종 상태(제거 또는 "대화의 시작이에요")로 정리한다.
+      const settled={ scrollTop:list.scrollTop, scrollHeight:list.scrollHeight };
+      renderMessages({preserveScrollFrom:settled});
+    }, 0);
+  }
+}
 function tsMillis(v){
   if(v==null) return 0;
   if(typeof v==="number") return v;
@@ -2515,7 +2590,8 @@ function linkifyInto(container, text){
   }
   if(last < s.length) container.appendChild(document.createTextNode(s.slice(last)));
 }
-function renderMessages(){
+function renderMessages(opts){
+  opts = opts || {};
   const list=document.getElementById("msgList");
   if(!list) return;
   if(isLocked()){ lockContentNow(); return; }
@@ -2529,8 +2605,18 @@ function renderMessages(){
     return;
   }
   const otherRead = currentPairData && currentPairData.lastReadAt ? tsMillis(currentPairData.lastReadAt[otherUid()]) : 0;
-  const msgs=_lastMsgSnapshotDocs.map(d=>({id:d.id, data:d.data()}));
+  const msgs=allChatMsgDocs().map(d=>({id:d.id, data:d.data()})); // 과거 페이지(_olderMsgDocs)+실시간 창(_lastMsgSnapshotDocs) 합쳐 오름차순 한 번에 렌더
   list.innerHTML="";
+  // 이전 대화 페이지네이션 상태 표시(2026-08-25) — 목록 맨 위, 기존 daysep pill 재사용(새 컴포넌트 없음, 은은하게)
+  // ★_noMoreOlder를 먼저 검사(_loadingOlder보다 우선) — loadOlderMessages()의 마지막 렌더 시점엔
+  // 결과가 이미 확정됐어도(끝에 도달) _loadingOlder는 스크롤 이벤트 재트리거 방지를 위해 아직
+  // true인 채로 한 틱 더 남아있다(재발방지 주석 참조) — 여기서 순서를 바꾸지 않으면 "끝났다"는
+  // 걸 알면서도 "불러오는 중"만 계속 보여주는 화면이 된다(Playwright 테스트로 실측 확인).
+  if(_noMoreOlder){
+    const ld=document.createElement("div"); ld.className="daysep"; ld.textContent="대화의 시작이에요"; list.appendChild(ld);
+  } else if(_loadingOlder){
+    const ld=document.createElement("div"); ld.className="daysep"; ld.textContent="이전 대화 불러오는 중…"; list.appendChild(ld);
+  }
   let lastDay=null;
   for(let i=0;i<msgs.length;i++){
     const m=msgs[i].data, mine=m.sender===fb.uid, ms=tsMillis(m.ts)||Date.now();
@@ -2587,13 +2673,33 @@ function renderMessages(){
     const mine = !!el.closest(".row.me");
     bindMsgLongPress(el, el.dataset.msgid, mine, el.hasAttribute("data-editbubble"));
   });
-  list.scrollTop = list.scrollHeight;
+  // 요건2(2026-08-25): 과거 페이지 로드로 인한 렌더는 늘어난 높이만큼 scrollTop을 보정해 같은 위치를
+  // 계속 보여준다(바닥으로 안 튐). 그 외(신규 메시지·최초 진입 등)는 기존처럼 "바닥 근처였을 때만"
+  // 붙인다(v0.8.9 pinChatBottomIfNear와 동일 원칙 — _chatNearBottom 단일 판단 근거로 통일해 두
+  // 스크롤 로직이 서로 다투지 않게 함, 요건2의 "충돌 금지"). preserveScrollFrom이 없는 한 무조건
+  // 바닥으로 튀던 기존 동작은 이번에 사라졌다 — 과거 대화를 읽던 중 새 메시지가 와도 더는 안 끌려간다.
+  if(opts.preserveScrollFrom){
+    list.scrollTop = opts.preserveScrollFrom.scrollTop + (list.scrollHeight - opts.preserveScrollFrom.scrollHeight);
+  } else if(_chatNearBottom){
+    list.scrollTop = list.scrollHeight;
+  }
 }
 function watchMessages(){
   if(unsubMsgs) unsubMsgs();
-  const q = M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.limitToLast(200));
+  // 2026-08-25(이전 대화 페이지네이션): 과거 페이지를 한 번이라도 불러왔으면(_liveAnchorDoc 존재)
+  // limitToLast(200) 대신 startAfter(_liveAnchorDoc)(무제한)로 구독 하한을 그 경계에 고정한다 —
+  // 그래야 새 메시지가 쌓여 "최근 200개" 창이 앞으로 흘러가도 _olderMsgDocs와의 사이에 구멍이
+  // 생기지 않고, _liveAnchorDoc이 정확히 "older의 가장 최근 문서"이므로 겹침(중복)도 생기지 않는다
+  // (위 loadOlderMessages 설계 메모 ①②참조). 과거 페이지를 아직 안 불러왔으면 기존과 완전히 동일
+  // (limitToLast(200)) — 회귀 없음.
+  const q = _liveAnchorDoc
+    ? M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.startAfter(_liveAnchorDoc))
+    : M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.limitToLast(200));
   unsubMsgs = M.onSnapshot(q, snap=>{
     _lastMsgSnapshotDocs = snap.empty ? [] : snap.docs;
+    // limitToLast(200) 모드에서 전체가 200개 미만이면 이미 처음부터 다 실려있는 것 — 불필요한
+    // 페이지 요청(빈 응답 왕복) 없이 바로 "대화의 시작이에요"를 보여준다.
+    if(!_liveAnchorDoc && !snap.empty && snap.docs.length<200) _noMoreOlder=true;
     renderMessages();
     if(currentTab==="home" && inAppTabs()) renderHome(); // 홈 안 읽은 배지 갱신
     if(!isLocked() && document.getElementById("screenChat").classList.contains("active") && document.visibilityState==="visible") markRead();
@@ -3683,7 +3789,7 @@ function handleDissolved(){
   localStorage.removeItem("oguogu.lock.bio");
   localStorage.removeItem("oguogu.lock.mode");
   localStorage.removeItem("oguogu.lock.autoLockMs");
-  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false; resetPayState();
+  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetPayState();
   show("screenDissolved");
 }
 
@@ -3697,7 +3803,7 @@ function recoverFromDeadPair(){
   if(unsubDiary) unsubDiary();
   _events=[]; _diary=[]; resetCommentState();
   localStorage.removeItem("oguogu.pairId");
-  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; _prevRejoinOpen=false; resetPayState();
+  pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetPayState();
   hideLock();
   toast("연결이 만료됐어요. 다시 연결하거나 재합류 코드를 입력해주세요");
   show("screenStart");
@@ -3783,6 +3889,7 @@ document.getElementById("msgInput").addEventListener("input", autoGrowMsg);
 document.getElementById("msgList").addEventListener("scroll", ()=>{
   const list=document.getElementById("msgList");
   _chatNearBottom = (list.scrollHeight - list.scrollTop - list.clientHeight) < CHAT_NEAR_BOTTOM_PX;
+  if(list.scrollTop < CHAT_NEAR_TOP_PX) loadOlderMessages(); // 요건1(2026-08-25): 상단 근접 시 이전 대화 페이지 로드
 }, {passive:true});
 document.getElementById("msgInput").addEventListener("keydown", e=>{
   // IME 조합 중 Enter는 조합 확정이지 전송 아님. 터치 기기·Shift+Enter는 줄바꿈(기본 동작 유지). 데스크톱 Enter만 전송.
