@@ -979,13 +979,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       </div>
       <div class="set-row set-col">
         <div class="label">상대방 애칭</div>
-        <div class="desc">내가 상대를 부르는 이름 — 내 화면에 이렇게 보여요(다이어리 작성자 표시 등)</div>
+        <div class="desc">내가 상대에게 지어주는 이름 — 내 화면에 이렇게 보여요(다이어리 작성자 표시 등)</div>
         <input class="field-input" id="partnerNickInput" maxlength="12" placeholder="예) 린이, 우리 애기" autocomplete="off">
       </div>
       <div class="set-row set-col">
-        <div class="label">내 애칭</div>
-        <div class="desc">상대 화면 상단에 이렇게 보여요</div>
-        <input class="field-input" id="myNickInput" maxlength="12" placeholder="예) 자기, 여봉" autocomplete="off">
+        <!-- 2026-08-25 "서로 지어주기" 모델: 내 이름은 상대가 짓는다 — 자기입력 폐지, 읽기 전용 표시만 -->
+        <div class="label">내 이름</div>
+        <div class="desc" id="myGivenNameDesc">아직 상대가 이름을 안 지어줬어요</div>
       </div>
       <div class="set-row set-col">
         <div class="label">사귄 날 (D-day)</div>
@@ -1119,7 +1119,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 </div>
 
-<!-- 응원팩 결제 모달(1회성 ₩4,900, 2026-08-19) — 결제는 앱 밖(토스 송금)에서, 앱은 "송금했어요" 접수만 한다.
+<!-- 응원팩 결제 모달(1회성 ₩1,900 — 2026-08-25 18:41 사장님 확정 인하, 도입 당시엔 ₩4,900) — 결제는 앱 밖(토스 송금)에서, 앱은 "송금했어요" 접수만 한다.
      실제 해금(premium)은 입금 확인 후 관리자 스크립트(scripts/grant_premium.py)만 켤 수 있다(rules가 클라 쓰기 차단). -->
 <div class="modal" id="payModal">
   <div class="modal-card">
@@ -1131,7 +1131,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     </div>
     <!-- ⓑ 아직 구매 전 -->
     <div id="payOffer">
-      <div class="pay-price" id="payPrice">₩4,900</div>
+      <div class="pay-price" id="payPrice">₩1,900</div>
       <div class="pay-once">한 번만 결제하면 두 사람 공간에 계속 남아요</div>
       <div class="pay-benefit">📷 사진 보관 <b>50 → 150장</b><br>🎨 프리미엄 꾸미기 세트 해금<br>　<span style="color:var(--muted)">테마 2종(노을·밤벚꽃) · 채팅 배경 2종(별밤·물결) · 아이콘 6종</span></div>
       <div class="pay-acct-box">
@@ -1223,7 +1223,22 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.12"; // v0.8.12(2026-08-25 14:30, 실기기 핫픽스): "채팅 들어가면 메시지가
+const APP_VERSION = "0.8.13"; // v0.8.13(2026-08-25 18:17, 사장님 설계 확정): 애칭 모델을 "서로
+// 지어주기"로 전환 — 내 이름은 상대가, 상대 이름은 내가 짓는다(완전 대칭). nameOf(personUid,
+// theirPartnerUid) 공통 조회 신설: personUid의 이름 = theirPartnerUid가 partnerLabel에 적어둔
+// 값, 없으면 personUid 본인의 구 자기소개 애칭(legacy nicks)으로 폴백. myPartnerLabel()(상대
+// 이름=내가 지음, v0.8.10과 계산 동일)은 유지, myGivenName() 신설(내 이름=상대가 지음). 설정
+// 화면의 자기입력 "내 애칭"(myNickInput/nicks[본인uid])은 폐지 — "내 이름"은 이제 읽기 전용
+// 표시(상대가 지어준 값, 미설정이면 안내문). "상대방 애칭" 입력창(partnerLabel[본인uid])은
+// 그대로 유지. rules 무변경(케이스 E가 이미 profile 전체 허용, 확인만). 실데이터 검증: 사장님
+// 커플은 이미 서로 이름을 지어준 상태(boss→"리니", partner→"려리")로 새 모델이 그대로 대칭
+// 반영됨을 확인. ★같은 릴리스에 응원팩 가격 인하도 함께 반영(2026-08-25 18:41 사장님 확정,
+// ₩4,900→₩1,900, 별도 버전 안 나눔) — SUPPORT_PACK.price/priceLabel 한 곳만 바꾸면 모달·설정
+// 진입버튼 등 전부 자동 반영. 하드코딩된 가격 문자열 전수검색(코드 4곳: 결제모달 정적 placeholder·
+// SUPPORT_PACK 정의·주석 2곳)해 전부 갱신 확인, sw 캐시엔 가격이 없어 대상 아님. Firestore
+// 데이터·rules는 가격을 저장/검증하지 않아(순수 표시용, purchase_requests엔 금액 필드 자체가
+// 없음 — 주문코드로만 대사) 이번 변경과 무관.
+// ↓ v0.8.12(2026-08-25 14:30, 실기기 핫픽스): "채팅 들어가면 메시지가
 // 젤 처음(위)으로 올라가 있음" — v0.8.11 무한스크롤 회귀. 원인: showTab()의 chat 분기가
 // renderMessages()를 다시 안 불러, 채팅이 비활성(백그라운드) 상태에서 그려진 낡은 DOM을 그대로
 // 드러내기만 했다 — 그때 _chatNearBottom이 stale하게 false였거나 화면이 display:none이라
@@ -1353,8 +1368,13 @@ Object.defineProperty(globalThis, "PHOTO_CAP", { get: photoCap, configurable: tr
 /* 응원팩 상품 정의 + 결제 수단.
    2026-08-20 사장님 확정: 토스 송금링크 방식 폐기(토스아이디 미보유) → 입금 계좌를 모달에 직접 표시하고
    사용자가 은행앱에서 이체한다. 앱은 계좌·금액·주문코드를 보여주고 "결제 완료했어요" 접수만 받는다.
-   ★대사(對査)의 유일한 열쇠 = 이체 메모에 적힌 주문코드. 문구에서 이 점을 강하게 안내한다. */
-const SUPPORT_PACK={ id:"support_pack_v1", price:4900, priceLabel:"₩4,900" };
+   ★대사(對査)의 유일한 열쇠 = 이체 메모에 적힌 주문코드. 문구에서 이 점을 강하게 안내한다.
+   2026-08-25 18:41 사장님 확정: 가격 ₩4,900 → ₩1,900 인하(v0.8.13에 함께 반영, 별도 버전 안 나눔).
+   price/priceLabel 이 한 곳만 바꾸면 모달·설정 진입버튼 등 SUPPORT_PACK을 참조하는 모든 표시에
+   자동 반영된다(코드 상 하드코딩된 다른 가격 문자열 없음, 전수검색으로 확인). Firestore
+   데이터·rules는 가격을 저장/검증하지 않는(순수 표시용) 구조라 이번 변경과 무관 — 접수 문서
+   (purchase_requests)에도 금액 필드가 없다(주문코드로만 대사). */
+const SUPPORT_PACK={ id:"support_pack_v1", price:1900, priceLabel:"₩1,900" };
 const PAY_ACCOUNT={ bank:"토스뱅크", no:"1001-5838-5182", holder:"유종렬" };
 let _payRequested=false, _payChecked=false, _prevPremium=false, _premSeen=false;
 /* 공간이 바뀌거나(로그아웃·관계정리·재연결) 하면 결제 접수 캐시도 함께 비운다 — 남의/이전 공간의 상태가 새지 않도록. */
@@ -1527,7 +1547,7 @@ function renderHome(){
   } else {
     const dd=ddayText();
     cp.innerHTML='<div class="home-couple"><div class="faces"><span>'+esc(myEmoji()||"🙂")+'</span><span class="lk">🩷</span><span>'+esc(partnerEmoji()||"🙂")+'</span></div>'
-      +'<div class="nicks">'+esc(myNick()||"나")+' · '+esc(myPartnerLabel()||"짝")+'</div>'
+      +'<div class="nicks">'+esc(myGivenName()||"나")+' · '+esc(myPartnerLabel()||"짝")+'</div>' // 2026-08-25: "나"쪽도 상대가 지어준 이름(myGivenName)으로 — 자기입력(myNick) 더 이상 안 씀
       +(dd?'<div class="dplus">'+esc(dd)+'</div>':'')
       +(dd?'<div class="since">우리가 함께한 날</div>':'<div class="since" style="margin-top:10px">설정 → 꾸미기에서 애칭·기념일을 정해봐요</div>')
       +'</div>';
@@ -1641,19 +1661,24 @@ function applyThemeFromData(){
   renderDecorUI();
 }
 function myEmoji(){ const p=profileOf(); return (p.emojis && p.emojis[fb.uid]) || ""; }
-function myNick(){ const p=profileOf(); return (p.nicks && p.nicks[fb.uid]) || ""; }
-function partnerNick(){ const p=profileOf(); const o=otherUid(); return (o && p.nicks && p.nicks[o]) || ""; }
+function myNick(){ const p=profileOf(); return (p.nicks && p.nicks[fb.uid]) || ""; } // 구 자기소개 애칭(레거시) — nameOf()의 폴백·페어링 전 합류요청 자기소개(join request)에서만 계속 씀
 function partnerEmoji(){ const p=profileOf(); const o=otherUid(); return (o && p.emojis && p.emojis[o]) || "🩷"; }
-/* 상대방 애칭 — "내가 상대를 부르는 이름"(2026-08-25 신설, 사장님 실기기 버그 수리).
-   ★근본원인(실데이터로 확정): 기존 "서로 부르는 애칭"(myNickInput→nicks[fb.uid])은 실제로는
-   "내 자신을 뭐라 부를지(상대 화면에 보임)"만 저장한다 — nicks[fb.uid]는 항상 "본인" 키다.
-   그런데 이 필드 문구("서로 부르는 애칭")가 "내가 상대를 부르는 이름"으로 오해되기 쉬워, 사장님이
-   상대 애칭 "리니"를 입력했지만 실제로는 본인 uid 키에 저장돼(nicks[사장님uid]="리니") 다이어리
-   작성자 라벨이 뒤집혀 보였다(상대 글에는 상대가 스스로 정한 값 "려리"만 표시됨).
-   해법: "내가 상대를 부르는 이름"을 별도 필드(profile.partnerLabel[내uid])로 신설 — 커플앱 상식대로
-   "내가 정한 상대 이름이 내 화면에 보이는" 구조. 아직 아무도 안 정했으면 상대의 자기소개 애칭
-   (partnerNick, 기존 필드)으로 자연 폴백해 회귀 없이 점진 전환된다. */
-function myPartnerLabel(){ const p=profileOf(); return (p.partnerLabel && p.partnerLabel[fb.uid]) || partnerNick() || ""; }
+/* "서로 지어주기" 애칭 모델(2026-08-25 18:17 사장님 설계 확정) — 내 이름은 상대가 짓고,
+   상대 이름은 내가 짓는다. 전역 규칙: "X의 이름 = X의 파트너가 partnerLabel에 적어둔 값".
+   ★이전 경위(v0.8.10): "상대방 애칭"(partnerNickInput→partnerLabel[내uid], "내가 상대를 부르는
+   이름")을 신설해 다이어리 작성자 뒤집힘 버그를 고쳤었다 — 그 필드의 의미 자체는 이번에도 그대로
+   유지("내가 상대에게 지어준 이름"). 이번엔 그 반대쪽, "내 이름"도 자기 자신이 아니라 상대가
+   짓게 해 모델을 완전히 대칭으로 만든다: 자기입력(myNickInput/nicks[본인uid])은 폐지하고,
+   "내 이름"은 상대가 나에게 지어준 값(partnerLabel[상대uid])을 읽어 보여주기만 한다.
+   nameOf(personUid, theirPartnerUid) = 공통 조회 — personUid의 이름은 theirPartnerUid가
+   partnerLabel에 적어둔 값, 없으면 personUid 본인의 구 자기소개 애칭(legacy nicks, 과거 데이터
+   호환)으로 폴백. */
+function nameOf(personUid, theirPartnerUid){
+  const p=profileOf();
+  return (p.partnerLabel && p.partnerLabel[theirPartnerUid]) || (p.nicks && p.nicks[personUid]) || "";
+}
+function myGivenName(){ return nameOf(fb.uid, otherUid()); }      // 내 이름 = 상대가 지어줌
+function myPartnerLabel(){ return nameOf(otherUid(), fb.uid); }   // 상대 이름 = 내가 지어줌(기존과 동일 계산, 새 헬퍼로 통일)
 function ddayText(){
   const a=profileOf().anniversary; if(!a) return "";
   const start=new Date(a+"T00:00:00"); if(isNaN(start.getTime())) return "";
@@ -1707,8 +1732,10 @@ function renderDecorUI(){
   document.querySelectorAll("#bgPicker [data-bg]").forEach(el=>el.classList.toggle("on", (t.chatbg||"none")===el.dataset.bg));
   document.querySelectorAll("#bubblePicker [data-bub]").forEach(el=>el.classList.toggle("on", (t.bubble||"round")===el.dataset.bub));
   document.querySelectorAll("#myEmojiPicker [data-emo]").forEach(el=>el.classList.toggle("on", (myEmoji()||"🩷")===el.dataset.emo));
-  const nick=document.getElementById("myNickInput"); if(nick && document.activeElement!==nick) nick.value=myNick();
   const pnick=document.getElementById("partnerNickInput"); if(pnick && document.activeElement!==pnick) pnick.value=((profileOf().partnerLabel && profileOf().partnerLabel[fb.uid]) || "");
+  // 2026-08-25 "서로 지어주기": "내 이름"은 이제 읽기 전용(상대가 지어준 값) — 입력창이 아니라 안내문 갱신
+  const mgnd=document.getElementById("myGivenNameDesc");
+  if(mgnd){ const gn=myGivenName(); mgnd.textContent = gn ? ("상대가 지어준 이름: "+gn) : "아직 상대가 이름을 안 지어줬어요"; }
   const anniv=document.getElementById("annivInput"); if(anniv && document.activeElement!==anniv) anniv.value=(profileOf().anniversary||"");
   renderPremiumDecorUI();
   renderSupportPackUI();
@@ -1721,7 +1748,7 @@ function renderPremiumDecorUI(){
 }
 
 /* =========================================================================
-   응원팩(1회성 ₩4,900) — 결제 MVP
+   응원팩(1회성 ₩1,900 — 2026-08-25 18:41 사장님 확정 인하, 도입 당시(2026-08-19)엔 ₩4,900) — 결제 MVP
    · 결제 자체는 앱 밖(토스 송금)에서 일어난다. 앱이 하는 일은 딱 둘:
        ① 커플 고유 "주문코드"를 보여주고(입금자와 커플을 잇는 유일한 열쇠)
        ② "결제 완료했어요" 접수를 purchase_requests/{pairId}에 1건 남긴다.
@@ -4011,8 +4038,9 @@ async function _payCopy(elId, label){
 document.getElementById("payCopyAcct").onclick=()=>_payCopy("payAcctNo","계좌번호");
 document.getElementById("payCopyCode").onclick=()=>_payCopy("payOrderCode","주문코드");
 document.getElementById("payDoneBtn").onclick=submitPurchase;
-document.getElementById("myNickInput").addEventListener("change",e=>{ setProfile({nicks:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
-document.getElementById("partnerNickInput").addEventListener("change",e=>{ setProfile({partnerLabel:{[fb.uid]:e.target.value.trim().slice(0,12)}}); }); // 2026-08-25 신설
+// myNickInput(자기입력 "내 애칭")은 2026-08-25 "서로 지어주기" 모델 전환으로 폐지 — 내 이름은
+// 이제 상대가 partnerNickInput으로 지어주고, 나는 myGivenNameDesc(읽기 전용)로 확인만 한다.
+document.getElementById("partnerNickInput").addEventListener("change",e=>{ setProfile({partnerLabel:{[fb.uid]:e.target.value.trim().slice(0,12)}}); });
 document.getElementById("annivInput").addEventListener("change",e=>{ setProfile({anniversary:e.target.value}); });
 
 /* 일정 컨트롤 */

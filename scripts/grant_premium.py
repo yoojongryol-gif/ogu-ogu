@@ -45,7 +45,7 @@ SECRETS_DIR = os.environ.get("OGU_SECRETS_DIR", r"C:/Users/NHNE/ogu-ogu-secrets"
 SA_KEY = os.environ.get("OGU_SA_KEY", os.path.join(SECRETS_DIR, "ogu-ogu-service-account.json"))
 AUDIT_LOG = os.path.join(SECRETS_DIR, "premium_grants.log")
 PRODUCT_ID = "support_pack_v1"
-PRICE = 4900
+PRICE = 1900  # 2026-08-25 18:41 사장님 확정 인하(구 4900) — 표시/로그 전용, 결제 검증에는 안 쓰임
 
 
 def audit(line):
