@@ -313,27 +313,76 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 @media (hover:hover) and (pointer:fine){
   .row.me:hover .editIco.has{display:flex}
 }
+/* ═══════ 텔레그램식 롱프레스 메뉴 (2026-08-27, v0.8.14) ═══════
+   구성(위→아래): 반응 이모지 바(FEATURE_REACTIONS, 현재 잠금— 아래 JS 주석 참조) → 메뉴 리스트
+   (답장/수정/고정/텍스트 복사/다이어리에 저장/선택/삭제, 권한 없는 항목은 숨김) → 구분선 → 정보 줄
+   ("✓✓ 읽은 시각", 기존 msgMenuInfo 재사용 — 위치만 상단→하단으로 이동). */
 .msgMenu{
   position:fixed; z-index:60; background:var(--surface); border-radius:var(--r-md); box-shadow:var(--shadow);
-  padding:4px; display:none; min-width:150px; max-width:calc(100vw - 16px); /* 2026-08-22 18:32: 어떤 좌표
+  padding:4px; display:none; min-width:172px; max-width:calc(100vw - 16px); /* 2026-08-22 18:32: 어떤 좌표
   계산이 오더라도 메뉴 자체가 뷰포트보다 넓어질 수 없게(html{overflow:hidden}이라 넘치면 그대로 잘려 안 보임) */
 }
 .msgMenu.show{display:block}
 .msgMenu button{display:block; width:100%; padding:10px 16px; font-size:13.5px; color:var(--text); text-align:left; border-radius:8px}
 .msgMenu button:active{background:var(--surface2)}
-/* 정보 줄(읽은시간만, 2026-08-22 14:52 — 보낸시간은 인라인과 중복이라 제거) — 말풍선 롱프레스/우클릭 메뉴 상단, 수정 버튼 위 구분선.
-   white-space:nowrap(2026-08-22 18:32) — "읽음 오후 6:12"가 줄바꿈되지 않고 한 줄로 렌더돼야
-   showMsgMenu의 getBoundingClientRect() 폭 측정이 실제 필요한 만큼만 정확히 잡는다. */
-.msgMenuInfo{padding:8px 12px 6px; font-size:12px; color:var(--muted); line-height:1.6; white-space:nowrap}
-.msgMenuInfo:empty{display:none}
+.msgMenu button.danger-item{color:var(--danger)}
+/* 반응 이모지 바 — FEATURE_REACTIONS가 켜지기 전까지 JS가 항상 display:none으로 잠가둔다(코드는 완성,
+   노출만 잠금 — rules 신규 케이스 승인 대기, 아래 JS "FEATURE_REACTIONS" 주석 참조). */
+.msgReactRow{display:none; align-items:center; gap:2px; padding:6px 4px 8px; border-bottom:1px solid var(--line); margin-bottom:2px}
+.reactBtn{font-size:19px; width:32px; height:32px; flex:none; border-radius:var(--r-full); display:grid; place-items:center}
+.reactBtn:active{background:var(--surface2); transform:scale(.92)}
+.reactMore{font-size:13px; color:var(--muted); width:28px; height:32px; flex:none; border-radius:var(--r-full); display:grid; place-items:center}
+.msgReactMoreRow{display:none; flex-wrap:wrap; gap:2px; padding:0 4px 8px; border-bottom:1px solid var(--line); margin-bottom:2px}
+.msgReactMoreRow.show{display:flex}
+/* 말풍선 하단 반응 칩(잠금 상태에선 렌더되지 않음 — renderMessages의 FEATURE_REACTIONS 가드 참조) */
+.reactChips{display:flex; gap:3px; margin-top:3px; flex-wrap:wrap}
+.me .reactChips{justify-content:flex-end}
+.reactChip{font-size:11.5px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-full); padding:1px 7px; box-shadow:var(--shadow)}
+.reactChip.mine{border-color:var(--accent)}
+/* 정보 줄(읽은시간만, 2026-08-22 14:52 — 보낸시간은 인라인과 중복이라 제거) — 이제 메뉴 맨 아래(텔레그램식,
+   2026-08-27), 리스트 위 구분선. white-space:nowrap(2026-08-22 18:32) — "읽음 오후 6:12"가 줄바꿈되지
+   않고 한 줄로 렌더돼야 showMsgMenu의 getBoundingClientRect() 폭 측정이 실제 필요한 만큼만 정확히 잡는다. */
+.msgMenuInfo{padding:8px 12px 4px; font-size:12px; color:var(--muted); line-height:1.6; white-space:nowrap}
+.msgMenuInfo:empty{display:none; padding:0}
 .msgMenuInfo .rd{color:var(--read); font-weight:700}
 .msgMenuInfo .unread{opacity:.75}
-.msgMenu.has-edit .msgMenuInfo{border-bottom:1px solid var(--line); margin-bottom:2px}
-.msgEditBar{
+.msgMenuInfo:not(:empty){border-top:1px solid var(--line); margin-top:2px}
+.msgEditBar, .replyBar{
   flex:none; display:flex; align-items:center; justify-content:space-between;
   padding:7px 16px; background:var(--accent-soft); color:var(--accent); font-size:12.5px; font-weight:var(--w-med);
 }
-.msgEditBar button{color:var(--accent); font-weight:var(--w-bold); padding:2px 8px}
+.msgEditBar button, .replyBar button{color:var(--accent); font-weight:var(--w-bold); padding:2px 8px; flex:none}
+.replyBar .rb-body{min-width:0; flex:1; display:flex; flex-direction:column; gap:1px; text-align:left}
+.replyBar .rb-who{font-size:11.5px; font-weight:var(--w-bold)}
+.replyBar .rb-txt{font-size:12px; color:var(--text); opacity:.75; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:var(--w-reg)}
+/* 답장 인용 블록 — 말풍선 안 상단, 탭하면 원문으로 스크롤 */
+.quote-block{border-left:3px solid var(--accent); background:rgba(0,0,0,.06); border-radius:7px; padding:4px 8px; margin-bottom:4px; cursor:pointer}
+.me .quote-block{background:rgba(255,255,255,.2)}
+.quote-block .qs{font-size:11.5px; font-weight:var(--w-bold); display:block}
+.quote-block .qt{font-size:12px; opacity:.85; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:52vw}
+/* 삭제된 메시지(소프트 삭제 — 텍스트를 마커로 덮어써 표시, rules 무변경. 아래 JS DELETED_TEXT_MARKER 주석 참조) */
+.bubble.bubble-deleted .msgtext{opacity:.62; font-style:italic}
+/* 고정 바 — 채팅 헤더 바로 아래, 상시 노출(고정 있을 때만) */
+.pinnedBar{display:none; align-items:center; gap:8px; padding:8px 14px; background:var(--accent-soft); border-bottom:1px solid var(--line); font-size:12.5px; color:var(--text); flex:none; cursor:pointer}
+.pinnedBar.show{display:flex}
+.pinnedBar .pin-ico{flex:none; font-size:14px}
+.pinnedBar .pin-txt{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pinnedBar .pin-x{flex:none; color:var(--muted); font-size:16px; padding:2px 6px}
+/* 선택 모드 — 하단 인바 대신 노출되는 액션바 + 말풍선 앞 원형 체크 */
+.selectBar{flex:none; display:flex; align-items:center; justify-content:space-between; padding:9px 16px; background:var(--surface); border-top:1px solid var(--line)}
+.selectBar .sb-count{font-size:13.5px; font-weight:var(--w-med)}
+.selectBar .sb-actions{display:flex; gap:16px; align-items:center}
+.selectBar button{font-size:13px; color:var(--accent); font-weight:var(--w-bold)}
+.selectBar button.danger{color:var(--danger)}
+.selectBar button:disabled{opacity:.35}
+.selchk{display:none; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line); background:var(--surface); flex:none; align-items:center; justify-content:center; font-size:11px; margin:0 2px}
+.selchk::after{content:"✓"; color:transparent}
+#msgList.selecting .row{justify-content:flex-start !important}
+#msgList.selecting .selchk{display:flex}
+#msgList.selecting .row.selected .selchk{background:var(--accent); border-color:var(--accent)}
+#msgList.selecting .row.selected .selchk::after{color:#fff}
+/* 답장 원문으로 스크롤 이동 시 잠깐 강조 */
+.row.flash-highlight .bubble{outline:2px solid var(--accent); outline-offset:1px}
 
 .inbar{
   flex:none; display:flex; align-items:flex-end; gap:var(--s2); padding:var(--s2) var(--s3);
@@ -816,6 +865,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <button class="hbtn" id="btnRefreshChat" title="새로고침">🔄</button>
     <button class="hbtn" id="btnSettings" title="설정">⚙️</button>
   </div>
+  <div class="pinnedBar" id="pinnedBar"></div>
   <div class="install-hint" id="installHint">
     <span>📲 홈 화면에 추가하면 전체 화면 앱처럼 쓸 수 있어요</span>
     <button id="installHintClose" aria-label="닫기">✕</button>
@@ -832,6 +882,21 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <div class="msgEditBar" id="msgEditBar" style="display:none">
     <span>✎ 메시지 수정 중</span>
     <button type="button" id="btnCancelMsgEdit">취소</button>
+  </div>
+  <div class="replyBar" id="replyBar" style="display:none">
+    <div class="rb-body">
+      <span class="rb-who" id="replyBarWho"></span>
+      <span class="rb-txt" id="replyBarTxt"></span>
+    </div>
+    <button type="button" id="btnCancelReply" aria-label="답장 취소">✕</button>
+  </div>
+  <div class="selectBar" id="selectBar" style="display:none">
+    <span class="sb-count" id="selectBarCount">0개 선택됨</span>
+    <div class="sb-actions">
+      <button type="button" id="btnSelectCopy">📋 복사</button>
+      <button type="button" class="danger" id="btnSelectDelete">🗑 삭제</button>
+      <button type="button" id="btnSelectCancel">취소</button>
+    </div>
   </div>
   <form class="inbar" id="chatForm">
     <button type="button" id="btnAttach" aria-label="사진 첨부">＋</button>
@@ -1214,7 +1279,33 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 </div>
 
-<div class="msgMenu" id="msgMenu"><div class="msgMenuInfo" id="msgMenuInfo"></div><button type="button" id="msgMenuEdit">✎ 수정</button></div>
+<div class="msgMenu" id="msgMenu">
+  <div class="msgReactRow" id="msgReactRow">
+    <button type="button" class="reactBtn" data-emo="❤️">❤️</button>
+    <button type="button" class="reactBtn" data-emo="👍">👍</button>
+    <button type="button" class="reactBtn" data-emo="🙏">🙏</button>
+    <button type="button" class="reactBtn" data-emo="👎">👎</button>
+    <button type="button" class="reactBtn" data-emo="🔥">🔥</button>
+    <button type="button" class="reactBtn" data-emo="🥰">🥰</button>
+    <button type="button" class="reactMore" id="msgReactMore" aria-label="이모지 더보기">⌄</button>
+  </div>
+  <div class="msgReactMoreRow" id="msgReactMoreRow">
+    <button type="button" class="reactBtn" data-emo="😂">😂</button>
+    <button type="button" class="reactBtn" data-emo="😮">😮</button>
+    <button type="button" class="reactBtn" data-emo="😢">😢</button>
+    <button type="button" class="reactBtn" data-emo="🎉">🎉</button>
+    <button type="button" class="reactBtn" data-emo="💯">💯</button>
+    <button type="button" class="reactBtn" data-emo="🙌">🙌</button>
+  </div>
+  <button type="button" id="msgMenuReply">↩️ 답장</button>
+  <button type="button" id="msgMenuEdit">✎ 수정</button>
+  <button type="button" id="msgMenuPin">📌 고정</button>
+  <button type="button" id="msgMenuCopy">📋 텍스트 복사</button>
+  <button type="button" id="msgMenuForward">📔 다이어리에 저장</button>
+  <button type="button" id="msgMenuSelect">☑️ 선택</button>
+  <button type="button" class="danger-item" id="msgMenuDelete">🗑 삭제</button>
+  <div class="msgMenuInfo" id="msgMenuInfo"></div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1223,7 +1314,37 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.13"; // v0.8.13(2026-08-25 18:17, 사장님 설계 확정): 애칭 모델을 "서로
+const APP_VERSION = "0.8.14"; // v0.8.14(2026-08-27, 사장님 지시 "5959도 텔레그램처럼") — 채팅
+// 말풍선 롱프레스/우클릭 메뉴를 텔레그램식으로 확장: 답장(인용+원문 스크롤)·고정(1개, 채팅 상단
+// 바)·텍스트 복사·전달(=다이어리에 저장, 재해석 — 커플앱은 대화방이 1개라 "다른 방으로 전달"이
+// 성립하지 않아 "이 메시지를 기록으로 남기기"로 치환, 기존 diary create 경로 그대로 재사용)·선택
+// (다중선택 모드→일괄 복사/삭제)·읽은 시각(기존 readAt 재사용, 라벨만 "✓✓ 읽은 시각"). 삭제는
+// 신규가 아니라 "수정"(v0.8.5 이하 rules 케이스, sender 본인·hasPhoto false·text/editedAt만)의
+// 재해석 — text를 DELETED_TEXT_MARKER로 덮어써 "삭제된 메시지"로 표시(진짜 문서 삭제는 rules가
+// dissolved 전엔 전면 금지 — 관계 정리 전 증거인멸 방지 설계, 2026-08-05 확정 철학. 이 소프트
+// 삭제는 그 설계를 우회하지 않는다: 문서는 그대로 남고 rules가 이미 허용하던 "본인 텍스트 수정"
+// 권한 범위 안에서만 동작). 사진 메시지 삭제는 이 경로로 불가(hasPhoto true는 애초에 수정 rules
+// 대상이 아님) → 사진 메시지엔 삭제 메뉴 자체를 숨김(FEATURE_DELETE_PHOTO, 아래).
+// ★rules 판정(착수 전 먼저 검토, /plan 원칙): 반응(❤️👍 등)은 "메시지 문서를 발신자가 아닌
+// 임의의 멤버가, 자기 uid 키만 걸어 갱신"하는 새 접근 패턴이라 현재 rules(케이스: sender 본인
+// text/editedAt만, 또는 수신자 readAt 1회만)로는 불가능 — 신규 rules 케이스 필요(제안 diff는
+// C:/종합상사/data/meetings/2026-08-27_5959_telegram_menu_rules_plan.md). 미배포 상태이므로 이번
+// 릴리스는 FEATURE_REACTIONS=false로 UI를 완전히 숨김(반응 바·말풍선 칩 모두 렌더 안 함) — 승인
+// 후 rules 배포+플래그 true 전환만 하면 켜지도록 코드는 이미 완성해둠. 고정은 pairs.profile
+// 필드(케이스 E, 2026-08-05부터 멤버가 이미 자유롭게 쓸 수 있는 공유 취향 필드 — theme/profile은
+// 전체 교체 방식이라 내부 스키마 제약이 없음)에 pinnedMessage 서브필드를 얹는 방식이라 신규 rules
+// 불필요(setProfile() 그대로 재사용) — 단 1개만 저장(O(1), 무제한 성장 아님)이라 안전, 반응처럼
+// 메시지마다 쌓이는 map은 문서 크기가 무한히 자라 이 경로를 못 쓴다(그래서 반응만 별도 rules로
+// 분리). 답장은 메시지 "생성" 시점에 replyTo 필드를 함께 싣는 것이라 create rules(필드 제한 없음,
+// sender 본인·비dissolved만 검증)에 이미 포함 — 신규 rules 불필요. 전달(다이어리 저장)은 기존
+// diary create 경로 그대로(필드 제한 없음) — 신규 rules 불필요.
+const FEATURE_REACTIONS = false; // 사장님 GO + rules 배포 후에만 true로 전환(위 주석 참조)
+const FEATURE_DELETE_PHOTO = false; // 사진 메시지 삭제는 별도 rules 케이스 필요 — 현재 미제공, 메뉴에서 숨김
+const DELETED_TEXT_MARKER = "\u2063\u2063oguogu_deleted\u2063\u2063"; // 사용자가 실수로도 입력할 일 없는
+// 유니코드 불가시 분리자 조합 — 이 값과 정확히 일치하는 text만 "삭제된 메시지"로 렌더(허구 삭제 상태
+// 생성 없음, 실수로 같은 문자열을 친 메시지와 혼동될 확률 사실상 0).
+// ── 이하는 이전 버전(v0.8.13) 변경 기록 — 참고용, 최신 릴리스 내역은 위 v0.8.14 주석 참조 ──
+// v0.8.13(2026-08-25 18:17, 사장님 설계 확정): 애칭 모델을 "서로
 // 지어주기"로 전환 — 내 이름은 상대가, 상대 이름은 내가 짓는다(완전 대칭). nameOf(personUid,
 // theirPartnerUid) 공통 조회 신설: personUid의 이름 = theirPartnerUid가 partnerLabel에 적어둔
 // 값, 없으면 personUid 본인의 구 자기소개 애칭(legacy nicks)으로 폴백. myPartnerLabel()(상대
@@ -1393,6 +1514,11 @@ const _thumbUrlCache={};
 let _lastAnimatedId=null;
 let _prevRejoinOpen=false;
 let _prevMemberCount=0;
+/* 텔레그램식 메뉴(v0.8.14) 상태 — 답장/선택 모드는 채팅 화면을 벗어나거나 대화가 바뀌면(pairId 변경)
+   반드시 초기화해야 한다(다른 대화로 오해된 상태 유지 방지). resetChatPagination 등과 함께 관리. */
+let _replyingTo=null;        // {id, sender, text, thumb} — sendMessage()가 이 값을 replyTo로 실어 보낸다
+let _selectMode=false;       // 선택(다중선택) 모드 on/off
+const _selectedIds=new Set(); // 선택된 메시지 id 집합
 
 function toast(msg){
   const t=document.getElementById("toast");
@@ -1482,6 +1608,7 @@ let currentTab="home";
 function inAppTabs(){ return Object.values(TAB_SCREEN).some(id=>document.getElementById(id).classList.contains("active")); }
 function showTab(tab){
   if(!TAB_SCREEN[tab]) tab="home";
+  if(tab!=="chat" && (_selectMode || _replyingTo)){ exitSelectMode(); cancelReply(); } // 채팅을 벗어나면 임시 모드 정리(다른 탭에 잔재 방지)
   currentTab=tab;
   // 자가 치유(2026-08-10): 화면을 display:none으로 숨기는 것만으로는 포커스된 입력이 즉시 blur되지 않음을
   // 실측(activeElement가 숨겨진 뒤에도 한동안 그대로 남음) — 그래서 kb-open이 고착돼도 탭바를 눌러
@@ -1659,6 +1786,7 @@ function applyThemeFromData(){
   const meta=document.querySelector('meta[name=theme-color]'); if(meta) meta.setAttribute("content", PALETTES[pal]);
   if(t.palette) localStorage.setItem("oguogu.pref.palette", t.palette);
   renderDecorUI();
+  renderPinnedBar(); // 고정 상태도 profile 필드라 테마와 동일 스냅샷 경로로 실시간 동기화(양쪽 모두)
 }
 function myEmoji(){ const p=profileOf(); return (p.emojis && p.emojis[fb.uid]) || ""; }
 function myNick(){ const p=profileOf(); return (p.nicks && p.nicks[fb.uid]) || ""; } // 구 자기소개 애칭(레거시) — nameOf()의 폴백·페어링 전 합류요청 자기소개(join request)에서만 계속 씀
@@ -2698,15 +2826,29 @@ function renderMessages(opts){
         ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
         : '<div class="meta"><span>'+time+'</span></div>';
     }
-    const editable = mine && !m.thumb; // 내 텍스트 메시지만 수정 가능 — 상대 메시지·사진 메시지는 제외
+    // 소프트 삭제(v0.8.14) — text가 정확히 DELETED_TEXT_MARKER면 "삭제된 메시지"로 렌더, 수정/삭제 메뉴 숨김.
+    const isDeleted = !m.thumb && m.text===DELETED_TEXT_MARKER;
+    const editable = mine && !m.thumb && !isDeleted; // 내 텍스트 메시지만 수정(=삭제도 이 재해석 경로) 가능 — 상대·사진·이미 삭제된 메시지는 제외
     const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
+    // 답장 인용 블록(v0.8.14) — m.replyTo{id,sender,text,thumb}가 있으면 말풍선 상단에 원문 미리보기(발신자
+    // 이름은 캐시하지 않고 매번 현재 애칭으로 계산 — 이름을 나중에 바꿔도 옛 인용이 옛 이름으로 굳지 않음),
+    // 탭하면 원문으로 스크롤(quote-block 클릭 리스너, 아래 renderMessages 하단 바인딩 참조).
+    const quoteHtml = (m.replyTo && !isDeleted)
+      ? '<div class="quote-block" data-quote="'+esc(m.replyTo.id)+'"><span class="qs">'+esc(m.replyTo.sender===fb.uid?"나":(myPartnerLabel()||"상대"))+'</span><span class="qt">'+esc(m.replyTo.thumb?"📷 사진":(m.replyTo.text||""))+'</span></div>'
+      : "";
+    // 반응 칩(v0.8.14) — FEATURE_REACTIONS 켜지기 전엔 항상 빈 문자열(아래 renderMessages 하단에서도 이중 가드).
+    const reactChipsHtml = (FEATURE_REACTIONS && m.reactions && Object.keys(m.reactions).length)
+      ? '<div class="reactChips">'+Object.entries(m.reactions).map(([uid,emo])=>'<span class="reactChip'+(uid===fb.uid?' mine':'')+'">'+esc(emo)+'</span>').join("")+'</div>' : "";
     // data-msgid = 모든 말풍선 공통(내 것/상대 것, 텍스트/사진) — 롱프레스 정보메뉴(showMsgMenu) 대상 식별용.
     // data-editbubble/data-chatmsg은 기존 용도(수정 진입/사진뷰어) 그대로 유지 — 회귀 없음.
     const bubbleHtml = m.thumb
-      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'"><img src="'+thumbUrl(m.thumb)+'" alt=""></div>'
-      : '<div class="bubble"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'"><span class="msgtext"></span>'+(m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+'</div>';
-    row.innerHTML = mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml);
-    if(!m.thumb){ const mt=row.querySelector(".msgtext"); if(mt) linkifyInto(mt, m.text); } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
+      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'">'+quoteHtml+'<img src="'+thumbUrl(m.thumb)+'" alt="">'+reactChipsHtml+'</div>'
+      : '<div class="bubble'+(isDeleted?' bubble-deleted':'')+'"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'">'+quoteHtml+'<span class="msgtext"></span>'+(!isDeleted && m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+reactChipsHtml+'</div>';
+    // 선택 모드용 원형 체크(항상 DOM에 존재, #msgList.selecting일 때만 CSS로 노출 — 재렌더 없이 모드 전환)
+    const selchkHtml = '<span class="selchk" data-selchk></span>';
+    row.innerHTML = selchkHtml + (mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml));
+    if(!m.thumb){ const mt=row.querySelector(".msgtext"); if(mt){ if(isDeleted) mt.textContent="삭제된 메시지"; else linkifyInto(mt, m.text); } } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
+    if(_selectedIds.has(msgs[i].id)) row.classList.add("selected");
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
     list.appendChild(row);
   }
@@ -2714,9 +2856,22 @@ function renderMessages(opts){
   const photoMsgs = msgs.filter(x=>x.data && x.data.thumb);
   const photoItems = photoMsgs.map(x=>({ref:["messages", x.id, "photos", x.data.thumb.photoId]}));
   list.querySelectorAll("[data-chatmsg]").forEach(el=>el.onclick=()=>{
+    if(_selectMode){ toggleSelectMsg(el.dataset.chatmsg); return; } // 선택 모드에선 탭=선택 토글(뷰어 열지 않음)
     if(_msgLongPressed){ _msgLongPressed=false; return; } // 롱프레스로 정보메뉴를 막 띄운 직후의 클릭은 사진뷰어를 열지 않는다
     const idx=photoMsgs.findIndex(x=>x.id===el.dataset.chatmsg);
     openPhotoViewer(photoItems, Math.max(0, idx));
+  });
+  // 텍스트 말풍선(사진 아님)은 평소엔 탭 동작이 없었다 — 선택 모드에서만 탭=선택 토글.
+  list.querySelectorAll("[data-msgid]:not([data-chatmsg])").forEach(el=>{
+    el.addEventListener("click", ()=>{ if(_selectMode) toggleSelectMsg(el.dataset.msgid); });
+  });
+  // 답장 인용 블록 탭 — 평소엔 원문으로 스크롤, 선택 모드에선 상위(말풍선) 클릭에 그대로 위임(토글).
+  list.querySelectorAll("[data-quote]").forEach(el=>{
+    el.addEventListener("click", e=>{
+      if(_selectMode) return; // 버블링시켜 부모의 선택 토글이 처리하게 둠
+      e.stopPropagation();
+      scrollToMessage(el.dataset.quote);
+    });
   });
   // 요건3(2026-08-25): 사진 <img>는 높이를 CSS로 못 박지 않아(가로세로 비율에 따라 다름) 디코드가
   // 끝나야 실제 높이가 확정된다 — 렌더 시점에 잰 scrollHeight로는 사진이 아직 다 안 실린 상태라
@@ -2837,13 +2992,17 @@ async function sendMessage(){
   const text=input.value.trim();
   if(!text || !pairId) return;
   if(_editingMsgId){ await saveEditedMessage(input, text); return; }
-  input.value=""; autoGrowMsg(); // 전송 후 입력창 높이 1줄로 복귀
+  const replyTo=_replyingTo; // 전송 직전 스냅샷 — addDoc 실패 시 복원용
+  input.value=""; autoGrowMsg(); cancelReply(); // 전송 후 입력창 높이 1줄 복귀 + 답장 배너 닫기
   try{ input.focus(); }catch(e){}
-  await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), {
-    sender: fb.uid, text, ts: M.serverTimestamp()
-  }).catch(err=>{
+  const payload = { sender: fb.uid, text, ts: M.serverTimestamp() };
+  // 답장(v0.8.14) — replyTo는 "생성" 시점에만 싣는 필드라 rules 변경이 필요 없다(create 규칙은
+  // sender·dissolved 여부만 검사하고 필드를 제한하지 않는다, 위 APP_VERSION 주석 참조).
+  if(replyTo) payload.replyTo = { id: replyTo.id, sender: replyTo.sender, text: (replyTo.text||"").slice(0,80), thumb: !!replyTo.thumb };
+  await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), payload).catch(err=>{
     console.error(err);
     input.value=text; // 실패 시 입력 복원(침묵 금지 — 사용자가 다시 시도 가능)
+    if(replyTo) startReply(replyTo.id, replyTo); // 답장 상태도 함께 복원
     if(isDeniedErr(err)){
       if(currentPairData && currentPairData.status==="dissolved"){ toast("이 공간은 정리된 상태라 보낼 수 없어요"); handleDissolved(); return; }
       toast("연결이 만료됐어요. 다시 연결해주세요"); recoverFromDeadPair(); return;
@@ -2898,6 +3057,7 @@ function bindMsgLongPress(el, id, mine, editable){
   let timer=null, sx=0, sy=0;
   const fire=(x,y)=>{
     timer=null; try{ navigator.vibrate && navigator.vibrate(12); }catch(_){ }
+    if(_selectMode){ toggleSelectMsg(id); return; } // 선택 모드 중엔 롱프레스도 메뉴 대신 선택 토글
     _msgLongPressed=true; showMsgMenu(id, mine, editable, x, y);
     // 안전망: 롱프레스 직후 파생되는 클릭(사진 뷰어 오픈 억제용)만 잡아야 하므로 곧바로 소비되지
     // 않았더라도(예: 텍스트 말풍선 롱프레스) 잠시 뒤 스스로 해제 — 이후의 무관한 사진 탭까지
@@ -2929,27 +3089,44 @@ function showMsgMenu(id, mine, editable, x, y){
   // (구 v0.8.4는 이 legacy 판정만 있었고, 옛 메시지를 오늘 열어도 "방금 읽은 것"처럼 보이는 게
   // 문제였다 — readAt 고정 시각이 그 근본원인을 해결한다.)
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x2=>x2.id===id);
+  const dat = d ? d.data() : null;
+  const isDeleted = !!dat && !dat.thumb && dat.text===DELETED_TEXT_MARKER;
+  const hasText = !!dat && !dat.thumb && !isDeleted && !!dat.text;
+  const m=document.getElementById("msgMenu");
+  m.dataset.target=id;
+
+  // 반응 바 — FEATURE_REACTIONS 승인 전엔 항상 숨김(코드는 완성, rules 배포 후 플래그만 true로).
+  const reactRow=document.getElementById("msgReactRow");
+  if(reactRow) reactRow.style.display = FEATURE_REACTIONS ? "flex" : "none";
+  const reactMoreRow=document.getElementById("msgReactMoreRow"); if(reactMoreRow) reactMoreRow.classList.remove("show");
+
+  // 메뉴 항목 표시/숨김 — "권한 없는 항목은 감춘다"(상식 UX): 답장/고정/전달은 삭제된 메시지 제외 전부 허용,
+  // 수정·삭제는 editable(=본인 텍스트·사진 아님·이미 삭제 아님)일 때만, 텍스트 복사는 실제 텍스트가 있을 때만.
+  const setShow=(elId, show)=>{ const el=document.getElementById(elId); if(el) el.style.display = show ? "" : "none"; };
+  setShow("msgMenuReply", !isDeleted);
+  setShow("msgMenuEdit", editable);
+  setShow("msgMenuPin", !isDeleted);
+  setShow("msgMenuCopy", hasText);
+  setShow("msgMenuForward", !isDeleted);
+  setShow("msgMenuSelect", true);
+  setShow("msgMenuDelete", editable);
+
   const info=document.getElementById("msgMenuInfo");
   info.innerHTML=""; // 매번 재구성 — 사용자 입력이 아닌 우리가 만든 시간 문자열만 textContent로 조립(XSS 무관)
-  if(d){
-    const dat=d.data(), ms=tsMillis(dat.ts)||Date.now();
+  if(dat){
+    const ms=tsMillis(dat.ts)||Date.now();
     const l1=document.createElement("div");
     if(dat.readAt){
       const rt=tsMillis(dat.readAt);
-      l1.className="rd"; l1.textContent="읽음 "+fmtTime(rt);
+      l1.className="rd"; l1.textContent="✓✓ 읽은 시각 "+fmtTime(rt); // 텔레그램식 표기(2026-08-27) — 필드는 기존 readAt 그대로, 라벨만 갱신
     } else {
       const legacyReadAt = mine ? otherReadMs() : myReadMs();
       const legacyRead = legacyReadAt>0 && ms<=legacyReadAt;
       l1.className = legacyRead ? "rd" : "unread";
-      l1.textContent = legacyRead ? "읽음" : "안읽음"; // 시각 미상(readAt 도입 이전 메시지) — 허구 시각 생성 금지
+      l1.textContent = legacyRead ? "✓✓ 읽음" : "안읽음"; // 시각 미상(readAt 도입 이전 메시지) — 허구 시각 생성 금지
     }
     info.appendChild(l1);
   }
-  const m=document.getElementById("msgMenu");
-  const editBtn=document.getElementById("msgMenuEdit");
-  editBtn.style.display = editable ? "" : "none";
-  m.classList.toggle("has-edit", !!editable);
-  m.dataset.target=id;
   // 2026-08-22 18:32 실기기 버그 수리: 기존엔 "메뉴는 항상 166×96(or 58)px 근처"라고 가정한 고정
   // 숫자로 좌표를 클램프했다 — 실제로는 읽은시간 텍스트 길이·수정버튼 유무에 따라 메뉴 실제 크기가
   // 달라지므로(특히 "읽음 오후 6:12"처럼 긴 텍스트), 그 가정이 틀리면 메뉴 일부가 뷰포트 밖으로
@@ -2969,6 +3146,212 @@ function showMsgMenu(id, mine, editable, x, y){
   m.style.top=top+"px";
 }
 function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.classList.remove("show"); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   텔레그램식 메뉴 — 답장 / 고정 / 텍스트 복사 / 전달(다이어리에 저장) / 삭제(소프트) / 선택
+   (v0.8.14, 2026-08-27). 각 기능의 rules 근거는 APP_VERSION 주석 참조.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ----- 답장 ----- */
+function startReply(id, cached){
+  const dat = cached || (()=>{ const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); return d ? d.data() : null; })();
+  if(!dat || (!dat.thumb && dat.text===DELETED_TEXT_MARKER)) return; // 삭제된 메시지엔 답장 불가
+  if(_editingMsgId) cancelEditMessage(); // 수정 중이었다면 취소(입력창 단일 용도 원칙)
+  _replyingTo = { id, sender:dat.sender, text: dat.thumb ? "" : (dat.text||""), thumb: !!dat.thumb };
+  renderReplyBar();
+  try{ document.getElementById("msgInput").focus(); }catch(e){}
+}
+function cancelReply(){
+  _replyingTo=null;
+  renderReplyBar();
+}
+function renderReplyBar(){
+  const bar=document.getElementById("replyBar"); if(!bar) return;
+  if(!_replyingTo){ bar.style.display="none"; return; }
+  const who=document.getElementById("replyBarWho"), txt=document.getElementById("replyBarTxt");
+  if(who) who.textContent = (_replyingTo.sender===fb.uid ? "나" : (myPartnerLabel()||"상대")) + "에게 답장";
+  if(txt) txt.textContent = _replyingTo.thumb ? "📷 사진" : (_replyingTo.text||"");
+  bar.style.display="flex";
+}
+
+/* ----- 텍스트 복사 ----- */
+async function copyMessageText(id){
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
+  const dat=d.data();
+  if(dat.thumb || dat.text===DELETED_TEXT_MARKER || !dat.text) return;
+  try{ await navigator.clipboard.writeText(dat.text); toast("복사했어요"); }
+  catch(e){ toast("복사를 지원하지 않는 기기예요"); }
+}
+
+/* ----- 삭제(소프트 삭제 — 기존 "수정" rules 경로 재해석, APP_VERSION 주석 참조) -----
+   진짜 문서 삭제는 rules가 dissolved 전엔 전면 금지(증거인멸 방지 철학, 2026-08-05 확정) — 이 기능은
+   그 규칙을 우회하지 않고, 이미 허용돼 있던 "본인 텍스트 메시지의 text/editedAt 갱신" 권한 그대로
+   text를 DELETED_TEXT_MARKER로 덮어써 화면에 "삭제된 메시지"로 보이게 한다. 사진 메시지는 이 경로
+   자체가 rules상 불가(hasPhoto true는 수정 대상이 아님) → FEATURE_DELETE_PHOTO=false, 메뉴에서 숨김. */
+async function deleteMessageSoft(id){
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
+  const dat=d.data();
+  if(dat.sender!==fb.uid || dat.thumb || dat.text===DELETED_TEXT_MARKER) return; // 안전 가드(메뉴 숨김과 동일 조건 재확인)
+  if(_editingMsgId===id) cancelEditMessage();
+  if(_replyingTo && _replyingTo.id===id) cancelReply();
+  await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",id), { text:DELETED_TEXT_MARKER, editedAt:M.serverTimestamp() }).catch(err=>{
+    console.error(err);
+    toast(isDeniedErr(err) ? "삭제 권한이 없어요" : "삭제하지 못했어요");
+  });
+}
+
+/* ----- 고정(pin) — pairs.profile.pinnedMessage 재사용(케이스 E, 이미 멤버 자유쓰기 허용된 공유 필드,
+   O(1) 고정 크기라 반응과 달리 신규 rules 불필요, APP_VERSION 주석 참조). setProfile()이 그대로
+   read-modify-write 병합을 해줘 다른 profile 필드(테마·애칭 등)를 건드리지 않는다. ----- */
+function pinnedMessage(){ return profileOf().pinnedMessage || null; }
+async function pinMessage(id){
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d){ toast("고정할 수 없어요"); return; }
+  const dat=d.data();
+  if(!dat.thumb && dat.text===DELETED_TEXT_MARKER) return;
+  await setProfile({ pinnedMessage: { id, sender:dat.sender, text: dat.thumb ? "" : (dat.text||"").slice(0,80), thumb:!!dat.thumb } });
+  toast("메시지를 고정했어요");
+}
+async function unpinMessage(){
+  await setProfile({ pinnedMessage: null });
+  toast("고정을 해제했어요");
+}
+function renderPinnedBar(){
+  const bar=document.getElementById("pinnedBar"); if(!bar) return;
+  const p=pinnedMessage();
+  if(!p){ bar.classList.remove("show"); bar.innerHTML=""; bar.onclick=null; return; }
+  bar.innerHTML='<span class="pin-ico">📌</span><span class="pin-txt"></span><button type="button" class="pin-x" aria-label="고정 해제">✕</button>';
+  bar.querySelector(".pin-txt").textContent = p.thumb ? "📷 사진" : (p.text||"");
+  bar.classList.add("show");
+  bar.onclick=(e)=>{
+    if(e.target.closest(".pin-x")){ e.stopPropagation(); unpinMessage(); return; }
+    scrollToMessage(p.id);
+  };
+}
+
+/* ----- 반응(이모지) — 완성돼 있으나 잠긴 코드(FEATURE_REACTIONS=false, APP_VERSION 주석 참조) -----
+   메시지당 사용자별 이모지 1개, 다시 누르면 토글(해제). 신규 rules 케이스(제안, 미배포)가 있어야
+   동작한다 — 승인 전엔 이 함수 자체가 호출되지 않도록 위 이벤트 바인딩에서 막아뒀다. */
+async function toggleReaction(id, emo){
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
+  const cur=(d.data().reactions && d.data().reactions[fb.uid]) || null;
+  const reactions=Object.assign({}, d.data().reactions||{});
+  if(cur===emo) delete reactions[fb.uid]; else reactions[fb.uid]=emo; // 같은 이모지 재탭=해제, 다른 이모지=교체
+  await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",id), { reactions }).catch(err=>{
+    console.error(err); toast(isDeniedErr(err) ? "아직 지원되지 않아요" : "반응을 남기지 못했어요");
+  });
+}
+
+/* ----- 전달(=다이어리에 저장, 재해석) -----
+   커플앱은 대화방이 1개뿐이라 "다른 방으로 전달"이 성립하지 않는다 — "이 메시지를 기록(다이어리)으로
+   남기기"로 치환(사장님 보고 시 재해석 근거로 명시). 기존 diary create 경로(authorUid 본인·비dissolved만
+   검증, 필드 제한 없음)를 그대로 재사용 — 신규 rules 불필요. 사진 메시지는 원본(1280px)까지 복사해
+   다이어리 사진과 동일한 화질로 보관한다(썸네일만 복사하는 손쉬운 길 대신 실제 원본 1회 read 재사용). */
+async function forwardMessageToDiary(id){
+  if(!pairId || (currentPairData && currentPairData.status==="dissolved")){ toast("이 공간은 정리된 상태예요"); return; }
+  const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
+  const dat=d.data();
+  if(!dat.thumb && dat.text===DELETED_TEXT_MARKER){ toast("삭제된 메시지는 저장할 수 없어요"); return; }
+  try{
+    const entryRef=M.doc(M.collection(fb.db,"pairs",pairId,"diary"));
+    if(dat.thumb){
+      const remaining=PHOTO_CAP-photoCount();
+      if(remaining<=0){ toast("사진 보관함이 가득 찼어요 — 다이어리·채팅 합쳐 "+PHOTO_CAP+"장까지예요"); return; }
+      const orig=await M.getDoc(M.doc(fb.db,"pairs",pairId,"messages",id,"photos",dat.thumb.photoId));
+      if(!orig.exists()){ toast("원본 사진을 찾지 못했어요"); return; }
+      const od=orig.data();
+      await M.setDoc(entryRef, { date:todayStr(), text:"", authorUid:fb.uid,
+        thumbs:[{photoId:dat.thumb.photoId, w:dat.thumb.w, h:dat.thumb.h, bytes:dat.thumb.bytes}],
+        photoCount:1, createdAt:M.serverTimestamp(), updatedAt:M.serverTimestamp() });
+      await M.setDoc(M.doc(fb.db,"pairs",pairId,"diary",entryRef.id,"photos",dat.thumb.photoId),
+        { bytes:od.bytes, mime:od.mime||"image/jpeg", w:od.w, h:od.h, authorUid:fb.uid, createdAt:M.serverTimestamp() });
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId), { photoCount: photoCount()+1 });
+    } else {
+      await M.setDoc(entryRef, { date:todayStr(), text:dat.text||"", authorUid:fb.uid,
+        thumbs:[], photoCount:0, createdAt:M.serverTimestamp(), updatedAt:M.serverTimestamp() });
+    }
+    toast("다이어리에 저장했어요");
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"저장 권한이 없어요":"저장하지 못했어요"); }
+}
+
+/* ----- 답장 원문으로 스크롤 ----- 이미 로드된(과거 페이지+실시간 창) 범위에 없으면 몇 페이지 더
+   불러와 시도하고, 그래도 없으면(오래된 대화) 안내만 — 허구로 "찾았다"고 하지 않는다. */
+async function scrollToMessage(id){
+  let el=document.querySelector('[data-msgid="'+id+'"]');
+  let tries=0;
+  while(!el && !_noMoreOlder && tries<6){
+    await loadOlderMessages();
+    await new Promise(r=>setTimeout(r,0)); // _loadingOlder 해제(매크로태스크 지연) 대기 — 재발방지 주석(loadOlderMessages) 참조
+    el=document.querySelector('[data-msgid="'+id+'"]');
+    tries++;
+  }
+  if(!el){ toast("더 이전 대화라 바로 이동하지 못했어요 — 위로 스크롤해서 찾아보세요"); return; }
+  el.scrollIntoView({behavior:"smooth", block:"center"});
+  el.classList.add("flash-highlight");
+  setTimeout(()=>el.classList.remove("flash-highlight"), 1200);
+}
+
+/* ----- 선택(다중선택) 모드 -----
+   진입: 메뉴의 "선택" 또는 곧바로 toggleSelectMsg 호출. #msgList에 .selecting 클래스만 토글하므로
+   재렌더 없이 즉시 반응(각 행의 .selchk는 항상 DOM에 존재, CSS로만 노출). */
+function enterSelectMode(initialId){
+  if(_editingMsgId) cancelEditMessage();
+  if(_replyingTo) cancelReply();
+  _selectMode=true;
+  _selectedIds.clear();
+  if(initialId) _selectedIds.add(initialId);
+  document.getElementById("msgList").classList.add("selecting");
+  document.querySelectorAll("#msgList .row").forEach(row=>{
+    const el=row.querySelector("[data-msgid]");
+    row.classList.toggle("selected", !!(el && _selectedIds.has(el.dataset.msgid)));
+  });
+  document.getElementById("chatForm").style.display="none";
+  document.getElementById("attachMenu").style.display="none";
+  document.getElementById("selectBar").style.display="flex";
+  updateSelectBar();
+}
+function exitSelectMode(){
+  _selectMode=false;
+  _selectedIds.clear();
+  const list=document.getElementById("msgList"); if(list) list.classList.remove("selecting");
+  document.querySelectorAll("#msgList .row.selected").forEach(row=>row.classList.remove("selected"));
+  document.getElementById("selectBar").style.display="none";
+  document.getElementById("chatForm").style.display="flex";
+}
+function toggleSelectMsg(id){
+  if(!_selectMode){ enterSelectMode(id); return; }
+  if(_selectedIds.has(id)) _selectedIds.delete(id); else _selectedIds.add(id);
+  const el=document.querySelector('[data-msgid="'+id+'"]'); const row=el && el.closest(".row");
+  if(row) row.classList.toggle("selected", _selectedIds.has(id));
+  if(!_selectedIds.size){ exitSelectMode(); return; }
+  updateSelectBar();
+}
+function updateSelectBar(){
+  const c=document.getElementById("selectBarCount"); if(c) c.textContent=_selectedIds.size+"개 선택됨";
+}
+async function bulkCopySelected(){
+  const ordered=allChatMsgDocs().filter(d=>_selectedIds.has(d.id));
+  const texts=[]; let skipped=0;
+  ordered.forEach(d=>{ const v=d.data(); if(!v.thumb && v.text && v.text!==DELETED_TEXT_MARKER) texts.push(v.text); else skipped++; });
+  if(!texts.length){ toast("복사할 텍스트가 없어요"); return; }
+  try{
+    await navigator.clipboard.writeText(texts.join("\n"));
+    toast(skipped ? texts.length+"개 복사(사진 "+skipped+"개 제외)" : texts.length+"개 복사했어요");
+  }catch(e){ toast("복사를 지원하지 않는 기기예요"); }
+}
+async function bulkDeleteSelected(){
+  const ordered=allChatMsgDocs().filter(d=>_selectedIds.has(d.id));
+  const eligible=ordered.filter(d=>{ const v=d.data(); return v.sender===fb.uid && !v.thumb && v.text!==DELETED_TEXT_MARKER; });
+  const skipped=ordered.length-eligible.length;
+  if(!eligible.length){ toast("삭제할 수 있는 내 메시지가 없어요"); return; }
+  if(!confirm(eligible.length+"개 메시지를 삭제할까요?"+(skipped?" (상대 메시지·사진 "+skipped+"개는 제외돼요)":""))) return;
+  let ok=0, fail=0;
+  for(const d of eligible){
+    try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",d.id), { text:DELETED_TEXT_MARKER, editedAt:M.serverTimestamp() }); ok++; }
+    catch(e){ console.error(e); fail++; }
+  }
+  toast(fail ? ok+"개 삭제, "+fail+"개 실패" : ok+"개 삭제했어요"+(skipped?" ("+skipped+"개 제외)":""));
+  exitSelectMode();
+}
 
 /* 채팅 사진 전송 — 다이어리와 동일 규격(1280 q75 + 썸네일 320 q65). 썸네일은 메시지 문서에 인라인,
    원본은 messages/{id}/photos/{photoId}에 Bytes. 캡은 pair.photoCount 합산(다이어리+채팅 공용 50장). */
@@ -3989,6 +4372,31 @@ document.addEventListener("pointerdown", e=>{
   const m=document.getElementById("msgMenu");
   if(m && m.classList.contains("show") && !m.contains(e.target)) hideMsgMenu();
 });
+/* 텔레그램식 메뉴 나머지 버튼(v0.8.14) — 전부 "메뉴가 열려있던 대상(msgMenu.dataset.target)"을
+   대상으로 동작, 클릭 즉시 메뉴부터 닫는다(기존 msgMenuEdit과 동일 패턴). */
+function _menuTarget(){ return document.getElementById("msgMenu").dataset.target; }
+document.getElementById("msgMenuReply").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) startReply(id); });
+document.getElementById("msgMenuCopy").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) copyMessageText(id); });
+document.getElementById("msgMenuForward").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) forwardMessageToDiary(id); });
+document.getElementById("msgMenuPin").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) pinMessage(id); });
+document.getElementById("msgMenuSelect").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) enterSelectMode(id); });
+document.getElementById("msgMenuDelete").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) deleteMessageSoft(id); });
+/* 반응 이모지 바 — FEATURE_REACTIONS 승인 전엔 showMsgMenu가 항상 숨겨두므로 이 리스너들은 실질
+   무동작 상태다(사장님 GO + rules 배포 후 플래그만 true로 바꾸면 그대로 동작). */
+document.getElementById("msgReactMore").addEventListener("click", ()=>{ document.getElementById("msgReactMoreRow").classList.toggle("show"); });
+document.querySelectorAll("#msgReactRow [data-emo], #msgReactMoreRow [data-emo]").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    if(!FEATURE_REACTIONS) return; // 승인 전 잠금
+    const id=_menuTarget(); hideMsgMenu();
+    if(id) toggleReaction(id, btn.dataset.emo);
+  });
+});
+/* 답장 배너 취소 */
+document.getElementById("btnCancelReply").addEventListener("click", cancelReply);
+/* 선택 모드 액션바 */
+document.getElementById("btnSelectCopy").onclick=bulkCopySelected;
+document.getElementById("btnSelectDelete").onclick=bulkDeleteSelected;
+document.getElementById("btnSelectCancel").onclick=exitSelectMode;
 document.getElementById("btnSettings").onclick=()=>{ showTab("settings"); };
 document.getElementById("btnHomeSettings").onclick=()=>{ showTab("settings"); };
 ["btnHomeRefresh"].forEach(id=>{ const el=document.getElementById(id); if(el) el.onclick=refreshApp; });
