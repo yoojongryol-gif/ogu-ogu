@@ -232,6 +232,28 @@ service cloud.firestore {
           && pairOf(pairId).status != "dissolved"
           && !('readAt' in resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+        // 케이스 K(2026-08-27): 이모지 반응 — 어느 멤버든 "자기 uid 키만" reactions map에 추가/변경/삭제.
+        //   기존 update 2건은 (a)발신자 본인만(수정) (b)수신자만·1회만(readAt)이라 "발신자가 아닌 멤버가
+        //   자기 키만 거는" 이 패턴을 커버하지 못해 신규 케이스가 필요하다. 패턴 자체는 케이스 D
+        //   (pairs.lastReadAt의 본인 키만 갱신)를 메시지 문서·map 필드에 그대로 옮긴 것.
+        //   · affectedKeys().hasOnly(['reactions']) → text/sender/ts/editedAt/readAt/hasPhoto/thumb 등
+        //     다른 필드는 이 경로로 절대 못 바꾼다(기존 두 케이스와 동일한 화이트리스트 철학).
+        //   · ★resource.data.get('reactions', {}).diff(...) → "반응이 아직 하나도 없는" 문서에도 키 제한이
+        //     똑같이 걸린다. (2026-08-27 계획서 초안은 `!('reactions' in resource.data) ||` 분기를 뒀는데,
+        //     이 분기가 참이면 뒤 키검사가 통째로 건너뛰어져 "첫 반응"을 다는 사람이 같은 쓰기에 상대 uid
+        //     키까지 심을 수 있었다 = 상대 반응 위조. 반응이 없는 상태가 모든 메시지의 초기 상태이므로
+        //     사실상 전 메시지가 대상이었다. 배포 전 검토에서 발견해 기본값 {} 방식으로 봉합.)
+        //   · 값 제한(is string && size()<=32) → 자기 키에 수백 KB짜리 문자열을 실어 메시지 문서(1MiB
+        //     한도)를 부풀리고 상대의 매 스냅샷 수신량을 키우는 경로 차단. 이모지 1개는 최대 3~6이라
+        //     32는 ZWJ 조합 이모지까지 넉넉히 수용한다. 키 제거(반응 해제)는 값 검사를 건너뛴다.
+        allow update: if isMember(pairOf(pairId))
+          && pairOf(pairId).status != "dissolved"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.reactions is map
+          && resource.data.get('reactions', {}).diff(request.resource.data.reactions).affectedKeys().hasOnly([request.auth.uid])
+          && (!(request.auth.uid in request.resource.data.reactions)
+              || (request.resource.data.reactions[request.auth.uid] is string
+                  && request.resource.data.reactions[request.auth.uid].size() <= 32));
         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
