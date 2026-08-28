@@ -925,13 +925,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
         <button type="button" class="on" id="evtTypeOnce" data-type="once">한 번</button>
         <button type="button" id="evtTypeAnnual" data-type="annual">매년 반복(기념일)</button>
       </div>
-      <!-- 날짜 범위 연속 선택기(2026-08-28 사장님 지시 — 시작·종료 분리 입력 제거) — 시작일 탭 →
-           종료일 탭으로 기간 확정, 같은 날 재탭/한 번 탭은 하루 일정. 기존 renderCalendar()와 같은
-           .cal/.cal-grid/.cal-d 스타일 재사용(새 컴포넌트 없음), rng 밴드 표시도 동일. -->
-      <div class="cal" id="evtRangeCal" style="margin-bottom:10px">
-        <div class="cal-nav"><button type="button" id="evtRangePrev" aria-label="이전 달">‹</button><span class="m" id="evtRangeMonthLabel"></span><button type="button" id="evtRangeNext" aria-label="다음 달">›</button></div>
-        <div class="cal-grid" id="evtRangeGrid"></div>
-      </div>
+      <!-- 날짜 범위 연속 선택기(2026-08-28 사장님 지시 — 시작·종료 분리 입력 제거, 12:55 실기기
+           지적 "달력이 두 번" 수리) — 별도 달력을 새로 만들지 않는다. 화면 위쪽의 단 하나뿐인 달력
+           (#calBox, renderCalendar())이 이 폼이 열려 있는 동안엔 그대로 날짜 범위 선택기로 겸용된다
+           (탭=evtRangeTapDay, 진행 중인 범위를 rng 밴드로 표시). 여기엔 그 결과 요약 한 줄만 둔다. -->
       <div class="hint" id="evtRangeSummary" style="text-align:center; margin:-4px 0 10px"></div>
       <input class="fi" id="evtMemo" maxlength="80" placeholder="메모 (선택)" autocomplete="off">
       <button class="primary-btn" id="btnAddEvt" style="max-width:none">추가하기</button>
@@ -958,6 +955,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     </div>
     <div class="sec-label">다가오는 일정</div>
     <div id="upcomingList"></div>
+    <button type="button" class="secondary-btn" id="btnMoreEvt" style="display:none;max-width:none;margin-top:var(--s3)">더 보기</button>
   </div>
 </div>
 
@@ -985,6 +983,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <button class="ghost-btn" id="btnCancelDiaryEdit" style="display:none;width:100%">수정 취소</button>
     </div>
     <div id="diaryBody"></div>
+    <button type="button" class="secondary-btn" id="btnMoreDiary" style="display:none;max-width:none;margin-top:var(--s3)">더 보기</button>
   </div>
 </div>
 
@@ -1329,7 +1328,14 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.16"; // v0.8.16(2026-08-28, 사장님 지시 "일정 안에서 하루 일과를 시간단위로") —
+const APP_VERSION = "0.8.17"; // v0.8.17(2026-08-28 13:23, 사장님 지적 "달력을 위아래 두 번 띄울 필요 없이
+// 한 군데서") — v0.8.16의 "날짜 범위 연속 선택기"가 반쪽 상태로 배포됐던 걸 완주: 등록/수정 폼 안에
+// 별도 달력(#evtRangeCal)을 새로 만들어 화면 위쪽 달력(#calBox)과 나란히 "두 번" 보이던 게 실체.
+// #evtRangeCal을 제거하고 #calBox 하나만 남긴 뒤(_evtPicking 플래그) 폼이 열린 동안엔 그 달력이
+// 그대로 범위 선택기로 겸용되도록 이벤트 위임을 다시 배선(renderEvtRangeCal 삭제, renderCalendar로
+// 흡수). 일정(이벤트)은 날짜 단위 데이터라 시간 입력은 없음 — "하루 일과" 시간블록(blkStart/blkEnd,
+// +1h 체이닝)은 기존 그대로 별개 섹션(저장된 일정을 연 뒤에만 노출), 이번 수리와 무관·무변경.
+// ── 이하 v0.8.16(2026-08-28, 사장님 지시 "일정 안에서 하루 일과를 시간단위로") 주석 ——
 // 일정 상세(수정 폼)에 "하루 일과" 섹션 신설: 시간블록(시작·종료·내용, 선택 이모지/장소) 추가·수정·삭제,
 // 시작시간 자동 정렬+겹침 표시(⚠️), 기간 일정은 날짜별 탭. rules: events/{eventId} 아래 blocks 서브컬렉션
 // 신설(+14줄, 백업 dev/backups/firestore.rules.20260828_120408.bak) — 이벤트 자체(본인만 수정)와 달리
@@ -1543,6 +1549,11 @@ let _payRequested=false, _payChecked=false, _prevPremium=false, _premSeen=false;
 /* 공간이 바뀌거나(로그아웃·관계정리·재연결) 하면 결제 접수 캐시도 함께 비운다 — 남의/이전 공간의 상태가 새지 않도록. */
 function resetPayState(){ _payRequested=false; _payChecked=false; _prevPremium=false; _premSeen=false; }
 let _events=[], _diary=[];
+/* 429(읽기 쿼터 소진) 재발방지(v0.8.17, 2026-08-28 13:23, RCA:
+   C:/종합상사/data/meetings/2026-08-28_5959_firestore_429_rca.md §3) — watchEvents/watchDiary가
+   상한 없이 컬렉션 전체를 onSnapshot으로 읽던 구조를 최근 N건으로 캡. "더 보기" 탭 시 상한을
+   늘려 재구독(watchEvents/watchDiary 재호출, 기존 unsub 가드가 리스너 중복을 막아줌). */
+let _eventsLimit=200, _diaryLimit=100, _eventsMaybeMore=false, _diaryMaybeMore=false;
 let _schedBlocks=[], unsubBlocks=null, _schedDay=null, _editingBlkId=null; // 하루 일과(2026-08-28)
 /* 다이어리 댓글(2026-08-08) — diary/{entryId}/comments 서브컬렉션. 뱃지(개수)는 비실시간(getDocs, _commentCounts) —
    댓글 목록을 펼친 항목만 실시간 구독(onSnapshot, _commentUnsubs)해서 리스너를 아껴쓴다. */
@@ -1553,7 +1564,8 @@ function resetCommentState(){
 }
 let _calY=null, _calM=null, _selDate=null;
 let _evtType="once", _diaryView="list", _diarySel=[], _editingDiaryId=null, _editingPhotos=[];
-let _evtStart=null, _evtEnd=null, _evtPickY=null, _evtPickM=null; // 일정 날짜 범위 연속 선택기(2026-08-28)
+let _evtStart=null, _evtEnd=null, _evtPicking=false; // 일정 날짜 범위 연속 선택기(2026-08-28) — _evtPicking=true인 동안엔
+// #calBox(위쪽 달력, 단 하나뿐)가 브라우징용이 아니라 등록/수정 폼의 범위 선택기로 겸용된다(v0.8.17, 13:23 수리).
 const _thumbUrlCache={};
 let _lastAnimatedId=null;
 let _prevRejoinOpen=false;
@@ -2354,7 +2366,7 @@ async function googleSignIn(){
 async function doSignOut(){
   try{
     if(unsubPair) unsubPair(); if(unsubMsgs) unsubMsgs(); if(unsubEvents) unsubEvents(); if(unsubDiary) unsubDiary(); stopWatchBlocks();
-    _events=[]; _diary=[]; currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetCommentState(); resetPayState();
+    _events=[]; _diary=[]; _eventsLimit=200; _diaryLimit=100; _eventsMaybeMore=false; _diaryMaybeMore=false;currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetCommentState(); resetPayState();
     // 로그아웃: 이 기기의 공간 포인터·알림 토큰만 비운다(서버의 공간/기록은 보존). 다른 구글 계정이 이어서
     //   로그인해도 남의 공간이 잘못 붙지 않도록 pairId를 반드시 비운다.
     localStorage.removeItem("oguogu.pairId");
@@ -3475,18 +3487,26 @@ function nextOccurrence(ev){
 /* ---- 구독 ---- */
 function watchEvents(){
   if(unsubEvents) unsubEvents();
-  const q=M.query(M.collection(fb.db,"pairs",pairId,"events"), M.orderBy("date","asc"));
+  // 429 재발방지(v0.8.17) — date desc + limit(_eventsLimit): 컬렉션이 상한을 넘기면 "가장 미래에 가까운"
+  // N건이 우선 담긴다("다가오는 일정"·달력 근처 브라우징이 주 용도라 최신 쪽을 우선). 정직한 한계:
+  // 상한을 넘긴 뒤에는 아주 옛날 과거 일정(annual 기준일이 오래된 경우 포함)이 "더 보기"를 눌러야
+  // 보인다 — 출시 24일차인 지금은 총 문서 수가 상한에 한참 못 미쳐 사실상 전량이 담김.
+  const q=M.query(M.collection(fb.db,"pairs",pairId,"events"), M.orderBy("date","desc"), M.limit(_eventsLimit));
   unsubEvents=M.onSnapshot(q, snap=>{
     _events=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+    _eventsMaybeMore = snap.docs.length>=_eventsLimit; // 딱 상한만큼 찼으면 더 있을 가능성(휴리스틱, chat _noMoreOlder와 반대 극성 재사용)
     if(currentTab==="schedule" && inAppTabs()) renderSchedule();
     else if(currentTab==="home" && inAppTabs()) renderHomeUpcoming();
   }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
 }
 function watchDiary(){
   if(unsubDiary) unsubDiary();
-  const q=M.query(M.collection(fb.db,"pairs",pairId,"diary"), M.orderBy("date","desc"));
+  // 429 재발방지(v0.8.17) — 같은 근거(RCA §3). 정렬은 기존 그대로(desc, 최신 기록 우선 — _diary.slice(0,2)
+  // 등 기존 화면이 이 순서에 의존) + limit(_diaryLimit)만 추가.
+  const q=M.query(M.collection(fb.db,"pairs",pairId,"diary"), M.orderBy("date","desc"), M.limit(_diaryLimit));
   unsubDiary=M.onSnapshot(q, snap=>{
     _diary=snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+    _diaryMaybeMore = snap.docs.length>=_diaryLimit;
     if(currentTab==="diary" && inAppTabs()) renderDiary();
     else if(currentTab==="home" && inAppTabs()) renderHomeDiary();
   }, err=>{ console.error(err); if(isDeniedErr(err)&&pairId) recoverFromDeadPair(); });
@@ -3528,6 +3548,10 @@ function renderCalendar(){
   const daysInMonth=new Date(_calY,_calM+1,0).getDate();
   const today=startOfDay(new Date());
   const anniv=parseYMD(profileOf().anniversary);
+  // 등록/수정 폼이 열려 있는 동안(_evtPicking)엔 이 달력이 범위 선택기로 겸용된다 — 진행 중인
+  // 선택(_evtStart~_evtEnd)을 rng/sel로 보여준다(저장된 일정 밴드는 이 동안 잠시 양보).
+  const rs=_evtPicking && _evtStart ? parseYMD(_evtStart) : null;
+  const re=_evtPicking && _evtEnd ? parseYMD(_evtEnd) : null;
   let html='<div class="cal-nav"><button id="calPrev" aria-label="이전 달">‹</button><span class="m">'+_calY+'년 '+(_calM+1)+'월</span><button id="calNext" aria-label="다음 달">›</button></div><div class="cal-grid">';
   ["일","월","화","수","목","금","토"].forEach(w=>html+='<div class="cal-wd">'+w+'</div>');
   for(let i=0;i<startWd;i++) html+='<div class="cal-d other"></div>';
@@ -3536,19 +3560,29 @@ function renderCalendar(){
     const isToday=startOfDay(dt).getTime()===today.getTime();
     const isAnniv=anniv && anniv.getMonth()===_calM && anniv.getDate()===d;
     const hasEvt=eventsOnDay(dt).length>0;
-    const rr=rangeRoleOnDay(dt);
-    const rngCls = rr ? (' rng'+(rr.start?' rng-s':'')+(rr.end?' rng-e':'')) : '';
-    html+='<button class="cal-d'+(isToday?' today':'')+(_selDate===ds?' sel':'')+rngCls+'" data-day="'+ds+'">'+d
+    let rngCls='', selCls='';
+    if(_evtPicking){
+      const inRange = rs && re && rs<re && dt>=rs && dt<=re;
+      rngCls = inRange ? (' rng'+(dt.getTime()===rs.getTime()?' rng-s':'')+(dt.getTime()===re.getTime()?' rng-e':'')) : '';
+      selCls = (!inRange && _evtStart===ds) ? ' sel' : '';
+    } else {
+      const rr=rangeRoleOnDay(dt);
+      rngCls = rr ? (' rng'+(rr.start?' rng-s':'')+(rr.end?' rng-e':'')) : '';
+      selCls = _selDate===ds ? ' sel' : '';
+    }
+    html+='<button class="cal-d'+(isToday?' today':'')+selCls+rngCls+'" data-day="'+ds+'">'+d
       +(isAnniv?'<span class="anv">🩷</span>':'')+(hasEvt?'<span class="dot"></span>':'')+'</button>';
   }
   box.innerHTML=html+'</div>';
   document.getElementById("calPrev").onclick=()=>{ _calM--; if(_calM<0){_calM=11;_calY--;} renderCalendar(); };
   document.getElementById("calNext").onclick=()=>{ _calM++; if(_calM>11){_calM=0;_calY++;} renderCalendar(); };
   box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>{
+    const ds=el.dataset.day;
+    if(_evtPicking){ evtRangeTapDay(ds); return; } // 등록/수정 폼이 열려 있으면 이 달력은 범위 선택기로만 동작
     // 달력 날짜 탭(2026-08-25 수리): 그 날 등록된 일정이 있으면 먼저 그 목록(제목·기간·메모)을
     // 보여준다 — 예전엔 무조건 빈 등록폼만 열려 "확인하려고 눌렀는데 등록 화면만 나온다"는 혼란이
     // 있었다. 일정이 없는 날은 기존처럼 바로 등록폼을 열어준다(빈 날 빠른 추가 편의는 그대로 유지).
-    _selDate=el.dataset.day;
+    _selDate=ds;
     renderCalendar();
     const hasEvt = eventsOnDay(parseYMD(_selDate)).length>0;
     renderDayEvents(_selDate);
@@ -3556,24 +3590,26 @@ function renderCalendar(){
       const list=document.getElementById("dayEventList"); if(list) list.scrollIntoView({behavior:"smooth", block:"center"});
     } else {
       resetEvtRange(_selDate);
-      document.getElementById("evtForm").style.display="block";
+      openEvtForm();
       const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
       const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
     }
   });
+  if(_evtPicking){ const sum=document.getElementById("evtRangeSummary"); if(sum) sum.textContent=evtRangeSummaryText(); }
 }
 /* ===== 일정 날짜 범위 연속 선택기(2026-08-28, 사장님 지시 "시작과 종료를 따로 기입해야 되는데
-   ... 시작 창에서 종료 시점까지 바로 체크할 수 있도록") =====
-   시작/종료 입력을 하나로 통합 — 달력 하나에서 탭만으로 기간을 정한다. 저장 필드(date/endDate)는
-   무변경, UI만 통합. 상태머신(3분기, evtRangeTapDay 참조):
+   ... 시작 창에서 종료 시점까지 바로 체크할 수 있도록", 13:23 재지적 "달력이 두 번" 최종 수리) =====
+   전용 달력을 따로 두지 않는다 — 화면 위 단 하나뿐인 달력(#calBox, renderCalendar())이 등록/수정
+   폼이 열려 있는 동안(_evtPicking=true)엔 그대로 범위 선택기로 겸용된다(탭 위임은 renderCalendar
+   안에서 처리). 저장 필드(date/endDate)는 무변경, UI만 통합. 상태머신(3분기, evtRangeTapDay 참조):
      ① 무선택 또는 이미 기간(start≠end) 확정 상태에서 탭 → 새로 시작(그 날 하루 일정)
      ② 하루 일정 상태에서 같은 날 재탭 → 그대로 하루 일정("같은 날 두 번 탭 = 하루 일정")
      ③ 하루 일정 상태에서 다른 날 탭 → 그 날까지 기간 확정("시작일 탭 → 종료일 탭") */
 function resetEvtRange(dateStr){
-  _evtStart=dateStr; _evtEnd=dateStr;
+  _evtStart=dateStr; _evtEnd=dateStr; _evtPicking=true;
   const d=parseYMD(dateStr) || new Date();
-  _evtPickY=d.getFullYear(); _evtPickM=d.getMonth();
-  renderEvtRangeCal();
+  _calY=d.getFullYear(); _calM=d.getMonth();
+  renderCalendar();
 }
 function evtRangeTapDay(ds){
   if(_evtType==="annual"){ _evtStart=ds; _evtEnd=ds; } // 기념일은 항상 단일일(기간 조합 제외, 기존 정책 유지)
@@ -3581,37 +3617,12 @@ function evtRangeTapDay(ds){
   else if(ds===_evtStart){ /* 이미 하루 일정 상태에서 같은 날 재탭 — 그대로 유지 */ }
   else if(ds<_evtStart){ _evtEnd=_evtStart; _evtStart=ds; }
   else { _evtEnd=ds; }
-  renderEvtRangeCal();
+  renderCalendar();
 }
 function evtRangeSummaryText(){
   if(!_evtStart) return "날짜를 선택해주세요";
   if(_evtStart===_evtEnd) return fmtDateK(_evtStart);
   return rangeLabel(_evtStart,_evtEnd) || fmtDateK(_evtStart);
-}
-function renderEvtRangeCal(){
-  const box=document.getElementById("evtRangeGrid"); if(!box) return;
-  if(_evtPickY==null){ const n=parseYMD(_evtStart) || new Date(); _evtPickY=n.getFullYear(); _evtPickM=n.getMonth(); }
-  const startWd=new Date(_evtPickY,_evtPickM,1).getDay();
-  const daysInMonth=new Date(_evtPickY,_evtPickM+1,0).getDate();
-  const today=startOfDay(new Date());
-  const s=_evtStart?parseYMD(_evtStart):null, e=_evtEnd?parseYMD(_evtEnd):null;
-  const lbl=document.getElementById("evtRangeMonthLabel"); if(lbl) lbl.textContent=_evtPickY+"년 "+(_evtPickM+1)+"월";
-  let html='';
-  ["일","월","화","수","목","금","토"].forEach(w=>html+='<div class="cal-wd">'+w+'</div>');
-  for(let i=0;i<startWd;i++) html+='<div class="cal-d other"></div>';
-  for(let d=1;d<=daysInMonth;d++){
-    const dt=new Date(_evtPickY,_evtPickM,d), ds=isoDate(dt);
-    const isToday=startOfDay(dt).getTime()===today.getTime();
-    const inRange = s && e && s<e && dt>=s && dt<=e;
-    const rngCls = inRange ? (' rng'+(dt.getTime()===s.getTime()?' rng-s':'')+(dt.getTime()===e.getTime()?' rng-e':'')) : '';
-    const selCls = (!inRange && _evtStart===ds) ? ' sel' : '';
-    html+='<button type="button" class="cal-d'+(isToday?' today':'')+selCls+rngCls+'" data-day="'+ds+'">'+d+'</button>';
-  }
-  box.innerHTML=html;
-  document.getElementById("evtRangePrev").onclick=()=>{ _evtPickM--; if(_evtPickM<0){_evtPickM=11;_evtPickY--;} renderEvtRangeCal(); };
-  document.getElementById("evtRangeNext").onclick=()=>{ _evtPickM++; if(_evtPickM>11){_evtPickM=0;_evtPickY++;} renderEvtRangeCal(); };
-  box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>evtRangeTapDay(el.dataset.day));
-  const sum=document.getElementById("evtRangeSummary"); if(sum) sum.textContent=evtRangeSummaryText();
 }
 /* 기간 라벨: "8/15 ~ 8/17 (2박 3일)". end<=start 이면 null(단일). */
 function rangeLabel(startStr, endStr){
@@ -3623,6 +3634,7 @@ function rangeLabel(startStr, endStr){
 }
 function renderUpcoming(){
   const el=document.getElementById("upcomingList"); if(!el) return;
+  const moreBtn=document.getElementById("btnMoreEvt"); if(moreBtn) moreBtn.style.display=_eventsMaybeMore?"block":"none"; // 429 재발방지(v0.8.17) — 상한(200) 도달 시에만 노출, items.length와 무관하게 항상 반영
   const today=startOfDay(new Date());
   const items=[];
   _events.forEach(ev=>{ const occ=nextOccurrence(ev); if(occ && daysBetween(today,occ)>=0) items.push({ev,occ}); });
@@ -3690,7 +3702,7 @@ function setEvtType(t){ _evtType=t;
   document.getElementById("evtTypeOnce").classList.toggle("on",t==="once");
   document.getElementById("evtTypeAnnual").classList.toggle("on",t==="annual");
   // 기념일(매년 반복)은 단일일만 — 이미 기간이 선택돼 있었으면 시작일 하루로 접는다(기간 조합 v1 제외, 기존 정책 유지)
-  if(t==="annual" && _evtStart){ _evtEnd=_evtStart; renderEvtRangeCal(); }
+  if(t==="annual" && _evtStart){ _evtEnd=_evtStart; renderCalendar(); }
 }
 let _editingEvtId=null;
 async function addEvent(){
@@ -3733,9 +3745,10 @@ function startEditEvent(id){
   // setEvtType("annual")의 단일일 축소 로직이 "이전 편집 세션의 stale _evtStart"를 참조하게 된다.
   _evtStart=ev.date||todayStr();
   _evtEnd=(ev.type!=="annual" && ev.endDate) ? ev.endDate : _evtStart;
-  const d0=parseYMD(_evtStart)||new Date(); _evtPickY=d0.getFullYear(); _evtPickM=d0.getMonth();
+  const d0=parseYMD(_evtStart)||new Date(); _calY=d0.getFullYear(); _calM=d0.getMonth();
+  _evtPicking=true;
   setEvtType(ev.type==="annual"?"annual":"once");
-  renderEvtRangeCal();
+  renderCalendar();
   document.getElementById("evtMemo").value=ev.memo||"";
   document.getElementById("btnAddEvt").textContent="수정하기";
   openEvtForm();
@@ -3931,6 +3944,7 @@ function renderDiary(){
     ? '<div class="cap-note">함께 담을 수 있는 사진은 '+PHOTO_CAP+'장까지예요. 오래된 기록의 사진을 정리하면 새 사진을 담을 수 있어요.'
       + (isPremium() ? '' : '<button class="cap-upsell" id="btnCapUpsell">💝 보관함 늘리기 (150장)</button>') + '</div>' : "";
   const up=document.getElementById("btnCapUpsell"); if(up) up.onclick=openPayModal;
+  const moreBtn=document.getElementById("btnMoreDiary"); if(moreBtn) moreBtn.style.display=_diaryMaybeMore?"block":"none"; // 429 재발방지(v0.8.17) — 상한(100) 도달 시에만 노출
   const body=document.getElementById("diaryBody"); if(!body) return;
   if(_diaryView==="grid") renderDiaryGrid(body); else renderDiaryList(body);
 }
@@ -4500,7 +4514,7 @@ function handleDissolved(){
   if(unsubEvents) unsubEvents();
   if(unsubDiary) unsubDiary();
   stopWatchBlocks();
-  _events=[]; _diary=[]; resetCommentState();
+  _events=[]; _diary=[]; _eventsLimit=200; _diaryLimit=100; _eventsMaybeMore=false; _diaryMaybeMore=false;resetCommentState();
   closeBreakup();
   hideLock();
   localStorage.removeItem("oguogu.pairId");
@@ -4521,7 +4535,7 @@ function recoverFromDeadPair(){
   if(unsubEvents) unsubEvents();
   if(unsubDiary) unsubDiary();
   stopWatchBlocks();
-  _events=[]; _diary=[]; resetCommentState();
+  _events=[]; _diary=[]; _eventsLimit=200; _diaryLimit=100; _eventsMaybeMore=false; _diaryMaybeMore=false;resetCommentState();
   localStorage.removeItem("oguogu.pairId");
   pairId=null; currentPairData=null; _lastMsgSnapshotDocs=null; resetChatPagination(); _prevRejoinOpen=false; resetPayState();
   hideLock();
@@ -4720,7 +4734,11 @@ document.getElementById("annivInput").addEventListener("change",e=>{ setProfile(
 
 /* 일정 컨트롤 */
 document.getElementById("btnSchedRefresh").onclick=refreshApp;
-function _hideEvtForm(){ const f=document.getElementById("evtForm"); if(f) f.style.display="none"; closeEventSchedSection(); }
+// 429 재발방지(v0.8.17) — 상한 도달 시에만 노출되는 "더 보기": 상한을 늘려 재구독(watchEvents 내부
+// unsub 가드가 리스너 중복을 막음, 리스너 누수 없음).
+document.getElementById("btnMoreEvt").onclick=()=>{ _eventsLimit+=200; watchEvents(); };
+function _hideEvtForm(){ const f=document.getElementById("evtForm"); if(f) f.style.display="none"; closeEventSchedSection();
+  _evtPicking=false; renderCalendar(); } // 폼이 닫히면 위쪽 달력은 다시 브라우징 모드로 복귀(v0.8.17)
 function openEvtForm(){ document.getElementById("evtForm").style.display="block"; navOpen("evtForm", _hideEvtForm); }
 function closeEvtForm(){ navCloseSelf("evtForm", _hideEvtForm); }   // 저장 완료·닫기 공통(history 정합)
 document.getElementById("btnToggleEvtForm").onclick=()=>{
@@ -4741,6 +4759,7 @@ document.getElementById("blkStart").addEventListener("change", onBlkStartChange)
 document.getElementById("blkEnd").addEventListener("change", updateBlkTimeHint);
 
 /* 다이어리 컨트롤 */
+document.getElementById("btnMoreDiary").onclick=()=>{ _diaryLimit+=100; watchDiary(); }; // 429 재발방지(v0.8.17), btnMoreEvt와 동일 패턴
 document.getElementById("diaryTabList").onclick=()=>setDiaryView("list");
 document.getElementById("diaryTabGrid").onclick=()=>setDiaryView("grid");
 function openDiaryForm(){ document.getElementById("diaryForm").style.display="block"; navOpen("diaryForm", closeDiaryForm); }
