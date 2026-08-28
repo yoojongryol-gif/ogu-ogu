@@ -286,6 +286,20 @@ service cloud.firestore {
           && pairOf(pairId).status != "dissolved";
         allow delete: if isMember(pairOf(pairId))
           && (resource.data.createdBy == request.auth.uid || pairOf(pairId).status == "dissolved");
+
+        // ── 하루 일과 시간블록(blocks, 2026-08-28 신설) ────────────────
+        //   이벤트 상세 안 "하루 일과". 이벤트 자체(본인 것만 수정)와 달리 "둘이 함께 짜는 시간표"라
+        //   멤버 누구나 만들고 고쳐 쓴다(createdBy는 작성자 표기용, 수정 잠금 아님). 이별 시 소거(purgeEventsAll).
+        match /blocks/{blockId} {
+          allow read: if isMember(pairOf(pairId));
+          allow create: if isMember(pairOf(pairId))
+            && request.resource.data.createdBy == request.auth.uid
+            && pairOf(pairId).status != "dissolved";
+          allow update: if isMember(pairOf(pairId))
+            && request.resource.data.createdBy == resource.data.createdBy
+            && pairOf(pairId).status != "dissolved";
+          allow delete: if isMember(pairOf(pairId));
+        }
       }
 
       // ── 다이어리(diary) ─────────────────────────────────────────────
