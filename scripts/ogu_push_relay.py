@@ -8,7 +8,10 @@ Firestore의 신규 대화 메시지를 감지해, 그 메시지를 "받는 쪽(
   - 본인 메시지엔 미발송(보낸 사람에게는 알림 X). 상대 멤버 토큰으로만.
   - 내용 미노출: notification 블록을 절대 넣지 않는다(data-only). 문구는 sw.js onBackgroundMessage가 고정.
   - 중복 발송 방지: (a) 프로세스 단일 인스턴스 락, (b) 메시지별 처리 상태(state.json)로 재발송 차단.
-  - 무료 읽기 한도 보수적: paired 목록은 드물게(기본 5분) 갱신, 메시지 폴링은 보수적 간격(기본 30초).
+  - 무료 읽기 한도 보수적: paired 목록은 드물게(기본 5분) 갱신, 메시지 폴링은 기본 120초.
+    ※ 비용 규칙(2026-08-28 RCA): Firestore는 결과 0건인 쿼리에도 문서 읽기 1건을 최소 과금한다.
+      따라서 읽기 비용 = (폴링 대상 pair 수) x (스윕 횟수) 이며 메시지 양과는 무관하다.
+      → 폴링 대상을 "FCM 토큰이 있는 paired"로 좁히고 폴링 간격을 늘리는 것이 유일한 비용 통제 수단.
   - 비밀(서비스계정 키)은 저장소 밖 경로에서 로드. 절대 커밋 금지.
 
 필요 패키지:  pip install firebase-admin
@@ -28,9 +31,12 @@ STATE_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay_state.json")
 LOCK_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay.lock")
 LOG_PATH = os.path.join(SECRETS_DIR, "ogu_push_relay.log")
 
-PAIRS_REFRESH_SEC = int(os.environ.get("OGU_PAIRS_REFRESH_SEC", "300"))   # paired 목록 갱신(보수적)
-POLL_SEC = int(os.environ.get("OGU_POLL_SEC", "30"))                       # 메시지 폴링 간격(보수적)
+# ⚠ 기본값 자체가 운영값이다. Startup(ogu-push-relay.vbs)은 환경변수를 주지 않고 기동하므로
+#   env 의존 설정은 무인 실행에 반영되지 않는다(2026-08-28 RCA P1).
+PAIRS_REFRESH_SEC = int(os.environ.get("OGU_PAIRS_REFRESH_SEC", "300"))   # 활성 pair 목록 갱신(보수적)
+POLL_SEC = int(os.environ.get("OGU_POLL_SEC", "120"))                      # 메시지 폴링 간격(30 → 120, 읽기 1/4)
 MSG_LIMIT = 20                                                             # 한 번에 처리할 신규 메시지 상한
+FREE_READ_QUOTA = 50000                                                    # Spark 무료 일일 문서 읽기 한도(비교용)
 
 os.makedirs(SECRETS_DIR, exist_ok=True)
 _handlers = [logging.FileHandler(LOG_PATH, encoding="utf-8")]
@@ -102,6 +108,26 @@ def _ts_ms(v):
         return 0
 
 
+def _has_token(meta):
+    """이 pair에 실제로 푸시를 받을 FCM 토큰이 하나라도 있는가(빈 문자열/None 제외)."""
+    return any((meta.get("fcmTokens") or {}).values())
+
+
+def _estimate_daily_reads(polled_pairs, total_pairs):
+    """하루 예상 문서 읽기 = 폴링대상 x 스윕수 + 활성pair수 x 목록갱신수.
+    (빈 쿼리도 1 read 최소 과금이므로 이 산술이 곧 비용이다.)
+    목록 갱신은 '경과 >= PAIRS_REFRESH_SEC인 첫 스윕'에 발화 → 실효 주기는 POLL_SEC의 배수."""
+    sweeps = 86400.0 / POLL_SEC
+    eff_refresh = max(1, -(-PAIRS_REFRESH_SEC // POLL_SEC)) * POLL_SEC   # ceil 배수
+    refreshes = 86400.0 / eff_refresh
+    msg_reads = polled_pairs * sweeps
+    list_reads = total_pairs * refreshes
+    total = msg_reads + list_reads
+    return ("약 %d건/일 = 폴링 %d개x%.0f스윕(%d) + 목록 %d개x%.0f회(%d) / 무료한도 %d의 %.0f%%"
+            % (total, polled_pairs, sweeps, msg_reads, total_pairs, refreshes, list_reads,
+               FREE_READ_QUOTA, total * 100.0 / FREE_READ_QUOTA))
+
+
 def main():
     if not os.path.exists(SA_KEY):
         log.error("서비스계정 키가 없습니다: %s", SA_KEY)
@@ -121,18 +147,32 @@ def main():
     once = "--once" in sys.argv
     pairs = {}
     pairs_loaded_at = 0
+    skip_logged = set()   # 토큰 없는 pair는 로그에 1회만 남긴다(로그 폭주 방지)
+    last_estimate = None
 
     while True:
         now = time.time()
-        # paired 목록 갱신(보수적)
+        # 활성 pair 목록 갱신(보수적)
         if now - pairs_loaded_at >= PAIRS_REFRESH_SEC or not pairs:
             pairs = load_paired(db)
             pairs_loaded_at = now
-            log.info("활성 pair %d개 로드", len(pairs))
+            polled = sum(1 for m in pairs.values() if m.get("status") == "paired" and _has_token(m))
+            log.info("활성 pair %d개 로드 (메시지 폴링 대상 %d개)", len(pairs), polled)
+            est = (polled, len(pairs))
+            if est != last_estimate:      # 규모가 바뀔 때만 1줄 — 사후 검증용 계측(RCA P2)
+                last_estimate = est
+                log.info("예상 일일 read %s", _estimate_daily_reads(polled, len(pairs)))
 
         sent = 0
         for pid, meta in list(pairs.items()):
             if meta.get("status") == "paired":
+                # 푸시 보낼 토큰이 하나도 없는 pair는 조회 자체가 낭비다(빈 쿼리도 1 read 과금).
+                # 테스트 잔재 pair가 여기서 걸러진다 — 2026-08-28 429 폭주의 근본 차단.
+                if not _has_token(meta):
+                    if pid not in skip_logged:
+                        skip_logged.add(pid)
+                        log.info("[%s] 구독 토큰 없음 → 메시지 폴링 스킵(이후 로그 생략)", pid)
+                    continue
                 sent += process_pair(db, messaging, pid, meta, state)          # 새 메시지 알림
             elif meta.get("joinRequest"):
                 sent += process_join_request(db, messaging, pid, meta, state)  # 합류 요청 알림
@@ -192,7 +232,11 @@ def process_join_request(db, messaging, pid, meta, state):
 
 def process_pair(db, messaging, pid, meta, state):
     """pair의 신규 메시지를 감지 → 상대 멤버 토큰으로 data-only 푸시. 발송 건수 반환.
-    비용 핵심: lastSeen '이후'(ts >) 만 쿼리 → 신규 메시지가 없으면 읽기 0건(무료 한도 보수적).
+    비용 핵심(2026-08-28 정정): 빈 쿼리도 Firestore는 문서 읽기 1건을 최소 과금한다.
+    구 주석의 "신규 메시지가 없으면 읽기 0건"은 오기였고, 이 오해가 429 폭주의 뿌리였다.
+    실제 비용 = (폴링 대상 pair 수) x (스윕 횟수)이며 메시지 양과 무관 → 호출부에서
+    토큰 없는 pair를 걸러내는 것(_has_token)이 유일한 비용 통제 수단이다.
+    lastSeen '이후'(ts >) 필터는 여전히 유효하나, 절약 효과는 '0건'이 아니라 '1건'까지다.
     첫 관측 pair는 백로그를 알림 없이 건너뛰고 기준시각만 now로 세팅(과거 메시지 무더기 발송/읽기 방지)."""
     from firebase_admin import firestore as _fs
     from datetime import datetime, timezone
@@ -205,7 +249,7 @@ def process_pair(db, messaging, pid, meta, state):
         after = datetime.fromtimestamp(last / 1000.0, timezone.utc)
         q = (db.collection("pairs").document(pid).collection("messages")
              .where("ts", ">", after).order_by("ts").limit(MSG_LIMIT))
-        docs = list(q.get())  # 신규 없으면 0건 읽기
+        docs = list(q.get())  # 신규가 없어도 최소 1 read 과금(빈 쿼리 = 0건이 아니다)
     except Exception as e:
         log.warning("[%s] 메시지 조회 실패: %s", pid, e)
         return 0
