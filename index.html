@@ -25,6 +25,16 @@
   · "꾸미기" = pairs 문서 theme/profile 필드를 바꾸면 상대 화면도 실시간 반영(기존 스냅샷 재사용).
   · v0.5.0: 하단 탭[채팅·일정·다이어리·설정] + events/diary/photos 서브컬렉션(사진=Bytes, 커플당 50장 캡)
     + 초대코드 TTL 24h·저장 착지 후 코드 공개(v0.4.2 fire-and-forget 결함 수리).
+  · v0.8.25(2026-09-18): 일정 캘린더 스티커 — 제목 없이 이모지만 달력에 크게(같은 날 3개까지,
+    점보다 우선), 일정 폼의 스티커 칸, 매년 반복 스티커 + 상세 "N일째 / N주년·D-n".
+    events에 선택 필드 sticker만 추가(rules·기존 필드 무변경).
+  · v0.8.26(2026-09-18 폰 피드백): 날짜 칸 **한 번 탭 = 스티커 시트**(길게 누르기 폐기), 기존 날짜 탭
+    동작은 시트 안 "＋ 일정 추가"·"이 날 일정 보기"로 흡수, 세트 14종+라벨(💢 다툼·🤝 화해),
+    달력·시트 텍스트 선택(블록 지정) 차단.
+  · v0.8.27(2026-09-18 사장님 지시 2건): ①달력 칸에 **일정 제목 그대로 표기**(칸당 3줄, 스티커가
+    있으면 2줄, 넘치면 "+N" / 기간 일정은 이어지는 바, 매년 반복 기념일도 표기) ②달력 아래
+    "다가오는 일정 (N)" 목록을 **탭 1회 접기/펼치기 토글**(기본 접힘, 선택은 localStorage 기억).
+    표시 전용 변경 — events 스키마·rules·발행 경로 무변경.
 ================================================================================
 -->
 <style>
@@ -362,6 +372,17 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .quote-block .qt{font-size:12px; opacity:.85; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:52vw}
 /* 삭제된 메시지(소프트 삭제 — 텍스트를 마커로 덮어써 표시, rules 무변경. 아래 JS DELETED_TEXT_MARKER 주석 참조) */
 .bubble.bubble-deleted .msgtext{opacity:.62; font-style:italic}
+/* 이모지 전용 메시지 크게 보기(D, v0.8.21, 2026-09-01 사장님 지시 "5배는 크게") — 카톡식으로
+   말풍선 배경/그림자를 없애고 글자만 확대. background는 .me/.you 배경(위쪽 293~294행)보다
+   특이도가 낮아 !important로 확실히 덮는다(선택자 경합 방지, 다른 배경 규칙 자체는 무변경).
+   1개=78px(≈5.03x, --t-body:15.5px 기준) / 2개=60px(≈3.87x) / 3개=48px(≈3.1x) 단계 축소.
+   반응 이모지 배지(.reactChip, v0.8.15)는 별개 선택자라 이 규칙과 절대 겹치지 않는다. */
+.bubble.bubble-emoji-1,.bubble.bubble-emoji-2,.bubble.bubble-emoji-3{
+  background:transparent!important; box-shadow:none; padding:2px 2px; max-width:none;
+}
+.bubble.bubble-emoji-1 .msgtext{font-size:78px; line-height:1.05}
+.bubble.bubble-emoji-2 .msgtext{font-size:60px; line-height:1.1}
+.bubble.bubble-emoji-3 .msgtext{font-size:48px; line-height:1.15}
 /* 고정 바 — 채팅 헤더 바로 아래, 상시 노출(고정 있을 때만) */
 .pinnedBar{display:none; align-items:center; gap:8px; padding:8px 14px; background:var(--accent-soft); border-bottom:1px solid var(--line); font-size:12.5px; color:var(--text); flex:none; cursor:pointer}
 .pinnedBar.show{display:flex}
@@ -419,6 +440,23 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .you .bubble.bubble-photo{background:var(--you-bg)}
 .bubble-photo img{display:block; width:100%; max-width:220px; border-radius:15px; object-fit:cover; background:var(--surface2)}
 .bubble-photo.sending{opacity:.55}
+/* 스티커(v0.8.22→v0.8.23, "스티커 고"+2026-09-01 23:52 "상대방도 크게 보여야 돼") — 아이폰
+   키보드 스티커/미모지가 붙여넣기·드롭으로 전송된 사진 메시지(m.sticker===true). 일반 사진
+   말풍선(위 3규칙)과 달리 배경/모서리를 강제하지 않는다 — !important는 .me/.you 배경 규칙
+   (특이도 낮음)보다 확실히 이기기 위함(다른 배경 규칙 자체는 무변경, [67]의 이모지 확대
+   규칙과 동일한 원칙 재사용). object-fit:contain(cover 아님) — 스티커는 이미 원본 비율이 곧
+   디자인이라 자르면 안 된다.
+   ★v0.8.23 실측(claude-in-chrome, 배포된 실앱 페이지에서 실제 렌더): renderMessages()의
+   bubbleHtml 템플릿은 mine(내/상대) 여부를 전혀 참조하지 않고 sticker 필드만 보므로 애초에
+   "내 메시지만 크게" 같은 비대칭 버그는 구조적으로 불가능함을 확인했고, 300x300 원본 이미지로
+   양쪽 다 getBoundingClientRect 측정 결과 완전히 동일(160x160px)했다 — "내 메시지만 붙는"
+   버그는 없었다. 다만 v0.8.22의 160px는 "약 160~180px" 목표의 최하단이라 명확히 더 커 보이게
+   176px로 상향(대형 이모지 1개=78px보다 확실히 큼, 카톡 스티커 크기감의 중상단). 1x1처럼
+   극단적으로 작은 원본에서는 width:100%가 부모 폭을 못 정해 이미지 고유 크기로 수축하는
+   현상도 실측으로 확인했으나 실제 아이폰 스티커는 그런 극단적 크기가 아니라 실사용 영향 없음
+   (정직 기록 — 코드 수정은 안 함, 실제 스티커 크기 범위 밖의 이론적 엣지케이스). */
+.bubble.bubble-photo.sticker{background:transparent!important; box-shadow:none; padding:0; max-width:176px}
+.bubble-photo.sticker img{max-width:176px; border-radius:0; object-fit:contain; background:transparent}
 
 /* ═══════════════ 설정 ═══════════════ */
 #screenSettings{padding-top:calc(var(--s5) + env(safe-area-inset-top,0px))}
@@ -597,7 +635,11 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .cal-nav button{width:34px; height:34px; border-radius:var(--r-full); color:var(--muted); font-size:16px; display:grid; place-items:center; background:var(--surface2)}
 .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:2px}
 .cal-wd{text-align:center; font-size:11px; color:var(--muted); padding:4px 0}
-.cal-d{aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:var(--r-sm); font-size:13px; color:var(--text); position:relative}
+/* v0.8.27(2026-09-18 사장님 "일정 등록시 캘린더에 그대로 표기") — 칸을 정사각(aspect-ratio:1)에서
+   풀고 세로 쌓기로 바꾼다: 날짜 숫자 → 스티커 → 일정 제목 칩. 내용만큼 칸이 세로로 늘어나되
+   가로는 절대 넘치지 않는다(overflow:hidden + 칩 ellipsis). 360폭에서 칸 한 변 ≈ 40px. */
+.cal-d{min-height:46px; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:1px; padding:2px 1px 3px; overflow:hidden; border-radius:var(--r-sm); font-size:13px; color:var(--text); position:relative}
+.cal-d .cd-n{flex:none; text-align:center; line-height:1.3; font-size:12.5px}
 .cal-d.other{color:var(--muted); opacity:.35}
 .cal-d.today{background:var(--accent-soft); color:var(--accent); font-weight:var(--w-bold)}
 /* 기간(다일) 일정 — 시작~종료 날들에 은은한 밴드로 이어져 보이게(양끝만 라운드). */
@@ -608,6 +650,76 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .cal-d.sel{outline:1.5px solid var(--accent); outline-offset:-1.5px}
 .cal-d .dot{position:absolute; bottom:5px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:var(--accent)}
 .cal-d .anv{position:absolute; top:2px; right:3px; font-size:9px}
+/* ── 캘린더 스티커 (v0.8.25, 2026-09-18 사장님 GO "만난 날 표시") ──────────────────
+   날짜 칸에 제목 없이 이모지만 크게 찍는다. 점(dot)보다 우선 — 스티커가 있는 날은 점을 숨기고
+   스티커가 그 자리를 대신한다(같은 날 최대 3개). 새 색 정의 없음(기존 토큰만 사용) — 이모지는
+   원래 자기 색을 쓰므로 테마 3종(warm·minimal·midnight) 어디서도 대비 문제가 생기지 않는다.
+   360폭에서 칸 한 변이 약 40px이라 개수에 따라 글자 크기를 줄여(1개 18 / 2개 14 / 3개 11px)
+   칸을 넘지 않게 한다. 스티커가 있는 칸은 날짜 숫자를 위로 올려 작게(자리 양보). */
+/* v0.8.26(사장님 폰 실측 "길게 누르면 블록 지정이 된다"): 달력과 스티커 시트에서 텍스트 선택·
+   iOS 콜아웃 메뉴를 원천 차단한다. 탭/스크롤은 그대로(touch-action:manipulation = 더블탭 줌만 차단).
+   ⚠️입력 칸(.fi)은 아래에서 다시 풀어준다 — 복사·붙여넣기·커서 선택이 막히면 안 된다. */
+.cal, .cal *, #stickerModal, #stickerModal *, #stickerDetail, #stickerDetail *{
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+.cal-d{touch-action:manipulation}
+#stickerModal .fi, #stickerDetail .fi{-webkit-user-select:text; user-select:text; -webkit-touch-callout:default}
+/* v0.8.27: 스티커 줄이 절대배치(bottom 고정)에서 흐름(flow)으로 내려왔다 — 그 아래에 일정 제목
+   칩이 쌓이므로 겹치면 안 된다. "스티커 우선"이라는 v0.8.25 규칙 자체는 그대로(스티커가 있는
+   날은 점을 안 찍는다) — 대신 칸이 길어지지 않게 스티커가 있으면 날짜 숫자를 줄이고 제목은
+   2줄까지만 쌓는다(CAL_TITLE_MAX_STK). */
+.cal-d.has-stk .cd-n{font-size:10.5px}
+.cal-d .stk-row{flex:none; display:flex; align-items:center; justify-content:center; gap:1px; line-height:1.05; font-size:16px}
+.cal-d .stk-row.n2{font-size:13px}
+.cal-d .stk-row.n3{font-size:10.5px}
+/* ── 달력 칸 일정 제목 칩 (v0.8.27) ───────────────────────────────────────────
+   구글 캘린더처럼 "그 날 칸 안에 작은 제목". 새 색을 만들지 않고 기존 토큰 짝만 쓴다 —
+   보통 칩=accent-soft 바탕 + text 글자(테마 3종 모두 바탕/글자가 한 쌍으로 정의돼 대비 확보),
+   기간(다일) 일정=accent 바탕 + accent-ink 글자로 "이어지는 바"처럼 보이게 한다.
+   가로 넘침 방지가 제1원칙: 칩은 max-width:100% + nowrap + ellipsis 고정. */
+.cal-d .cd-evts{flex:none; display:flex; flex-direction:column; gap:1px; min-width:0}
+.cal-d .cd-ev{display:block; max-width:100%; font-size:9px; line-height:1.5; letter-spacing:-.03em;
+  padding:0 2px; border-radius:3px; background:var(--accent-soft); color:var(--text);
+  font-weight:var(--w-med); text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.cal-d .cd-ev.bar{background:var(--accent); color:var(--accent-ink); border-radius:0}
+.cal-d .cd-ev.bar.b-s{border-top-left-radius:3px; border-bottom-left-radius:3px}
+.cal-d .cd-ev.bar.b-e{border-top-right-radius:3px; border-bottom-right-radius:3px}
+.cal-d .cd-more{font-size:8.5px; line-height:1.45; color:var(--muted); text-align:left; padding:0 2px; white-space:nowrap}
+/* 목록(다가오는 일정·그 날의 일정·홈 카드)에서 제목 앞에 붙는 스티커 */
+.evt-stk{margin-right:4px}
+/* ── 목록 접기/펼치기 헤더 (v0.8.27, 사장님 "일정 리스트는 토글 방식으로") ──────────
+   .sec-label과 같은 톤을 유지하되 탭 영역을 줄 전체로 넓혔다(탭 1회 = 접기/펼치기, 길게
+   누르기·이중 제스처 없음 — iOS 관례). 애니메이션은 가벼운 max-height 전환 하나뿐. */
+.list-toggle{display:flex; align-items:center; justify-content:space-between; gap:var(--s2); width:100%;
+  background:none; border:none; padding:var(--s2) 4px; margin:var(--s5) 0 0; cursor:pointer;
+  touch-action:manipulation; -webkit-tap-highlight-color:transparent}
+.list-toggle .lt-t{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted)}
+.list-toggle .lt-chev{flex:none; color:var(--muted); font-size:13px; line-height:1; transform:rotate(-90deg); transition:transform .22s ease}
+.list-toggle[aria-expanded="true"] .lt-chev{transform:rotate(0deg)}
+/* 접힘 = max-height:0 + visibility:hidden. visibility까지 끄는 이유: overflow로 잘려 안 보일 뿐인
+   내용은 키보드 포커스·스크린리더에 그대로 남아 "안 보이는 버튼에 포커스가 가는" 상태가 된다
+   (실측: Playwright is_visible이 접힌 목록을 '보인다'로 판정 — 잘렸을 뿐 살아 있다는 증거).
+   전환 지연(0s .24s)으로 접힐 때는 애니메이션이 끝난 뒤에 숨기고, 펼칠 때는 즉시 보인다. */
+.list-collapse{overflow:hidden; max-height:0; visibility:hidden; transition:max-height .24s ease, visibility 0s linear .24s}
+.list-collapse.open{max-height:2400px; visibility:visible; transition:max-height .24s ease, visibility 0s linear 0s}
+/* 스티커 선택 시트 / 상세 — 기존 .modal/.modal-card 위에 얹는다(새 컴포넌트 없음). */
+.modal-card .fi{width:100%; padding:11px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--surface2); color:var(--text); font-size:var(--t-body)}
+/* v0.8.26: 14종 + 라벨(의미가 보이게) — 5열 × 3줄, 360폭에서도 한 칸 ≈ 52px */
+.stk-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:12px}
+.stk-grid button{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  padding:8px 2px 6px; border-radius:var(--r-sm); background:var(--surface2); font-size:20px; line-height:1}
+.stk-grid button .lb{font-size:9.5px; font-weight:var(--w-med); color:var(--muted); line-height:1.1; letter-spacing:-.02em}
+.stk-grid button:active{background:var(--accent-soft)}
+/* 시트 안 "이 날 스티커"(탭하면 상세·삭제) */
+.stk-day{display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-bottom:12px}
+.stk-day button{padding:6px 10px; border-radius:var(--r-full); background:var(--surface2); font-size:19px; line-height:1}
+/* 시트 안 기존 날짜-탭 동작(일정 추가 / 그 날 일정 보기) — v0.8.26에서 여기로 흡수 */
+.stk-acts{display:flex; flex-direction:column; gap:8px; margin-top:4px}
+.stk-acts .secondary-btn{max-width:none; padding:12px; font-size:14px; box-shadow:none}
+.stk-big{font-size:46px; line-height:1; margin-bottom:8px}
+.stk-row2{display:flex; gap:6px; margin-bottom:12px}
+.stk-row2 .fi{flex:1; min-width:0}
+.stk-row2 .secondary-btn{flex:0 0 84px; padding:11px 8px; font-size:13.5px; box-shadow:none}
 
 /* 이벤트 리스트 카드 */
 .evt{display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow); margin-bottom:8px}
@@ -917,10 +1029,16 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div id="ddayCard"></div>
     <div class="cal" id="calBox"></div>
     <div id="dayEventList"></div>
+    <!-- v0.8.26: 보조 "🩷 스티커" 버튼 제거 — 날짜 칸을 한 번 탭하면 바로 스티커 시트가 열리므로
+         역할이 겹친다(사장님 13:20 "날짜 누르면 바로 붙일 수 있도록"). -->
     <button class="secondary-btn" id="btnToggleEvtForm" style="max-width:none;margin-bottom:var(--s4)">＋ 일정 추가</button>
     <div class="form-card" id="evtForm" style="display:none">
       <button type="button" class="form-back" id="evtFormBack">← 닫기</button>
       <input class="fi" id="evtTitle" maxlength="40" placeholder="일정 제목 (예: 우리 여행)" autocomplete="off">
+      <!-- v0.8.25: 제목 있는 일정에도 스티커(선택) — 달력 칸과 목록 제목 앞에 함께 표시된다.
+           maxlength는 UTF-16 길이라 이모지 1개도 2가 될 수 있어 넉넉히 두고, 실제 1~2자 제한은
+           normSticker()가 자소(grapheme) 단위로 자른다. -->
+      <input class="fi" id="evtSticker" maxlength="8" placeholder="스티커 (선택 · 이모지 1~2자)" autocomplete="off">
       <div class="diary-toggle" style="margin-bottom:10px">
         <button type="button" class="on" id="evtTypeOnce" data-type="once">한 번</button>
         <button type="button" id="evtTypeAnnual" data-type="annual">매년 반복(기념일)</button>
@@ -953,9 +1071,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
         <button type="button" class="secondary-btn" id="btnAddBlock" style="max-width:none">추가</button>
       </div>
     </div>
-    <div class="sec-label">다가오는 일정</div>
+    <!-- v0.8.27(사장님 "일정 리스트는 토글 방식으로 볼 수 있도록") — 헤더를 탭 1회로 접고 편다.
+         기본은 접힘: 이제 달력 칸에 일정 제목이 그대로 보이므로 목록은 "더 자세히 볼 때" 펴는
+         자리다. 선택 상태는 localStorage에 기억(기기별 취향, 스키마·서버 무관).
+         ⚠️'📋 이 날 일정 보기'가 여는 건 여기(#upcomingList)가 아니라 달력 바로 아래
+           #dayEventList라 이 토글과 무관하게 그대로 동작한다. -->
+    <button type="button" class="list-toggle" id="btnUpcomingToggle" aria-expanded="false" aria-controls="upcomingWrap">
+      <span class="lt-t" id="upcomingToggleLabel">다가오는 일정</span><span class="lt-chev" aria-hidden="true">⌄</span>
+    </button>
+    <div class="list-collapse" id="upcomingWrap">
     <div id="upcomingList"></div>
     <button type="button" class="secondary-btn" id="btnMoreEvt" style="display:none;max-width:none;margin-top:var(--s3)">더 보기</button>
+    </div>
   </div>
 </div>
 
@@ -1320,6 +1447,42 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   <button type="button" class="danger-item" id="msgMenuDelete">🗑 삭제</button>
   <div class="msgMenuInfo" id="msgMenuInfo"></div>
 </div>
+<!-- ═══ 캘린더 스티커(v0.8.25) — 선택 시트 / 상세 ═══
+     둘 다 기존 .modal/.modal-card를 그대로 쓴다(새 시각언어 없음). 선택 시트: 프리셋 12개 중
+     하나를 누르면 그 자리에서 바로 저장(1탭), 직접 입력은 옆 "붙이기" 버튼. 상세: 스티커를
+     탭하면 열리고 "N일째"(매년형은 "N주년 · D-n")와 삭제 버튼이 들어간다. -->
+<div class="modal" id="stickerModal">
+  <div class="modal-card">
+    <div class="modal-emoji">🩷</div>
+    <div class="modal-h">스티커 붙이기</div>
+    <div class="modal-desc" id="stkDate" style="margin-bottom:12px"></div>
+    <div class="diary-toggle" style="margin-bottom:12px">
+      <button type="button" class="on" id="stkTypeOnce">한 번</button>
+      <button type="button" id="stkTypeAnnual">매년 반복</button>
+    </div>
+    <div class="stk-day" id="stkDayList"></div>
+    <div class="stk-grid" id="stkGrid"></div>
+    <div class="stk-row2">
+      <input class="fi" id="stkCustom" maxlength="8" placeholder="직접 입력 (이모지 1~2자)" autocomplete="off">
+      <button type="button" class="secondary-btn" id="btnStkCustom">붙이기</button>
+    </div>
+    <!-- v0.8.26: 예전에 "날짜 칸 탭"이 하던 일(일정 추가 / 그 날 일정 보기)을 이 시트 안으로 흡수 -->
+    <div class="stk-acts">
+      <button type="button" class="secondary-btn" id="btnStkAddEvt">＋ 일정 추가</button>
+      <button type="button" class="secondary-btn" id="btnStkViewDay" style="display:none">📋 이 날 일정 보기</button>
+      <button type="button" class="secondary-btn" id="btnStkClose">닫기</button>
+    </div>
+  </div>
+</div>
+<div class="modal" id="stickerDetail">
+  <div class="modal-card">
+    <div class="stk-big" id="stkDetailEmoji"></div>
+    <div class="modal-h" id="stkDetailTitle"></div>
+    <div class="modal-desc" id="stkDetailDesc"></div>
+    <button type="button" class="secondary-btn" id="btnStkDelete" style="max-width:none;margin-bottom:8px">🗑 스티커 지우기</button>
+    <button type="button" class="secondary-btn" id="btnStkDetailClose" style="max-width:none">닫기</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1328,7 +1491,93 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.17"; // v0.8.17(2026-08-28 13:23, 사장님 지적 "달력을 위아래 두 번 띄울 필요 없이
+const APP_VERSION = "0.8.27"; // v0.8.27(2026-09-18 14:26, 사장님 지시 2건) —
+// ① "일정 등록시 캘린더에 그대로 표기될 수 있도록" → 달력 칸이 점(·)·스티커만 보여주던 걸
+//    구글 캘린더처럼 **제목이 칸 안에 그대로** 보이게 바꿨다(9px 칩, 칸당 3줄·스티커가 있으면
+//    2줄, 넘치면 "+N"). 기간 일정은 시작~종료 모든 날에 이어지는 바로, 매년 반복 기념일도 표기.
+//    칸은 정사각(aspect-ratio:1)을 버리고 내용만큼 세로로 늘어난다 — 가로 넘침은 금지(ellipsis).
+// ② "일정 리스트는 토글 방식으로" → 달력 아래 "다가오는 일정 (N)" 헤더를 탭 1회로 접기/펼치기.
+//    기본 접힘(달력에 제목이 이미 보이므로), 선택은 localStorage(oguogu.pref.upcomingOpen) 기억.
+//    '📋 이 날 일정 보기'가 여는 #dayEventList는 이 토글 밖이라 그 경로는 그대로 동작한다.
+// 데이터·rules·발행 경로 전부 무변경(표시 전용) — 읽는 소스는 기존 eventsOnDay() 하나뿐이다.
+// ── 아래는 v0.8.26(2026-09-18) 기록 ──────────────────────────────────────────
+// v0.8.26(사장님 폰 실측 피드백 3건) —
+// ① "캘린더 날짜 누르면 바로 붙일 수 있도록" → **길게 누르기 폐기**. 날짜 칸을 한 번 탭하면 그 자리에서
+//    스티커 시트가 열린다. 기존 날짜 탭 동작(그 날 일정 보기 / 일정 추가)은 사라지지 않고 시트 안 항목으로
+//    흡수했다("＋ 일정 추가", "이 날 일정 보기 (N)"). 보조 "🩷 스티커" 버튼은 역할이 겹쳐 제거.
+// ② 기본 세트 12→14: 💢 다툼 · 🤝 화해 추가 + 각 스티커 아래 짧은 라벨(사랑·만남·기념일·생일·선물·여행·
+//    외식·영화·바다·꽃·별·사진·다툼·화해)로 의미가 보이게.
+// ③ "길게 누르면 블록 지정(텍스트 선택)이 된다" → 달력 그리드·날짜 칸·스티커 시트에 user-select:none +
+//    -webkit-touch-callout:none. 입력 칸(.fi)은 제외(복사·붙여넣기 유지).
+// ⚠️길게 누르기 핸들러·진동·contextmenu 억제 코드는 전부 삭제했다 — iOS 선택 메뉴와 겹칠 소지 자체를 없앴다.
+// 데이터·rules는 v0.8.25 그대로(events의 선택 필드 sticker 하나, rules 무변경).
+// ── 아래는 v0.8.25(2026-09-18) 기록 ──────────────────────────────────────────
+// v0.8.25: 일정 캘린더 스티커 3종:
+// ① 스티커만 찍기(날짜 칸 길게 누르기 또는 "🩷 스티커" 버튼 → 프리셋 12+직접입력, 제목 없이
+//    events 문서 {sticker, title:""}로 저장 → 달력 칸에 크게, 같은 날 최대 3개, 점(dot)보다 우선,
+//    기존 events 리스너로 짝에게 실시간 동기화, 스티커 탭=상세→삭제)
+// ② 일정 추가/수정 폼의 "스티커(선택)" 칸 — 제목 있는 일정도 칸·목록에 아이콘 표시(제목 앞)
+// ③ 매년 반복 스티커(기존 type:"annual" 재사용) + 상세에 "N일째"(매년형은 "N주년 · D-n")
+// 데이터: events에 선택 필드 sticker(문자열)만 추가 — 기존 필드 무변경, 없으면 동작 100% 동일.
+// rules 무변경(events는 필드 화이트리스트가 아니라 createdBy/dissolved만 검사 — 실파일 확인).
+// 구버전 캐시를 쓰는 상대 폰이 sticker를 만나도 "제목 없는 일정" 한 건으로 보일 뿐이고, 반대로
+// 이 버전이 이상한 sticker 값(비문자열·초장문)을 만나도 stickerOf()가 잘라내어 렌더가 깨지지 않는다.
+// ── 아래는 v0.8.24(2026-09-08) 기록 ──────────────────────────────────────────
+// v0.8.24: 다이어리 사진이
+// "올릴 땐 잘 보였는데 갑자기 물음표"로 변하는 증상 근본수리. 진범=thumbUrl이 blob: URL을
+// _thumbUrlCache에 영구 보관하면서 revoke·재생성·onerror·복귀 재렌더가 전부 0건 — iOS가
+// 백그라운드에서 blob 저장소를 회수하면 그 화면 세션 동안 복구 경로가 없었다(RCA:
+// data/reports/5959_diary_photo_rca_2026-09-08.md). 수리 4가지: ① 썸네일 주소를 data: URL로
+// 고정(무효화 불가) ② <img> 실패 시 capture 단계에서 1회 재생성 ③ 복귀(pageshow·visibilitychange)
+// 시 캐시 비우고 재렌더 ④ 수정 경로가 텍스트만 고쳐도 thumbs를 통째 덮어쓰던 별건 리스크 제거.
+// 전체화면 뷰어(원본)는 용량 때문에 blob 유지 + 실패 시 1회 재생성(_pvArmRetry).
+// rules·데이터·채팅/스티커 전송 파이프라인·릴레이 무접촉(index.html·sw.js만 변경).
+// ── 이하 v0.8.23(2026-09-01 23:52, 사장님 지시 "이 스티커 상대방도
+// 크게 보여야 돼") — 실측 결과 mine/theirs 렌더는 애초에 대칭이었음(bubbleHtml 템플릿이 mine을
+// 참조하지 않음, claude-in-chrome으로 300x300 원본 양쪽 160x160px 동일 렌더 확인 — "내 메시지만
+// 붙는" 버그 없음). 목표 "약 160~180px"의 최하단이던 160px를 176px로 상향(대형 이모지
+// 78px보다 확실히 큼). 스티커 말풍선 CSS(.sticker) 크기값만 변경, JS 로직 무변경.
+// ── 이하 v0.8.22(2026-09-01 23:20, 사장님 GO "스티커 고") — 채팅
+// 입력창에 아이폰 키보드 스티커/미모지(및 일반 이미지)를 붙여넣기·드롭하면 조용히 사라지지
+// 않고 이미지 메시지로 즉시 전송(스티커 UX, 확인창 없음). paste/beforeinput/drop 3경로 방어적
+// 처리(_trySendPastedImages). 기존 채팅 사진 파이프라인(sendChatPhotos/compressImage) 재사용
+// — 저장 경로 신설 없음, PNG 인코딩 옵션만 추가(JPEG는 투명을 검정으로 매팅함을 실측 확인,
+// canvas→toBlob 왕복 검증 완료). 말풍선은 sticker:true일 때만 배경/그림자 제거(.sticker 클래스).
+// ── 이하 v0.8.21(2026-09-01 23:09, 사장님 지시 D "이모티콘은 지금보다
+// 5배는 크게") — 메시지가 순수 이모지 1~3개(공백 제외, ZWJ·피부톤·국기·키캡 포함 1글자
+// 취급, _emojiOnlyCount())로만 구성되면 크게 렌더 + 말풍선 배경/그림자 제거(카톡식).
+// 1개=78px(≈5.03x, --t-body:15.5px 기준) / 2개=60px(≈3.87x) / 3개=48px(≈3.1x) 단계 축소.
+// 텍스트 혼합·4개 이상은 기존 크기. 반응 이모지 배지(.reactChip, v0.8.15)는 무접촉.
+// ── 이하 v0.8.20(2026-09-01 23:0x, 사장님 결정 C안 "실시간 확인 시에는
+// 알림 안 뜨게") — 포그라운드 onMessage 토스트를 지금 그 채팅방을 보고 있는 중(잠금 아님+
+// screenChat 활성+탭 visible)이면 생략(_isViewingChatNow(), rules 무접촉·신규 필드 없음).
+// A안(릴레이 lastReadAt 기읽음 스킵)은 scripts/ogu_push_relay.py에 배선(클라 변경 없음).
+// ── 이하 v0.8.19(2026-09-01 19:0x, 사장님 지시 "메시지를 옆으로 밀면
+// 나올 수 있게") — 채팅 메시지 정보메뉴(답장/수정/고정/복사/삭제 등)를 여는 두 번째 제스처로
+// 가로 스와이프를 추가했다. 기존 롱프레스(길게 누르기)·데스크톱 우클릭은 완전히 그대로 유지 —
+// 두 제스처 모두 같은 bindMsgLongPress()의 fire()→showMsgMenu() 한 경로로 수렴해 메뉴 자체는
+// 100% 동일(내용·위치계산 공유, 별도 메뉴 구현 없음). 판정: 가로 이동이 세로보다 크면서 30px를
+// 넘어야 스와이프로 인정(그 전엔 세로 스크롤일 수 있으니 방해하지 않고 관찰만) → 인정 후에도
+// 세로가 앞지르면 즉시 포기(1665행 엣지 뒤로가기 스와이프와 동일 판정 재사용) → 손끝을 따라
+// 최대 56px까지만 살짝 밀리는 시각 피드백(과한 이동 방지, transform:translateX만 사용 — 새
+// CSS 없음) → 손을 뗄 때 44px 이상이었으면 그 자리에서 메뉴가 열리고, 못 미쳤으면 자리로만
+// 되돌아간다. 왼쪽 가장자리(x≤24px) 시작 터치는 스와이프 추적을 아예 시작하지 않아 기존 엣지
+// 뒤로가기(1651행)와 절대 겹치지 않는다. 선택 모드 중엔 비활성(탭=선택 토글과 충돌 방지, 기존
+// 롱프레스의 _selectMode 가드와 동일 원칙). rules·릴레이·데이터 모델 전부 무접촉. 상세 구현은
+// 아래 "가로 스와이프 → 메시지 메뉴" 주석(bindMsgLongPress 위) 참조.
+// ── 이하 v0.8.18(2026-09-01 13:0x, 사장님 GO) — 상대방 알림 미수신 근본수리.
+// 진단서: C:/종합상사/data/meetings/2026-08-31_5959_partner_notify_diag.md (릴레이→FCM은 8/5 이래
+// 27일 연속 발송=메시지 1:1 일치로 서버 무혐의 확정 → 남은 뿌리는 단말 표시 단계 코드 갭 2개).
+//  ① 토큰 자동 갱신: 구 syncNotifyToken()이 캐시 토큰만 보고 "이미 최신"이면 조기 return(구 4995행)해서,
+//     브라우저가 FCM 토큰을 회전시키면 Firestore에 옛 토큰이 박제됐다(릴레이는 죽은 토큰으로 계속 발송 →
+//     FCM은 접수 성공, 단말엔 미표시 = 로그에 흔적 0). 이제 앱 실행마다 getToken()을 다시 불러 최신화한다.
+//  ② 포그라운드 리스너: onMessage()가 '알림 켜기' 클릭 경로(구 4987행)에서만 등록돼, 앱을 새로 열면
+//     스위치가 켜짐이어도 그 세션엔 리스너가 없었다 → 앱을 보고 있을 때 온 알림은 토스트조차 안 떴다.
+//     이제 로그인 완료(onSignedIn)마다 권한 granted면 항상 등록한다(중복 등록 가드 _fgBound).
+//  · 설정 버전줄에 "알림토큰 MM/DD HH:MM"(로컬 기록) 표시 — rules 케이스 D'가 pairs update를
+//    ["fcmTokens"] 단일 필드로 화이트리스트해 서버측 tokenUpdatedAt은 rules 변경 없이는 불가(무접촉 유지).
+//  · rules/functions/릴레이 무변경. 상세 주석은 아래 "알림(웹푸시, FCM)" 블록 참조.
+// ── 이하 v0.8.17(2026-08-28 13:23, 사장님 지적 "달력을 위아래 두 번 띄울 필요 없이
 // 한 군데서") — v0.8.16의 "날짜 범위 연속 선택기"가 반쪽 상태로 배포됐던 걸 완주: 등록/수정 폼 안에
 // 별도 달력(#evtRangeCal)을 새로 만들어 화면 위쪽 달력(#calBox)과 나란히 "두 번" 보이던 게 실체.
 // #evtRangeCal을 제거하고 #calBox 하나만 남긴 뒤(_evtPicking 플래그) 폼이 열린 동안엔 그 달력이
@@ -1764,7 +2013,7 @@ function renderHomeUpcoming(){
       const ddl=ddLabel(occ);
       const rl=(!ev._synthetic && ev.type!=="annual" && ev.endDate) ? rangeLabel(ev.date, ev.endDate) : null;
       const sub=[rl || isoDate(occ).replace(/-/g,"."), (ev._synthetic?"기념일":(ev.type==="annual"?"매년":"")), ev.memo].filter(Boolean).join(" · ");
-      const title = (isAnniv && soon) ? ("🎉 "+esc(ev.title)) : esc(ev.title); // 임박 기념일=제목에 강조 마커(D-일수는 배지가 담당)
+      const title = ((isAnniv && soon) ? "🎉 " : "")+evtTitleHtml(ev); // 임박 기념일=제목에 강조 마커(D-일수는 배지가 담당) / 스티커는 제목 앞(v0.8.25)
       return '<div class="home-evt'+(soon?' soon':'')+(isAnniv?' anniv':'')+'"><div class="dd">'+ddl+'</div>'
         +'<div class="info"><div class="t">'+title+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div></div>';
     }).join("");
@@ -1804,7 +2053,7 @@ function renderHomeDiary(){
   if(!recent.length){ body='<div class="home-empty">아직 기록이 없어요 · 다이어리 탭에서 오늘의 우리를 남겨봐요 📖</div>'; }
   else {
     body=recent.map(en=>{
-      const th=(en.thumbs&&en.thumbs[0])?'<img loading="lazy" src="'+thumbUrl(en.thumbs[0])+'" alt="">':'';
+      const th=(en.thumbs&&en.thumbs[0])?'<img loading="lazy" data-thumbid="'+en.thumbs[0].photoId+'" src="'+thumbUrl(en.thumbs[0])+'" alt="">':'';
       const who=(en.authorUid===fb.uid)?"내 기록":((myPartnerLabel()||"짝")+" 기록");
       const tx=en.text ? esc(en.text) : (en.thumbs&&en.thumbs.length?"사진 "+en.thumbs.length+"장":"");
       return '<div class="home-diary" data-entry="'+en.id+'">'+th
@@ -1830,11 +2079,20 @@ function swVersion(){
     }catch(e){ res(null); }
   });
 }
+/* v0.8.18: 알림 토큰 갱신 시각(로컬 기록)을 같은 줄에 덧붙인다. 서버(pairs)에는 rules 케이스 D'가
+   ["fcmTokens"] 외 필드를 막아 못 올리므로(주석: 알림 블록 참조), "상대방 폰에서 이 줄을 읽어달라"가
+   재등록 여부를 원격 확인하는 유일한 무접촉 수단이다. */
+function _notifyStampLabel(){
+  const s=localStorage.getItem(NOTIFY_STAMP_KEY); if(!s) return "";
+  const d=new Date(s); if(isNaN(d)) return "";
+  const p=n=>String(n).padStart(2,"0");
+  return " · 알림토큰 "+p(d.getMonth()+1)+"/"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+}
 async function renderAppVersion(){
   const el=document.getElementById("appVersionLine"); if(!el) return;
-  el.textContent="5959 v"+APP_VERSION;
+  el.textContent="5959 v"+APP_VERSION+_notifyStampLabel();
   const v=await swVersion();
-  if(v){ const cache=String(v).replace(/^oguogu-v?/,""); el.textContent="5959 v"+APP_VERSION+(cache && cache!==APP_VERSION ? " · 캐시 "+cache : ""); }
+  if(v){ const cache=String(v).replace(/^oguogu-v?/,""); el.textContent="5959 v"+APP_VERSION+(cache && cache!==APP_VERSION ? " · 캐시 "+cache : "")+_notifyStampLabel(); }
 }
 document.getElementById("tabbar").addEventListener("click",e=>{
   const b=e.target.closest("[data-tab]"); if(!b) return;
@@ -2379,6 +2637,9 @@ async function doSignOut(){
 /* 로그인 완료 후 진입 결정: localStorage 포인터 → 없으면 내 uid가 든 기존 pair 조회(기기 무관 복귀) → 없으면 시작 메뉴 */
 async function onSignedIn(){
   const so=document.getElementById("signoutRow"); if(so) so.style.display=""; // 설정에 로그아웃 노출
+  bindForegroundNotify(); // v0.8.18: 앱 실행(로그인 완료)마다 포그라운드 onMessage 리스너 재등록(권한 granted일 때만).
+                          //   구조상 pairId 유무·화면과 무관하게 항상 걸려야 하므로 여기(단일 로그인 진입점)에 둔다.
+                          //   토큰 자동 갱신은 currentPairData가 채워진 뒤라야 불필요한 write를 피할 수 있어 enterChat에서 수행.
   if(pairId){ watchPair(); return; }
   try{
     const q=M.query(M.collection(fb.db,"pairs"), M.where("memberUids","array-contains",fb.uid));
@@ -2719,7 +2980,7 @@ function enterChat(){   // 앱 진입 = 홈 탭부터(구성은 renderHome). 이
   watchDiary();
   if(!isLocked()) markRead();
   maybeShowInstallHint();
-  syncNotifyToken(); // 알림 켠 상태면 현재 pair로 토큰 재기록(방 이동 대응)
+  syncNotifyToken(); // v0.8.18: 알림 켠 상태면 getToken()으로 실토큰을 다시 받아 현재 pair에 최신화(회전·방 이동 대응)
 }
 
 /* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
@@ -2833,6 +3094,29 @@ function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repla
 /* 채팅 메시지 내 URL 자동 링크화(v0.7.18) — XSS 안전 원칙: 사용자 텍스트를 innerHTML에 절대 넣지 않는다.
    컨테이너는 항상 빈 상태로 시작해 텍스트는 createTextNode(자동 이스케이프), URL 구간만 <a> 요소를
    생성(href는 정규식이 http/https만 매치하므로 javascript: 등 위험 스킴이 애초에 들어올 수 없음)해 채운다. */
+/* 이모지 전용 메시지 크게 보기(D, v0.8.21, 2026-09-01 23:09 사장님 지시 "5배는 크게") — 텍스트가
+   공백 제외 순수 이모지 1~3개(ZWJ 결합·피부톤 변형·국기·키캡 포함 1글자 취급)로만 구성되면
+   msgtext를 확대 렌더한다. 1개=78px(≈5.03x, 현재 --t-body:15.5px 기준 실측 최대) / 2개=60px
+   (≈3.87x) / 3개=48px(≈3.1x) — 단계 축소. 4개 이상 섞이거나 텍스트가 함께 있으면 null(기존
+   크기 그대로). 반응 이모지 배지(.reactChip, v0.8.15)는 이 메시지 본문과 무관한 별개 요소라
+   이 함수·CSS 어느 쪽도 건드리지 않는다(2026-09-01 지시 명시 무접촉). */
+const EMOJI_UNIT_RE = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}\uFE0F?(?:[\u{1F3FB}-\u{1F3FF}])?(?:\u200D\p{Extended_Pictographic}\uFE0F?(?:[\u{1F3FB}-\u{1F3FF}])?)*|[0-9#*]\uFE0F?\u20E3)$/u;
+function _emojiOnlyCount(text){
+  const s = (text||"").replace(/\s+/g, "");
+  if(!s) return null;
+  let graphemes;
+  try{
+    const seg = new Intl.Segmenter(undefined, {granularity:"grapheme"});
+    graphemes = Array.from(seg.segment(s), x=>x.segment);
+  }catch(e){
+    // Intl.Segmenter 미지원 구형 환경 — 코드포인트 단위로 대체(ZWJ 결합을 그래프임 하나로 못 묶어
+    // 판정이 더 엄격해질 뿐, 크래시 없이 안전하게 "기존 크기"로 폴백된다).
+    graphemes = Array.from(s);
+  }
+  if(graphemes.length<1 || graphemes.length>3) return null;
+  for(const g of graphemes){ if(!EMOJI_UNIT_RE.test(g)) return null; }
+  return graphemes.length;
+}
 const CHAT_URL_RE = /(https?:\/\/[^\s<>"']+)/gi;
 function linkifyInto(container, text){
   container.textContent = ""; // 이전 렌더 잔재 제거(재렌더 시 중복 방지)
@@ -2908,6 +3192,9 @@ function renderMessages(opts){
     const isDeleted = !m.thumb && m.text===DELETED_TEXT_MARKER;
     const editable = mine && !m.thumb && !isDeleted; // 내 텍스트 메시지만 수정(=삭제도 이 재해석 경로) 가능 — 상대·사진·이미 삭제된 메시지는 제외
     const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
+    // 이모지 전용 메시지 크게 보기(D, v0.8.21) — 텍스트/사진/삭제된 메시지는 대상 아님(_emojiOnlyCount
+    // 자체가 1~3개·순수 이모지가 아니면 null을 돌려주므로 판정은 그쪽에 위임, 여기선 호출 조건만 제한).
+    const emojiN = (!m.thumb && !isDeleted) ? _emojiOnlyCount(m.text) : null;
     // 답장 인용 블록(v0.8.14) — m.replyTo{id,sender,text,thumb}가 있으면 말풍선 상단에 원문 미리보기(발신자
     // 이름은 캐시하지 않고 매번 현재 애칭으로 계산 — 이름을 나중에 바꿔도 옛 인용이 옛 이름으로 굳지 않음),
     // 탭하면 원문으로 스크롤(quote-block 클릭 리스너, 아래 renderMessages 하단 바인딩 참조).
@@ -2920,8 +3207,8 @@ function renderMessages(opts){
     // data-msgid = 모든 말풍선 공통(내 것/상대 것, 텍스트/사진) — 롱프레스 정보메뉴(showMsgMenu) 대상 식별용.
     // data-editbubble/data-chatmsg은 기존 용도(수정 진입/사진뷰어) 그대로 유지 — 회귀 없음.
     const bubbleHtml = m.thumb
-      ? '<div class="bubble bubble-photo" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'">'+quoteHtml+'<img src="'+thumbUrl(m.thumb)+'" alt="">'+reactChipsHtml+'</div>'
-      : '<div class="bubble'+(isDeleted?' bubble-deleted':'')+'"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'">'+quoteHtml+'<span class="msgtext"></span>'+(!isDeleted && m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+reactChipsHtml+'</div>';
+      ? '<div class="bubble bubble-photo'+(m.sticker?' sticker':'')+'" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'">'+quoteHtml+'<img src="'+thumbUrl(m.thumb)+'" alt="">'+reactChipsHtml+'</div>'
+      : '<div class="bubble'+(isDeleted?' bubble-deleted':'')+(emojiN?' bubble-emoji-'+emojiN:'')+'"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'">'+quoteHtml+'<span class="msgtext"></span>'+(!isDeleted && m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+reactChipsHtml+'</div>';
     // 선택 모드용 원형 체크(항상 DOM에 존재, #msgList.selecting일 때만 CSS로 노출 — 재렌더 없이 모드 전환)
     const selchkHtml = '<span class="selchk" data-selchk></span>';
     row.innerHTML = selchkHtml + (mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml));
@@ -3131,8 +3418,20 @@ async function saveEditedMessage(input, text){
    데스크톱 우클릭(contextmenu)은 즉시 발동시키되, 터치가 파생시키는 contextmenu는 여기서 또
    띄우면 중복(pointerdown 타이머가 이미 처리)이므로 기본 메뉴만 억제하고 return. */
 let _msgLongPressed=false; // 롱프레스로 메뉴가 막 열렸음을 표시 — 사진 말풍선의 클릭(뷰어 열기)과의 충돌 방지용, 사용 직후 소비
+/* 가로 스와이프 → 메시지 메뉴 (2026-09-01, 사장님 지시 "메시지를 옆으로 밀면 나올 수 있게") — 기존
+   롱프레스(누르기)는 완전히 그대로 두고, 같은 fire()/showMsgMenu() 경로를 여는 "대안 제스처"만
+   병행 추가한다(열리는 메뉴 자체는 100% 동일). 판정: ①가로 이동량이 세로보다 크면서 SWIPE_START
+   (30px)를 넘어야 스와이프로 "인정"(그 전까지는 세로 스크롤일 수도 있으니 계속 관찰만, 스크롤을
+   막지 않음) ②인정된 뒤에도 세로가 가로+12px를 앞지르면 즉시 포기(1665행 엣지 뒤로가기 스와이프와
+   동일 판정 재사용) ③인정되는 동안 손끝을 따라 최대 SWIPE_MAX(56px)까지만 살짝 밀리는 시각
+   피드백(그 이상은 클램프 — 과한 이동 방지) ④손을 떼는 순간 SWIPE_OPEN(44px) 이상 밀려 있었으면
+   그 자리에서 fire()를 호출해 메뉴를 연다, 못 미쳤으면 자리로만 되돌아가고 메뉴는 열지 않는다.
+   왼쪽 가장자리(x≤24px)에서 시작한 터치는 스와이프 추적 자체를 시작하지 않음 — 엣지 뒤로가기
+   (1651행)와 시작 구역이 겹치므로 그쪽이 항상 우선(간섭 금지). 선택 모드 중에는 스와이프도
+   비활성(탭=선택 토글과 충돌 방지, 기존 롱프레스의 _selectMode 가드와 동일 원칙). */
+const SWIPE_START=30, SWIPE_OPEN=44, SWIPE_MAX=56;
 function bindMsgLongPress(el, id, mine, editable){
-  let timer=null, sx=0, sy=0;
+  let timer=null, sx=0, sy=0, swiping=false, dragDX=0;
   const fire=(x,y)=>{
     timer=null; try{ navigator.vibrate && navigator.vibrate(12); }catch(_){ }
     if(_selectMode){ toggleSelectMsg(id); return; } // 선택 모드 중엔 롱프레스도 메뉴 대신 선택 토글
@@ -3142,16 +3441,43 @@ function bindMsgLongPress(el, id, mine, editable){
     // 오억제하지 않도록 한다.
     setTimeout(()=>{ _msgLongPressed=false; }, 350);
   };
+  const resetSwipe=()=>{
+    if(!swiping) return;
+    swiping=false; dragDX=0;
+    el.style.transition="transform .2s ease";
+    el.style.transform="";
+  };
   el.addEventListener("pointerdown", e=>{
     if(e.pointerType!=="touch" && e.pointerType!=="mouse") return; // 터치+마우스 공통(펜 등은 제외)
     sx=e.clientX; sy=e.clientY;
     timer=setTimeout(()=>fire(e.clientX, e.clientY), 480);
+    swiping=false; dragDX=0; // 스와이프 상태 초기화(2026-09-01 추가)
+    try{ el.setPointerCapture(e.pointerId); }catch(_){ } // 살짝 밀린 말풍선 밖으로 손끝이 나가도 move/up을 계속 이 요소가 받게
   });
   const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
   el.addEventListener("pointermove", e=>{ if(timer && (Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10)) cancel(); }); // 스크롤 등 이동 시 오발동 방지
-  el.addEventListener("pointerup", cancel);
-  el.addEventListener("pointercancel", cancel);
-  el.addEventListener("pointerleave", cancel);
+  el.addEventListener("pointermove", e=>{
+    if(_selectMode) return; // 선택 모드에선 스와이프 메뉴 비활성
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(!swiping){
+      if(sx<=24) return; // 엣지 뒤로가기 시작 구역 — 스와이프 추적 자체를 시작하지 않는다
+      if(Math.abs(dy)>=Math.abs(dx) || Math.abs(dx)<SWIPE_START) return; // 가로 우세로 임계 넘기 전까지는 관찰만(스크롤 방해 안 함)
+      swiping=true; el.style.transition="none";
+    }
+    if(Math.abs(dy)>Math.abs(dx)+12){ resetSwipe(); return; } // 세로로 전환되면 즉시 포기(1665행과 동일 판정)
+    dragDX=Math.max(-SWIPE_MAX, Math.min(SWIPE_MAX, dx));
+    el.style.transform="translateX("+dragDX+"px)";
+  });
+  el.addEventListener("pointerup", e=>{
+    cancel();
+    if(swiping){
+      const opened=Math.abs(dragDX)>=SWIPE_OPEN, ox=sx+dragDX, oy=sy;
+      resetSwipe();
+      if(opened) fire(ox, oy); // 길게 누르기와 동일한 showMsgMenu 경로 — 메뉴 내용·위치계산 전부 공유(회귀 없음)
+    }
+  });
+  el.addEventListener("pointercancel", ()=>{ cancel(); resetSwipe(); });
+  el.addEventListener("pointerleave", ()=>{ cancel(); resetSwipe(); });
   el.addEventListener("contextmenu", e=>{
     e.preventDefault(); // 브라우저 기본 메뉴(선택/복사)는 항상 억제
     if(_prefersTouchEnter()) return; // 터치 파생 contextmenu는 pointerdown 타이머가 이미 처리 — 중복 방지
@@ -3433,9 +3759,16 @@ async function bulkDeleteSelected(){
 
 /* 채팅 사진 전송 — 다이어리와 동일 규격(1280 q75 + 썸네일 320 q65). 썸네일은 메시지 문서에 인라인,
    원본은 messages/{id}/photos/{photoId}에 Bytes. 캡은 pair.photoCount 합산(다이어리+채팅 공용 50장). */
-async function sendChatPhotos(fileList){
+/* opts.sticker(v0.8.22, 2026-09-01 23:20 "스티커 고") — 압축·업로드·Firestore 문서 구조는
+   기존 사진 전송과 100% 동일(새 저장 경로 없음), mime만 image/jpeg→image/png로 바뀌고 message
+   문서에 sticker:true 한 필드가 더 실린다(messages create 규칙은 hasOnly 화이트리스트가 없어
+   rules 무접촉으로 필드 추가 가능 — firestore.rules 206~209행 참조). sticker:true는 렌더 쪽
+   (renderMessages)이 말풍선 배경 제거 클래스(.sticker)를 붙이는 판정에만 쓰인다. */
+async function sendChatPhotos(fileList, opts){
   if(!pairId || !fileList || !fileList.length) return;
   if(currentPairData && currentPairData.status==="dissolved"){ toast("이 공간은 정리된 상태예요"); return; }
+  const sticker = !!(opts && opts.sticker);
+  const mime = sticker ? "image/png" : "image/jpeg"; // PNG=무손실+알파 보존(스티커 투명 유지 실측 근거는 compressImage 주석 참조)
   let remaining = PHOTO_CAP - photoCount();
   if(remaining <= 0){ toast("함께 담을 수 있는 사진은 "+PHOTO_CAP+"장까지예요. 오래된 사진을 정리하면 더 보낼 수 있어요."); return; }
   const files=[...fileList].slice(0, remaining);
@@ -3443,16 +3776,18 @@ async function sendChatPhotos(fileList){
   let added=0;
   for(const f of files){
     let full, thumb;
-    try{ full=await compressImage(f,1280,0.75); thumb=await compressImage(f,320,0.65); }
+    try{ full=await compressImage(f,1280,0.75,mime); thumb=await compressImage(f,320,0.65,mime); }
     catch(err){ console.error(err); toast("일부 사진을 처리하지 못했어요"); continue; }
     if(full.bytes.length > 950000){ toast("너무 큰 사진은 건너뛰었어요"); continue; } // 1MiB 문서 상한 방어
     const msgRef=M.doc(M.collection(fb.db,"pairs",pairId,"messages"));
     const photoId=M.doc(M.collection(fb.db,"pairs",pairId,"messages",msgRef.id,"photos")).id;
     try{
-      await M.setDoc(msgRef, { sender:fb.uid, ts:M.serverTimestamp(), hasPhoto:true,
-        thumb:{ photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes) } });
+      const msgData = { sender:fb.uid, ts:M.serverTimestamp(), hasPhoto:true,
+        thumb:{ photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes), mime } };
+      if(sticker) msgData.sticker = true;
+      await M.setDoc(msgRef, msgData);
       await M.setDoc(M.doc(fb.db,"pairs",pairId,"messages",msgRef.id,"photos",photoId),
-        { bytes:M.Bytes.fromUint8Array(full.bytes), mime:"image/jpeg", w:full.w, h:full.h, authorUid:fb.uid, createdAt:M.serverTimestamp() });
+        { bytes:M.Bytes.fromUint8Array(full.bytes), mime, w:full.w, h:full.h, authorUid:fb.uid, createdAt:M.serverTimestamp() });
       added++;
     }catch(e){ console.error(e); toast(isDeniedErr(e)?"보낼 권한이 없어요":"사진을 보내지 못했어요"); }
   }
@@ -3484,6 +3819,48 @@ function nextOccurrence(ev){
   return startOfDay(base);
 }
 
+/* ===== 캘린더 스티커(v0.8.25, 2026-09-18 사장님 GO "만난 날 표시") =====================
+   저장 형태: 기존 events 문서에 선택 필드 sticker(이모지 1~2자)만 얹는다.
+     · 스티커만 찍기 → { sticker:"❤️", title:"", date, type:"once"|"annual", memo:"", createdBy }
+     · 제목 있는 일정 → 기존 문서에 sticker만 추가(없으면 이전과 완전히 동일한 동작)
+   rules 무변경: events는 필드 화이트리스트가 아니라 createdBy·dissolved만 검사한다(실파일 확인).
+   방어 원칙: sticker는 "상대 폰의 구버전 캐시가 모를 수도 있는 새 필드"라 양방향으로 막아둔다 —
+   구버전은 title 없는 일정 1건으로 볼 뿐 깨지지 않고, 이 버전은 sticker가 문자열이 아니거나
+   비정상적으로 길어도 stickerOf()가 잘라 렌더가 무너지지 않는다. */
+/* v0.8.26: 12→14종(💢 다툼·🤝 화해 추가, 기존 12개는 그대로 — 교체 없음) + 라벨.
+   라벨은 시트에서 의미를 보여주기만 하고 저장되지 않는다(문서에는 이모지 문자만 들어간다). */
+const STICKER_PRESETS=["❤️","💑","💍","🎂","🎁","✈️","🍽️","🎬","🏖️","🌸","⭐","📸","💢","🤝"];
+const STICKER_LABELS={"❤️":"사랑","💑":"만남","💍":"기념일","🎂":"생일","🎁":"선물","✈️":"여행","🍽️":"외식",
+  "🎬":"영화","🏖️":"바다","🌸":"꽃","⭐":"별","📸":"사진","💢":"다툼","🤝":"화해"};
+const STICKER_MAX_PER_DAY=3;
+/* 이모지는 코드포인트 여러 개가 모여 한 글자(❤️=U+2764+U+FE0F)라 단순 slice면 반쪽이 남는다.
+   Intl.Segmenter(자소 단위)를 우선 쓰고, 없으면 코드포인트 단위로 폴백한다(짧아질 뿐 안 깨짐). */
+function _graphemes(s){
+  try{ if(typeof Intl!=="undefined" && Intl.Segmenter) return Array.from(new Intl.Segmenter("ko",{granularity:"grapheme"}).segment(s), x=>x.segment); }catch(_){ }
+  return Array.from(s);
+}
+function normSticker(s){ return typeof s==="string" ? _graphemes(s.trim()).slice(0,2).join("") : ""; }
+function stickerOf(ev){ return normSticker(ev && ev.sticker); }
+/* 그 날 칸에 찍을 스티커들(최대 3개) — eventsOnDay 재사용이라 기간·매년 반복 판정이 그대로 적용된다. */
+function stickersOnDay(dt){ return eventsOnDay(dt).filter(ev=>stickerOf(ev)).slice(0,STICKER_MAX_PER_DAY); }
+/* 스티커 상세의 카운터 — 그 날짜부터 오늘까지 "N일째"(당일=1일째), 매년형은 "N주년 · D-n".
+   홈 화면 D-day 카드(profile.anniversary 기반 "우리가 함께한 날")와는 별개 계산이고 서로 무관하다. */
+function stickerCountLabel(ev){
+  const base=parseYMD(ev && ev.date); if(!base) return "";
+  if(ev.type==="annual"){
+    const occ=nextOccurrence(ev); if(!occ) return "";
+    const years=occ.getFullYear()-base.getFullYear();
+    return (years>=1 ? years+"주년 · " : "")+ddLabel(occ);
+  }
+  const n=daysBetween(base, new Date());
+  return n>=0 ? (n+1)+"일째" : ddLabel(base);
+}
+/* 목록 제목 — 스티커가 있으면 제목 앞에 붙인다. 제목 없는 "스티커만" 일정은 스티커가 곧 제목. */
+function evtTitleHtml(ev){
+  const st=stickerOf(ev), t=((ev&&ev.title)||"").trim();
+  return (st?'<span class="evt-stk">'+esc(st)+'</span>':'')+(t?esc(t):(st?"":"(제목 없음)"));
+}
+
 /* ---- 구독 ---- */
 function watchEvents(){
   if(unsubEvents) unsubEvents();
@@ -3513,7 +3890,11 @@ function watchDiary(){
 }
 
 /* ===== 일정 렌더 ===== */
-function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); renderDayEvents(_selDate); }
+function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); renderDayEvents(_selDate);
+  // 시트가 열려 있는 동안 짝이 스티커를 붙이거나 지우면 시트 안 "이 날 스티커"도 같이 갱신(v0.8.26)
+  const sm=document.getElementById("stickerModal");
+  if(sm && sm.style.display==="flex") renderStickerSheetDay();
+}
 function renderDday(){
   const el=document.getElementById("ddayCard"); if(!el) return;
   const base=parseYMD(profileOf().anniversary);
@@ -3541,6 +3922,42 @@ function rangeRoleOnDay(dt){
   }
   return null;
 }
+/* ===== 달력 칸 일정 제목 (v0.8.27, 2026-09-18 사장님 "일정 등록시 캘린더에 그대로 표기") =====
+   달력 칸이 점(·)·스티커만 보여주던 걸 구글 캘린더처럼 "제목이 그대로 보이는" 칸으로 바꾼다.
+   데이터·스키마·rules 무변경 — 이미 있는 eventsOnDay()(기간·매년 반복 판정 포함)를 그대로 읽어
+   그리기만 한다. 스티커(v0.8.25~26)는 계속 우선이고, 스티커가 있는 칸은 제목을 2줄까지만 쌓아
+   칸이 과하게 길어지지 않게 한다. */
+const CAL_TITLE_MAX=3;      // 스티커 없는 칸에 쌓는 제목 줄 수(넘치면 "+N")
+const CAL_TITLE_MAX_STK=2;  // 스티커가 이미 한 줄을 쓴 칸은 2줄까지
+/* 칸 안 줄 순서를 날마다 흔들리지 않게 고정 — 기간(바)이 맨 위, 다음 매년 반복(기념일), 마지막이
+   하루짜리. 같은 등급 안에서는 시작일 → 문서 id 순(id는 불변이라 어제 칸과 오늘 칸에서 같은
+   일정이 같은 줄에 온다 = 기간 바가 가로로 이어져 보이는 전제). */
+function _calEvtRank(ev){
+  if(ev.type!=="annual" && ev.endDate && String(ev.endDate)>String(ev.date)) return 0;
+  return ev.type==="annual" ? 1 : 2;
+}
+function calTitledOnDay(dt){
+  /* 같은 등급 안의 2차 기준은 "먼저 만든 것이 위" — 다만 방금 추가한 일정은 서버 타임스탬프가
+     아직 안 찍혀(로컬 스냅샷에서 createdAt=null) 0으로 읽힌다. 0을 그대로 쓰면 새 일정이 잠깐
+     맨 위에 떴다가 서버 확인 후 아래로 튀므로, 없으면 Infinity(=가장 최신)로 봐서 처음부터
+     최종 자리에 놓는다. 마지막 안전망은 문서 id(불변) — 어떤 경우에도 순서가 흔들리지 않는다. */
+  const t=ev=>(tsMillis(ev&&ev.createdAt)||Infinity);
+  return eventsOnDay(dt).filter(ev=>((ev.title||"").trim())).sort((a,b)=>
+    _calEvtRank(a)-_calEvtRank(b)
+    || String(a.date||"").localeCompare(String(b.date||""))
+    || t(a)-t(b)
+    || String(a.id||"").localeCompare(String(b.id||"")));
+}
+/* 칩 하나의 HTML. 기간 일정은 "연속 바" 느낌 — 시작일·주 시작(일요일)·달 첫날에만 글자를 쓰고
+   이어지는 날은 빈 바(&nbsp;)로 높이만 유지한다. 양끝에만 라운드(.b-s/.b-e). */
+function calTitleHtml(dt, ev){
+  const t=(ev.title||"").trim();
+  if(_calEvtRank(ev)!==0) return '<span class="cd-ev">'+esc(t)+'</span>';
+  const s=startOfDay(parseYMD(ev.date)), e=startOfDay(parseYMD(ev.endDate)), d=startOfDay(dt);
+  const isS=d.getTime()===s.getTime(), isE=d.getTime()===e.getTime();
+  const showText = isS || dt.getDay()===0 || dt.getDate()===1;
+  return '<span class="cd-ev bar'+(isS?' b-s':'')+(isE?' b-e':'')+'">'+(showText?esc(t):'&nbsp;')+'</span>';
+}
 function renderCalendar(){
   const box=document.getElementById("calBox"); if(!box) return;
   if(_calY==null){ const n=new Date(); _calY=n.getFullYear(); _calM=n.getMonth(); }
@@ -3559,7 +3976,14 @@ function renderCalendar(){
     const dt=new Date(_calY,_calM,d), ds=isoDate(dt);
     const isToday=startOfDay(dt).getTime()===today.getTime();
     const isAnniv=anniv && anniv.getMonth()===_calM && anniv.getDate()===d;
-    const hasEvt=eventsOnDay(dt).length>0;
+    const dayEvts=eventsOnDay(dt);
+    const hasEvt=dayEvts.length>0;
+    // 스티커(v0.8.25): 점(dot)보다 우선 — 스티커가 있는 날은 점 대신 이모지를 크게 찍는다.
+    const stks=dayEvts.filter(ev=>stickerOf(ev)).slice(0,STICKER_MAX_PER_DAY);
+    // v0.8.26: 스티커 스팬 자체를 탭 대상으로 두지 않는다(칸이 40px라 오터치가 잦았다) — 칸 어디를
+    // 눌러도 시트가 열리고, 찍힌 스티커는 시트 안 "이 날 스티커"에서 눌러 상세·삭제한다.
+    const stkHtml = stks.length ? '<span class="stk-row n'+stks.length+'">'
+      +stks.map(ev=>'<span class="stk">'+esc(stickerOf(ev))+'</span>').join("")+'</span>' : "";
     let rngCls='', selCls='';
     if(_evtPicking){
       const inRange = rs && re && rs<re && dt>=rs && dt<=re;
@@ -3570,32 +3994,133 @@ function renderCalendar(){
       rngCls = rr ? (' rng'+(rr.start?' rng-s':'')+(rr.end?' rng-e':'')) : '';
       selCls = _selDate===ds ? ' sel' : '';
     }
-    html+='<button class="cal-d'+(isToday?' today':'')+selCls+rngCls+'" data-day="'+ds+'">'+d
-      +(isAnniv?'<span class="anv">🩷</span>':'')+(hasEvt?'<span class="dot"></span>':'')+'</button>';
+    /* v0.8.27 — 칸 안 일정 제목. 등록/수정 폼이 열려 있는 동안(_evtPicking = 이 달력이 범위
+       선택기로 겸용될 때)엔 제목을 비워 선택에 집중하게 둔다: 저장된 일정 밴드를 잠시 양보하는
+       기존 규칙(바로 위 rngCls 분기)과 같은 원칙이다. */
+    let titleHtml="";
+    if(!_evtPicking){
+      const titled=calTitledOnDay(dt);
+      const cap=stks.length?CAL_TITLE_MAX_STK:CAL_TITLE_MAX;
+      const show=titled.slice(0,cap), rest=titled.length-show.length;
+      if(show.length) titleHtml='<span class="cd-evts">'+show.map(ev=>calTitleHtml(dt,ev)).join("")
+        +(rest>0?'<span class="cd-more">+'+rest+'</span>':'')+'</span>';
+    }
+    // 점(dot)은 "무언가 있다"는 최소 신호 — 제목 칩이나 스티커가 이미 보이면 군더더기라 뺀다.
+    // 제목도 스티커도 없는 일정(구버전 문서 등)만 지금도 점으로 표시된다.
+    html+='<button class="cal-d'+(isToday?' today':'')+selCls+rngCls+(stks.length?' has-stk':'')+'" data-day="'+ds+'">'
+      +'<span class="cd-n">'+d+'</span>'
+      +(isAnniv?'<span class="anv">🩷</span>':'')+(stks.length?stkHtml:((hasEvt&&!titleHtml)?'<span class="dot"></span>':''))+titleHtml+'</button>';
   }
   box.innerHTML=html+'</div>';
   document.getElementById("calPrev").onclick=()=>{ _calM--; if(_calM<0){_calM=11;_calY--;} renderCalendar(); };
   document.getElementById("calNext").onclick=()=>{ _calM++; if(_calM>11){_calM=0;_calY++;} renderCalendar(); };
+  /* v0.8.26 — 날짜 칸을 한 번 탭하면 그 날짜의 스티커 시트가 바로 열린다(사장님 13:20
+     "캘린더 날짜 누르면 바로 붙일 수 있도록"). 길게 누르기 경로는 완전히 폐기했다.
+     예전의 날짜-탭 동작(그 날 일정 보기 / 빈 날이면 등록폼)은 없어진 게 아니라 시트 안
+     "📋 이 날 일정 보기"·"＋ 일정 추가" 항목으로 옮겨갔다 — 한 번의 탭에서 갈 수 있는 길이
+     줄지 않는다. 등록/수정 폼이 열려 있는 동안(_evtPicking)엔 예전처럼 범위 선택기로만 동작. */
   box.querySelectorAll("[data-day]").forEach(el=>el.onclick=()=>{
     const ds=el.dataset.day;
-    if(_evtPicking){ evtRangeTapDay(ds); return; } // 등록/수정 폼이 열려 있으면 이 달력은 범위 선택기로만 동작
-    // 달력 날짜 탭(2026-08-25 수리): 그 날 등록된 일정이 있으면 먼저 그 목록(제목·기간·메모)을
-    // 보여준다 — 예전엔 무조건 빈 등록폼만 열려 "확인하려고 눌렀는데 등록 화면만 나온다"는 혼란이
-    // 있었다. 일정이 없는 날은 기존처럼 바로 등록폼을 열어준다(빈 날 빠른 추가 편의는 그대로 유지).
+    if(_evtPicking){ evtRangeTapDay(ds); return; } // 기존 불변식 유지(폼이 열린 동안 달력=범위 선택기)
     _selDate=ds;
     renderCalendar();
-    const hasEvt = eventsOnDay(parseYMD(_selDate)).length>0;
-    renderDayEvents(_selDate);
-    if(hasEvt){
-      const list=document.getElementById("dayEventList"); if(list) list.scrollIntoView({behavior:"smooth", block:"center"});
-    } else {
-      resetEvtRange(_selDate);
-      openEvtForm();
-      const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
-      const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
-    }
+    renderDayEvents(_selDate);   // 화면 아래 "그 날의 일정" 목록도 그대로 갱신(시트를 닫으면 바로 보인다)
+    openStickerSheet(ds);
   });
   if(_evtPicking){ const sum=document.getElementById("evtRangeSummary"); if(sum) sum.textContent=evtRangeSummaryText(); }
+}
+
+/* ===== 스티커 시트 / 상세 (v0.8.25 → v0.8.26 탭 진입) ===================================
+   진입: 달력 날짜 칸을 한 번 탭(renderCalendar의 onclick) — 그게 전부다.
+   ⚠️v0.8.26에서 길게 누르기(pointerdown 타이머)·진동·contextmenu 억제 코드를 **전부 삭제**했다.
+     사장님 폰 실측에서 ①길게 누르면 클릭과 겹쳐 두 번 열리고 ②iOS 텍스트 선택(블록 지정)이 같이
+     걸렸다 — 제스처를 하나(탭)로 줄여 충돌 원인을 구조적으로 없앴다. 선택 하이라이트는 CSS
+     user-select:none(.cal / #stickerModal)로 따로 막는다.
+   ⚠️iOS 관례(2026-08-05 v0.5.4 사고): touchstart preventDefault로 click을 취소하지 않는다.
+     여기 경로는 순수 click 핸들러 하나뿐이라 그 사고 유형 자체가 성립하지 않는다. */
+let _stkDate=null, _stkAnnual=false, _stkDetailId=null;
+function _hideStickerSheet(){ const m=document.getElementById("stickerModal"); if(m) m.style.display="none"; }
+function closeStickerSheet(){ navCloseSelf("stickerModal", _hideStickerSheet); }
+function setStkType(annual){
+  _stkAnnual=!!annual;
+  document.getElementById("stkTypeOnce").classList.toggle("on", !_stkAnnual);
+  document.getElementById("stkTypeAnnual").classList.toggle("on", _stkAnnual);
+}
+let _stkDaySt=[]; // 시트에 띄운 "이 날 스티커" 원본(인덱스로만 되짚는다 — 속성에 사용자 문자열 금지)
+function openStickerSheet(dateStr){
+  if(!pairId){ toast("먼저 시작해주세요"); return; }
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  const modal=document.getElementById("stickerModal");
+  if(modal.style.display==="flex") return; // 탭 1회 = 시트 1회(이중 오픈 방지)
+  _stkDate=/^\d{4}-\d{2}-\d{2}$/.test(dateStr||"") ? dateStr : todayStr();
+  document.getElementById("stkDate").textContent=fmtDateK(_stkDate);
+  document.getElementById("stkCustom").value="";
+  setStkType(false);
+  const g=document.getElementById("stkGrid");
+  // 프리셋은 상수 배열이라 인덱스로만 되돌린다(속성에 사용자 문자열을 넣지 않음 — esc()는 따옴표를
+  // 이스케이프하지 않으므로 속성값 조립은 원칙적으로 피한다).
+  g.innerHTML=STICKER_PRESETS.map((s,i)=>'<button type="button" data-i="'+i+'" aria-label="'+esc(STICKER_LABELS[s]||"스티커")+'">'
+    +esc(s)+'<span class="lb">'+esc(STICKER_LABELS[s]||"")+'</span></button>').join("");
+  g.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>saveSticker(STICKER_PRESETS[+b.dataset.i]));
+  renderStickerSheetDay();
+  modal.style.display="flex";
+  navOpen("stickerModal", _hideStickerSheet);
+}
+/* 시트 상단 "이 날 스티커"(탭=상세·삭제) + 아래 "이 날 일정 보기 (N)" — 예전 날짜-탭 동작 흡수분.
+   events 스냅샷이 갱신되면(짝이 붙였을 때 포함) 시트가 열려 있는 동안에도 다시 그린다. */
+function renderStickerSheetDay(){
+  const wrap=document.getElementById("stkDayList"); if(!wrap || !_stkDate) return;
+  const dt=parseYMD(_stkDate);
+  _stkDaySt = dt ? eventsOnDay(dt).filter(ev=>stickerOf(ev)) : [];
+  wrap.innerHTML=_stkDaySt.length
+    ? '<div style="width:100%;font-size:11.5px;color:var(--muted);margin-bottom:2px">이 날 스티커 · 눌러서 자세히</div>'
+      +_stkDaySt.map((ev,i)=>'<button type="button" data-di="'+i+'">'+esc(stickerOf(ev))+'</button>').join("")
+    : "";
+  wrap.querySelectorAll("[data-di]").forEach(b=>b.onclick=()=>{
+    const ev=_stkDaySt[+b.dataset.di]; if(!ev) return;
+    closeStickerSheet();
+    setTimeout(()=>openStickerDetail(ev.id), 80); // history 정합(닫힘 popstate가 먼저 처리되도록)
+  });
+  const titled = dt ? eventsOnDay(dt).filter(ev=>((ev.title||"").trim())) : [];
+  const vb=document.getElementById("btnStkViewDay");
+  if(vb){
+    vb.style.display=titled.length?"block":"none";
+    vb.textContent="📋 이 날 일정 보기 ("+titled.length+")";
+  }
+}
+/* 제목 없는 스티커 1건 저장 — title:"" 이 곧 "스티커만"의 표식(스키마 추가 없음). */
+async function saveSticker(raw){
+  const st=normSticker(raw);
+  if(!st){ toast("스티커를 골라주세요"); return; }
+  if(!pairId || !_stkDate) return;
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  const dt=parseYMD(_stkDate);
+  if(dt && stickersOnDay(dt).length>=STICKER_MAX_PER_DAY){ toast("한 날에 스티커는 "+STICKER_MAX_PER_DAY+"개까지예요"); return; }
+  try{
+    await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"),
+      { title:"", date:_stkDate, type:_stkAnnual?"annual":"once", memo:"", sticker:st, createdBy:fb.uid, createdAt:M.serverTimestamp() });
+    toast("스티커를 붙였어요");
+    closeStickerSheet();
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"붙일 권한이 없어요":"붙이지 못했어요"); }
+}
+function _hideStickerDetail(){ const m=document.getElementById("stickerDetail"); if(m) m.style.display="none"; }
+function closeStickerDetail(){ navCloseSelf("stickerDetail", _hideStickerDetail); }
+function openStickerDetail(id){
+  const ev=_events.find(e=>e.id===id); if(!ev) return;
+  _stkDetailId=id;
+  const st=stickerOf(ev), title=(ev.title||"").trim();
+  document.getElementById("stkDetailEmoji").textContent=st;
+  document.getElementById("stkDetailTitle").textContent=title || fmtDateK(ev.date);
+  const lines=[];
+  if(title) lines.push(fmtDateK(ev.date));
+  lines.push((ev.type==="annual"?"매년 반복 · ":"")+stickerCountLabel(ev));
+  if(ev.memo) lines.push(ev.memo);
+  document.getElementById("stkDetailDesc").innerHTML=lines.filter(Boolean).map(esc).join("<br>");
+  const del=document.getElementById("btnStkDelete");
+  del.style.display=(ev.createdBy===fb.uid)?"block":"none"; // rules와 동일 — 내가 만든 것만 지울 수 있다
+  del.textContent=title ? "🗑 일정 지우기" : "🗑 스티커 지우기";
+  document.getElementById("stickerDetail").style.display="flex";
+  navOpen("stickerDetail", _hideStickerDetail);
 }
 /* ===== 일정 날짜 범위 연속 선택기(2026-08-28, 사장님 지시 "시작과 종료를 따로 기입해야 되는데
    ... 시작 창에서 종료 시점까지 바로 체크할 수 있도록", 13:23 재지적 "달력이 두 번" 최종 수리) =====
@@ -3640,6 +4165,9 @@ function renderUpcoming(){
   _events.forEach(ev=>{ const occ=nextOccurrence(ev); if(occ && daysBetween(today,occ)>=0) items.push({ev,occ}); });
   anniversaryItems().forEach(it=>{ const occ=parseYMD(it.date); if(occ && daysBetween(today,occ)>=0) items.push({ev:it,occ}); });
   items.sort((a,b)=>a.occ-b.occ);
+  // v0.8.27: 접혀 있어도 개수는 헤더에 보인다 — 접힌 상태에서 "몇 건 있는지"를 못 보면 토글이 손해다.
+  const lbl=document.getElementById("upcomingToggleLabel");
+  if(lbl) lbl.textContent="다가오는 일정 ("+items.length+")";
   if(!items.length){ el.innerHTML='<div class="empty-note">아직 다가오는 일정이 없어요.<br>위에서 우리 기념일을 더해봐요 🩷</div>'; return; }
   el.innerHTML=items.slice(0,12).map(({ev,occ})=>{
     const mine=ev.createdBy===fb.uid;
@@ -3648,12 +4176,29 @@ function renderUpcoming(){
     const sub=[rl || isoDate(occ).replace(/-/g,"."), typeLabel, ev.memo].filter(Boolean).join(" · ");
     const editable = (!ev._synthetic && mine);
     const del= editable ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
-    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+esc(ev.title)+'</div>'
+    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+evtTitleHtml(ev)+'</div>'
       +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
     return '<div class="evt"><div class="dd">'+ddLabel(occ)+'</div>'+info+del+'</div>';
   }).join("");
   el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
   el.querySelectorAll("[data-edit-evt]").forEach(b=>b.onclick=()=>startEditEvent(b.dataset.editEvt)); // 탭=수정(날짜 변경 가능)
+}
+/* ===== 일정 목록 접기/펼치기 (v0.8.27, 사장님 "일정 리스트는 토글 방식으로 볼 수 있도록") =====
+   기본은 접힘 — 이제 달력 칸에 제목이 그대로 보이므로 목록은 "더 자세히 볼 때" 펴는 자리다.
+   선택은 localStorage에 남긴다(기기별 취향이라 Firestore·스키마 무관). 사파리 프라이빗 등에서
+   localStorage 접근 자체가 던질 수 있어 읽기·쓰기 모두 try로 감싼다 — 실패해도 기본 접힘으로
+   멀쩡히 동작하고, 화면 상태(class/aria)는 DOM에만 의존한다. */
+const UPCOMING_OPEN_KEY="oguogu.pref.upcomingOpen";
+function upcomingOpen(){ try{ return localStorage.getItem(UPCOMING_OPEN_KEY)==="1"; }catch(e){ return false; } }
+function applyUpcomingOpen(v){
+  const wrap=document.getElementById("upcomingWrap"), btn=document.getElementById("btnUpcomingToggle");
+  if(wrap) wrap.classList.toggle("open", !!v);
+  if(btn) btn.setAttribute("aria-expanded", v?"true":"false");
+}
+function toggleUpcoming(){
+  const v=!upcomingOpen();
+  try{ localStorage.setItem(UPCOMING_OPEN_KEY, v?"1":"0"); }catch(e){}
+  applyUpcomingOpen(v);
 }
 /* 선택한 날짜(_selDate)에 등록된 일정 목록 — 2026-08-25 실기기 버그 수리.
    기존엔 달력 날짜를 탭하면(이미 일정이 있는 날이어도) 무조건 빈 등록폼만 열려 "확인하려고
@@ -3676,7 +4221,7 @@ function renderDayEvents(dateStr){
     const sub=[rl, typeLabel, ev.memo].filter(Boolean).join(" · ");
     const editable=mine;
     const del= editable ? '<button class="del" data-del-evt="'+ev.id+'" aria-label="삭제">✕</button>' : "";
-    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+esc(ev.title)+'</div>'
+    const info='<div class="info"'+(editable?' data-edit-evt="'+ev.id+'" style="cursor:pointer"':'')+'><div class="t">'+evtTitleHtml(ev)+'</div>'
       +(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
     return '<div class="evt">'+info+del+'</div>';
   }).join("");
@@ -3712,6 +4257,7 @@ async function addEvent(){
   let start=_evtStart||"";
   let end=(_evtEnd && _evtEnd!==_evtStart) ? _evtEnd : "";
   const memo=document.getElementById("evtMemo").value.trim();
+  const sticker=normSticker(document.getElementById("evtSticker").value); // v0.8.25 선택 — 비면 필드 자체를 안 쓴다
   if(!title){ toast("제목을 입력해주세요"); return; }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ toast("날짜를 선택해주세요"); return; } // 과거·미래 모두 허용(기념일 소급 등)
   // 기간(종료일) 정규화 — 방어적 안전망(연속 탭 선택기가 이미 순서·기념일 단일화를 보장하지만
@@ -3723,15 +4269,16 @@ async function addEvent(){
   } else end="";
   try{
     if(_editingEvtId){
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField() });
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField(), sticker: sticker ? sticker : M.deleteField() });
       toast("일정을 수정했어요");
     } else {
       const doc={ title, date:start, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() };
       if(end) doc.endDate=end;
+      if(sticker) doc.sticker=sticker; // 없으면 필드 자체를 만들지 않는다(기존 문서 모양 유지)
       await M.addDoc(M.collection(fb.db,"pairs",pairId,"events"), doc);
       toast("일정을 추가했어요");
     }
-    document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value="";
+    document.getElementById("evtTitle").value=""; document.getElementById("evtMemo").value=""; document.getElementById("evtSticker").value="";
     closeEvtForm();
     _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
   }catch(e){ console.error(e); toast(isDeniedErr(e)?(_editingEvtId?"수정 권한이 없어요":"추가 권한이 없어요"):(_editingEvtId?"수정하지 못했어요":"추가하지 못했어요")); }
@@ -3750,13 +4297,14 @@ function startEditEvent(id){
   setEvtType(ev.type==="annual"?"annual":"once");
   renderCalendar();
   document.getElementById("evtMemo").value=ev.memo||"";
+  document.getElementById("evtSticker").value=stickerOf(ev); // v0.8.25 (없으면 "")
   document.getElementById("btnAddEvt").textContent="수정하기";
   openEvtForm();
   openEventSchedSection(ev); // 저장된 일정이니 이제부터 "하루 일과"를 채울 수 있음
   const f=document.getElementById("evtForm"); f.scrollIntoView({behavior:"smooth", block:"center"});
 }
-async function deleteEvent(id){
-  if(!confirm("이 일정을 지울까요?")) return;
+async function deleteEvent(id, confirmMsg){
+  if(!confirm(confirmMsg || "이 일정을 지울까요?")) return;
   try{
     await purgeCollection(["pairs",pairId,"events",id,"blocks"]).catch(e=>console.error("하루 일과 소거 실패(비치명):", e)); // 일정 삭제 시 하루 일과도 함께 정리
     await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"events",id));
@@ -3926,14 +4474,78 @@ function setDiaryView(v){ _diaryView=v;
   document.getElementById("diaryTabGrid").classList.toggle("on",v==="grid");
   renderDiary();
 }
+/* ===== 썸네일 주소 생성 (v0.8.24, 2026-09-08 근본수리) =====
+   기존: URL.createObjectURL(blob:)을 _thumbUrlCache에 영구 보관 — revoke·재생성·onerror·복귀
+   재렌더가 전부 0건이라, iOS 홈화면 앱이 백그라운드에 있는 동안 blob 저장소가 회수되면 그 화면
+   세션 동안 사진이 영구히 깨진 채 남았다(2026-09-08 RCA: data/reports/5959_diary_photo_rca_2026-09-08.md).
+   변경: data:<mime>;base64,... 고정 주소로 생성 — 문자열 자체가 데이터라 외부 요인으로 무효화되지 않는다.
+   메모리 산정(실측): 다이어리 썸네일 13장 평균 23,504B → base64 30.6KB/장(4/3배+프리픽스).
+     앱 전체 사진 수는 pair.photoCount로 상한 강제(무료 50장 / 응원팩 150장)되므로
+     최악 50장≈1.50MB, 150장≈4.49MB. 추가 안전판으로 캐시 총량이 THUMB_CACHE_MAX_BYTES를 넘으면
+     통째로 비운다(원본 Bytes가 _diary·메시지 스냅샷에 남아 있어 재생성은 언제나 가능). */
+const THUMB_CACHE_MAX_BYTES = 12*1024*1024;
+let _thumbCacheBytes = 0;
+function _u8ToBase64(u8){
+  let s=""; const CH=0x8000;                       // 인자 폭주 방지: 32KB씩 끊어서 변환
+  for(let i=0;i<u8.length;i+=CH) s+=String.fromCharCode.apply(null, u8.subarray(i, i+CH));
+  return btoa(s);
+}
+function clearThumbCache(){
+  for(const k in _thumbUrlCache) delete _thumbUrlCache[k];
+  _thumbCacheBytes=0;
+}
 function thumbUrl(t){
+  if(!t || !t.photoId) return "";
   if(_thumbUrlCache[t.photoId]) return _thumbUrlCache[t.photoId];
   try{
     const u8=(t.bytes && t.bytes.toUint8Array) ? t.bytes.toUint8Array() : t.bytes;
-    const url=URL.createObjectURL(new Blob([u8],{type:"image/jpeg"}));
-    _thumbUrlCache[t.photoId]=url; return url;
-  }catch(e){ return ""; }
+    if(!u8 || !u8.length) return "";
+    // t.mime은 v0.8.22부터 저장(스티커=image/png, 일반=image/jpeg) — 이 필드가 없는 기존(배포
+    // 이전) 사진은 전부 image/jpeg였으므로 폴백이 그대로 하위호환을 보장한다(회귀 없음).
+    const url="data:"+(t.mime||"image/jpeg")+";base64,"+_u8ToBase64(u8);
+    if(_thumbCacheBytes+url.length > THUMB_CACHE_MAX_BYTES) clearThumbCache();
+    _thumbUrlCache[t.photoId]=url; _thumbCacheBytes+=url.length;
+    return url;
+  }catch(e){ console.error(e); return ""; }
 }
+/* 썸네일 메타(Bytes 포함) 역조회 — 이미지 로드 실패 시 같은 photoId의 원본 바이트를 찾아 재생성한다.
+   출처는 메모리에 이미 떠 있는 배열뿐(_diary 스냅샷 / 편집 중 사본) — 추가 Firestore 읽기 0건. */
+function findThumbMeta(photoId){
+  try{
+    for(const en of (_diary||[])){
+      const t=(en.thumbs||[]).find(x=>x.photoId===photoId);
+      if(t) return t;
+    }
+    const e2=(_editingPhotos||[]).find(x=>x.photoId===photoId);
+    if(e2) return e2;
+  }catch(e){ /* 역조회 실패는 무해 — 아래에서 재생성만 포기 */ }
+  return null;
+}
+/* <img> 로드 실패 감시(capture 단계 — img의 error 이벤트는 버블하지 않는다).
+   data-thumbid를 가진 이미지가 깨지면 캐시를 지우고 딱 1회 재생성해 다시 붙인다(무한 루프 방지 플래그). */
+document.addEventListener("error", function(e){
+  const im=e.target;
+  if(!im || im.tagName!=="IMG") return;
+  const pid=im.getAttribute("data-thumbid"); if(!pid) return;
+  if(im.dataset.thumbRetry==="1") return;          // 1회만 재시도
+  im.dataset.thumbRetry="1";
+  delete _thumbUrlCache[pid];
+  const t=findThumbMeta(pid); if(!t) return;
+  const url=thumbUrl(t); if(url) im.src=url;
+}, true);
+/* 앱 복귀(백그라운드→포그라운드 / bfcache 복원) 시 썸네일 캐시를 비우고 현재 화면을 다시 그린다.
+   data: 전환 후에는 무효화가 일어나지 않지만, blob을 쥔 구버전 화면이 남아 있는 전환기와
+   "복귀했더니 사진이 깨져 있다" 계열 증상 전반에 대한 안전망으로 둔다(재생성 비용=메모리 내 base64). */
+function refreshThumbsOnResume(){
+  clearThumbCache();
+  try{
+    if(!inAppTabs()) return;
+    if(currentTab==="diary") renderDiary();
+    else if(currentTab==="home") renderHomeDiary();
+  }catch(e){ console.error(e); }
+}
+window.addEventListener("pageshow", e=>{ if(e.persisted) refreshThumbsOnResume(); });
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshThumbsOnResume(); });
 function renderDiary(){
   const cnt=photoCount();
   const lbl=document.getElementById("photoCountLbl"); if(lbl) lbl.textContent="사진 "+cnt+"/"+PHOTO_CAP;
@@ -3953,7 +4565,7 @@ function renderDiaryList(body){
   body.innerHTML=_diary.map(en=>{
     const mine=en.authorUid===fb.uid;
     const au = mine ? "내 기록" : ((myPartnerLabel()||"상대")+" 기록");
-    const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
+    const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-thumbid="'+t.photoId+'" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
     const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
     const cn=_commentCounts[en.id];
     const cLabel = cn>0 ? "💬 "+cn : "💬 댓글";
@@ -3975,7 +4587,7 @@ function renderDiaryGrid(body){
   const all=[];
   _diary.forEach(en=>(en.thumbs||[]).forEach(t=>all.push({t, entry:en.id})));
   if(!all.length){ body.innerHTML='<div class="empty-note">아직 사진이 없어요.<br>기록에 사진을 담으면 여기 모여요 🖼️</div>'; return; }
-  body.innerHTML='<div class="grid-photos">'+all.map(x=>'<img loading="lazy" data-photo="'+x.t.photoId+'" data-entry="'+x.entry+'" src="'+thumbUrl(x.t)+'">').join("")+'</div>';
+  body.innerHTML='<div class="grid-photos">'+all.map(x=>'<img loading="lazy" data-thumbid="'+x.t.photoId+'" data-photo="'+x.t.photoId+'" data-entry="'+x.entry+'" src="'+thumbUrl(x.t)+'">').join("")+'</div>';
   wireDiaryBody(body);
 }
 function wireDiaryBody(body){
@@ -4138,12 +4750,29 @@ function _pvHideStatus(){
   const st=document.getElementById("pvStatus"); if(!st) return;
   st.classList.remove("show");
 }
+/* 뷰어 이미지 1장에 "실패하면 1회 재생성" 핸들러를 건다(v0.8.24). showErr=현재 슬라이드만 오류 UI 표시. */
+function _pvArmRetry(img, item, showErr){
+  if(!img) return;
+  delete img.dataset.pvRetry;                       // 슬라이드가 바뀔 때마다 재시도 기회 초기화
+  img.onerror=()=>{
+    if(!item || !item.ref){ if(showErr) _pvShowError(); return; }
+    if(img.dataset.pvRetry==="1"){ if(showErr) _pvShowError(); return; }
+    img.dataset.pvRetry="1";
+    const k=item.ref.join("/");
+    const u=_pvCache[k]; if(u){ try{ URL.revokeObjectURL(u); }catch(e){} }
+    delete _pvCache[k];
+    _pvLoadURL(item).then(u2=>{ if(u2){ img.src=u2; if(showErr) _pvHideStatus(); } else if(showErr) _pvShowError(); });
+  };
+}
 async function _pvRender(){
   _pvW=_pvViewportW();
   _zReset(); // 슬라이드가 바뀔 때마다 확대 상태 초기화(이전 사진의 확대가 다음 사진에 넘어가지 않도록)
   const cur=_viewerList[_viewerIdx];
   const curImg=document.getElementById("pvCur"), prevImg=document.getElementById("pvPrev"), nextImg=document.getElementById("pvNext");
   _pvShowLoading();
+  /* v0.8.24 — 원본은 용량(수백 KB) 때문에 blob:을 유지하되, 무효화·로드 실패 시 캐시를 버리고
+     1회 재생성해 다시 붙인다(썸네일과 같은 무복구 함정을 원본 쪽에도 남기지 않기 위함). */
+  _pvArmRetry(curImg, cur, true); _pvArmRetry(prevImg, _viewerList[_viewerIdx-1], false); _pvArmRetry(nextImg, _viewerList[_viewerIdx+1], false);
   const url = await _pvLoadURL(cur);
   curImg.src = url || "";
   if(url) _pvHideStatus(); else _pvShowError();
@@ -4184,7 +4813,13 @@ function _closeViewerRaw(){
 function closePhotoViewer(){ navCloseSelf("photoViewer", _closeViewerRaw); } // UI 트리거(X·배경·아래로 밀기) 공통 — history 정합
 
 /* ---- 사진 압축(캔버스): 긴변 maxDim으로 축소 → JPEG. Uint8Array 반환(Bytes 저장용) ---- */
-function compressImage(file, maxDim, quality){
+/* mimeType 4번째 인자(v0.8.22, 2026-09-01 23:20 "스티커 고") — 생략 시 기존과 완전히 동일하게
+   image/jpeg(기존 5개 호출부 전부 무변경 동작). 스티커 경로만 "image/png"를 넘겨 무손실+알파
+   보존으로 압축한다. 실측(claude-in-chrome, 같은 canvas→toBlob 파이프라인): JPEG는 투명 영역을
+   검정으로 매팅(decodedPixel=[0,0,0,255])하지만 PNG는 반투명까지 정확히 보존(왕복 검증 완료) —
+   그래서 스티커만 인코딩을 바꾼다(압축 파이프라인 구조 자체는 완전히 동일, 새 경로 아님). */
+function compressImage(file, maxDim, quality, mimeType){
+  mimeType = mimeType || "image/jpeg";
   return new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(file);
     const img=new Image();
@@ -4199,7 +4834,7 @@ function compressImage(file, maxDim, quality){
         if(!blob){ reject(new Error("compress_failed")); return; }
         try{ resolve({bytes:new Uint8Array(await blob.arrayBuffer()), w, h}); }
         catch(err){ reject(err); }
-      }, "image/jpeg", quality);
+      }, mimeType, quality);
     };
     img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("load_failed")); };
     img.src=url;
@@ -4249,7 +4884,7 @@ function renderEditPhotos(){
   const box=document.getElementById("diaryEditPhotos"); if(!box) return;
   if(!_editingDiaryId || !_editingPhotos.length){ box.style.display="none"; box.innerHTML=""; return; }
   box.style.display="flex";
-  box.innerHTML=_editingPhotos.map(t=>'<div class="edit-photo"><img src="'+thumbUrl(t)+'"><button type="button" data-delphoto="'+t.photoId+'" aria-label="사진 삭제">×</button></div>').join("");
+  box.innerHTML=_editingPhotos.map(t=>'<div class="edit-photo"><img data-thumbid="'+t.photoId+'" src="'+thumbUrl(t)+'"><button type="button" data-delphoto="'+t.photoId+'" aria-label="사진 삭제">×</button></div>').join("");
   box.querySelectorAll("[data-delphoto]").forEach(b=>b.onclick=()=>deleteDiaryPhoto(b.dataset.delphoto));
 }
 /* 편집 중 사진 1장 즉시 삭제 — photos 서브컬렉션 원본 삭제 + 엔트리 thumbs 반영 + pair.photoCount 공용 캡 -1.
@@ -4292,8 +4927,17 @@ async function saveDiary(){
         newThumbs.push({photoId, w:thumb.w, h:thumb.h, bytes:M.Bytes.fromUint8Array(thumb.bytes)});
         newFulls.push({photoId, bytes:M.Bytes.fromUint8Array(full.bytes), w:full.w, h:full.h});
       }
-      const mergedThumbs=_editingPhotos.map(t=>({photoId:t.photoId, w:t.w, h:t.h, bytes:t.bytes})).concat(newThumbs);
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId), {text, date, thumbs:mergedThumbs, photoCount:mergedThumbs.length, updatedAt:M.serverTimestamp()});
+      /* v0.8.24 — thumbs 통째 덮어쓰기 방지(2026-09-08 RCA 별건 리스크).
+         기존: 텍스트만 고쳐도 _editingPhotos(편집 진입 시점의 사본)로 thumbs를 항상 덮어썼다 →
+         진입 시점 사본이 비어 있으면 사진이 통째로 지워지는 구조. 사진 삭제는 deleteDiaryPhoto가
+         이미 자체 updateDoc으로 즉시 반영하므로, 이 저장에서 thumbs를 쓸 이유는 "새 사진 추가"뿐이다.
+         따라서 새 사진이 없으면 thumbs/photoCount를 payload에서 제외한다(텍스트·날짜만 수정). */
+      const patch={text, date, updatedAt:M.serverTimestamp()};
+      if(newThumbs.length){
+        const mergedThumbs=_editingPhotos.map(t=>({photoId:t.photoId, w:t.w, h:t.h, bytes:t.bytes})).concat(newThumbs);
+        patch.thumbs=mergedThumbs; patch.photoCount=mergedThumbs.length;
+      }
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId), patch);
       for(const p of newFulls){
         await M.setDoc(M.doc(fb.db,"pairs",pairId,"diary",entryId,"photos",p.photoId),
           {bytes:p.bytes, mime:"image/jpeg", w:p.w, h:p.h, authorUid:fb.uid, createdAt:M.serverTimestamp()});
@@ -4642,6 +5286,63 @@ document.getElementById("btnAttach").onclick=()=>{ const m=document.getElementBy
   const files=[...e.target.files]; e.target.value=""; document.getElementById("attachMenu").style.display="none";
   if(files.length) sendChatPhotos(files);
 }));
+/* ═══════ 스티커/이미지 붙여넣기·드롭 (v0.8.22, 2026-09-01 23:20 사장님 GO "스티커 고") ═══════
+   아이폰 키보드 스티커·미모지(및 일반 이미지)를 입력창에 붙여넣거나 놓으면 조용히 사라지지
+   않고 이미지 메시지로 즉시 전송한다(스티커 UX = 확인창 없음). 저장·압축 경로는 sendChatPhotos/
+   compressImage 그대로 재사용(위 opts.sticker 주석 참조) — rules·릴레이 무접촉(사진 경로 그대로).
+   ★실제 동작 경로는 아이폰에서 3갈래로 갈릴 수 있어 방어적으로 전부 처리한다(iOS/WKWebView
+   스티커 삽입은 문서화가 안 돼 있음 — 정직 표기):
+     ① paste: 클립보드에 이미지가 있을 때(복사→붙여넣기, 길게 눌러 "복사" 후 붙여넣기 등)
+        — clipboardData.items를 표준 방식으로 읽음. 가장 흔한 경로로 추정.
+     ② beforeinput(insertFromPaste/insertFromDrop/insertReplacementText): 일부 WKWebView는
+        paste DOM 이벤트 없이 이 경로로 dataTransfer에 이미지를 실어 보내는 사례가 보고됨
+        (스티커를 "붙여넣기 대체 텍스트"처럼 삽입하는 케이스 대응).
+     ③ drop: 스티커를 길게 눌러 입력창으로 "드래그해서 놓는" 경우 — iOS의 스티커 앱간 드래그는
+        네이티브 드래그앤드롭으로 동작하는 사례가 있어 별도로 처리(dragover에서 preventDefault
+        해야 drop이 실제로 발생함 — 텍스트 입력 동작에는 영향 없음).
+   세 경로 모두 결국 같은 판정 함수(_trySendPastedImages)로 모여 400ms 디바운스로 중복전송을
+   막는다(paste가 처리하면 preventDefault로 뒤이은 beforeinput 자체가 애초에 안 일어나는 것이
+   보통이지만, 문서화 안 된 환경 편차에 대비한 이중 방어). 이미지가 아니면(텍스트 붙여넣기 등)
+   전부 그대로 통과 — 기존 텍스트 동작 무영향. */
+function _extractImageFiles(dt){
+  if(!dt) return [];
+  const out=[];
+  if(dt.files && dt.files.length){
+    for(const f of dt.files){ if(f && f.type && f.type.indexOf("image/")===0) out.push(f); }
+  }
+  if(!out.length && dt.items && dt.items.length){
+    for(const it of dt.items){
+      if(it && it.kind==="file" && it.type && it.type.indexOf("image/")===0){
+        const f=it.getAsFile(); if(f) out.push(f);
+      }
+    }
+  }
+  return out;
+}
+let _lastStickerSendAt=0;
+function _trySendPastedImages(dt){
+  const files=_extractImageFiles(dt);
+  if(!files.length) return false; // 이미지 없음(텍스트 등) — 호출부가 기존 동작을 그대로 진행하게 false
+  const now=Date.now();
+  if(now-_lastStickerSendAt>=400){ _lastStickerSendAt=now; sendChatPhotos(files, {sticker:true}); }
+  return true; // 디바운스로 스킵돼도 "이 이벤트는 이미지였다"는 사실은 true — 기본 동작(예: 붙여넣기)은 계속 막는다
+}
+document.getElementById("msgInput").addEventListener("paste", e=>{
+  if(_trySendPastedImages(e.clipboardData)) e.preventDefault();
+});
+document.getElementById("msgInput").addEventListener("beforeinput", e=>{
+  if(e.inputType==="insertFromPaste" || e.inputType==="insertFromDrop" || e.inputType==="insertReplacementText"){
+    if(_trySendPastedImages(e.dataTransfer)) e.preventDefault();
+  }
+});
+document.getElementById("msgInput").addEventListener("drop", e=>{
+  if(_trySendPastedImages(e.dataTransfer)) e.preventDefault();
+});
+document.getElementById("msgInput").addEventListener("dragover", e=>{
+  // drop이 실제로 발생하려면 dragover에서 preventDefault가 필요(브라우저 기본값은 드롭 자체를 무시) —
+  // 파일 드래그가 아니면(예: 텍스트 셀렉션 드래그) 건드리지 않는다.
+  if(e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types||[], "Files")>=0) e.preventDefault();
+});
 /* 채팅 메시지 수정 — 취소 버튼 + 롱프레스 메뉴("수정" 선택 시 진입) + 메뉴 바깥 탭 시 닫힘 */
 document.getElementById("btnCancelMsgEdit").addEventListener("click", cancelEditMessage);
 document.getElementById("msgMenuEdit").addEventListener("click", ()=>{
@@ -4744,6 +5445,7 @@ function closeEvtForm(){ navCloseSelf("evtForm", _hideEvtForm); }   // 저장 �
 document.getElementById("btnToggleEvtForm").onclick=()=>{
   const f=document.getElementById("evtForm"); const willOpen=f.style.display==="none";
   if(willOpen){ _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
+    document.getElementById("evtSticker").value=""; // 직전 편집의 스티커가 새 일정으로 새지 않게(v0.8.25)
     closeEventSchedSection(); // 신규 작성 진입 — 저장 전엔 하루 일과 섹션 숨김(이벤트 id가 아직 없음)
     setEvtType("once");
     resetEvtRange(_selDate||todayStr());
@@ -4754,6 +5456,47 @@ document.getElementById("evtFormBack").onclick=()=>navBack();
 document.getElementById("evtTypeOnce").onclick=()=>setEvtType("once");
 document.getElementById("evtTypeAnnual").onclick=()=>setEvtType("annual");
 document.getElementById("btnAddEvt").onclick=addEvent;
+/* 일정 목록 토글(v0.8.27) — 탭 1회로 접기/펼치기. 저장된 선택을 첫 렌더 전에 화면에 반영한다. */
+document.getElementById("btnUpcomingToggle").onclick=toggleUpcoming;
+applyUpcomingOpen(upcomingOpen());
+/* 캘린더 스티커(v0.8.26) — 시트/상세 배선. 진입은 renderCalendar의 날짜 칸 onclick 하나뿐이다
+   (길게 누르기·보조 버튼 없음). 시트 안 "＋ 일정 추가"·"📋 이 날 일정 보기"가 예전 날짜-탭 동작을 잇는다. */
+document.getElementById("btnStkAddEvt").onclick=()=>{
+  const d=_stkDate||_selDate||todayStr();
+  closeStickerSheet();
+  setTimeout(()=>{   // 시트 닫힘(history.back)이 먼저 처리된 뒤에 폼을 연다 — nav 스택 정합
+    _editingEvtId=null; document.getElementById("btnAddEvt").textContent="추가하기";
+    document.getElementById("evtSticker").value="";
+    closeEventSchedSection();
+    setEvtType("once");
+    resetEvtRange(d);
+    openEvtForm();
+    const f=document.getElementById("evtForm"); if(f) f.scrollIntoView({behavior:"smooth", block:"center"});
+    const t=document.getElementById("evtTitle"); if(t) setTimeout(()=>{ try{ t.focus(); }catch(e){} }, 350);
+  }, 80);
+};
+document.getElementById("btnStkViewDay").onclick=()=>{
+  const d=_stkDate||_selDate||todayStr();
+  closeStickerSheet();
+  setTimeout(()=>{
+    _selDate=d; renderCalendar(); renderDayEvents(_selDate);
+    const list=document.getElementById("dayEventList"); if(list) list.scrollIntoView({behavior:"smooth", block:"center"});
+  }, 80);
+};
+document.getElementById("stkTypeOnce").onclick=()=>setStkType(false);
+document.getElementById("stkTypeAnnual").onclick=()=>setStkType(true);
+document.getElementById("btnStkCustom").onclick=()=>saveSticker(document.getElementById("stkCustom").value);
+document.getElementById("btnStkClose").onclick=()=>closeStickerSheet();
+document.getElementById("stickerModal").addEventListener("click",e=>{ if(e.target.id==="stickerModal") closeStickerSheet(); });
+document.getElementById("btnStkDetailClose").onclick=()=>closeStickerDetail();
+document.getElementById("stickerDetail").addEventListener("click",e=>{ if(e.target.id==="stickerDetail") closeStickerDetail(); });
+document.getElementById("btnStkDelete").onclick=()=>{
+  const id=_stkDetailId; if(!id) return;
+  const ev=_events.find(x=>x.id===id);
+  const titled=!!(ev && (ev.title||"").trim());
+  closeStickerDetail();
+  deleteEvent(id, titled ? "이 일정을 지울까요?" : "이 스티커를 지울까요?"); // 삭제 경로는 기존 deleteEvent 그대로(blocks 정리 포함)
+};
 document.getElementById("btnAddBlock").onclick=addBlock;
 document.getElementById("blkStart").addEventListener("change", onBlkStartChange);
 document.getElementById("blkEnd").addEventListener("change", updateBlkTimeHint);
@@ -4961,12 +5704,102 @@ document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) _healKb
    검증: 87자 base64url → 65바이트 P-256(첫바이트 0x04) + 데스크톱 getToken/PushManager.subscribe 실측 통과. */
 const VAPID_KEY = "BGkIKCNGXjwneGhj3gVzmhNodEnr_hfZN-TzimMsp1GqvK2On1TM6-QhnzJOlCF5iJvDkEP-aXEMCwYqxBaNLb4";
 let fcmMessaging=null;
+/* ★v0.8.18 알림 근본수리(2026-09-01, 진단서 data/meetings/2026-08-31_5959_partner_notify_diag.md)
+   확정 결함 2개 — 둘 다 "서버는 정상인데 단말이 못 받는다"의 코드측 뿌리였다.
+   ① 토큰 자동 갱신 부재: 구 syncNotifyToken()은 localStorage에 캐시된 옛 토큰을 그대로 쓰고,
+      Firestore 값과 같으면 조기 return 했다(구 4995행). FCM 토큰은 브라우저가 임의로 회전시키는데
+      getToken()을 다시 부르는 경로가 "알림 켜기 버튼 클릭" 하나뿐이라, 토큰이 회전한 뒤로는
+      Firestore에 옛 토큰이 박제되고 릴레이는 그 죽은 토큰으로 계속 발송(FCM은 접수만 하고 단말엔
+      안 뜸)했다. → 이제 앱 실행(로그인 완료)마다 getToken()을 다시 호출해 최신값으로 갱신한다.
+   ② 포그라운드 리스너 미재등록: onMessage()가 enableNotify() 안(구 4987행)에서만 등록돼,
+      앱을 새로 열면 스위치가 "켜짐"이어도 그 세션엔 리스너가 없었다 → 앱을 보고 있는 동안
+      도착한 알림은 토스트조차 안 떴다. → 이제 앱 로드 시 권한 granted면 항상 등록한다.
+   ⚠️rules 무접촉 제약: pairs update 케이스 D'(firestore.rules 82~85행)가 affectedKeys를
+      ["fcmTokens"] 하나로 화이트리스트하므로, 같은 write에 tokenUpdatedAt 같은 새 필드를 얹으면
+      permission-denied가 난다. 그래서 갱신 시각은 서버가 아니라 로컬(oguogu.notify.tokenAt)에
+      기록하고 설정 화면 버전줄에 표시한다 — 다음 진단 때 "상대방 폰 설정 화면의 갱신 시각"을
+      한 번 물어보면 재등록 여부를 즉시 판별할 수 있다(서버 필드로 올리려면 rules 케이스 D'
+      화이트리스트 확장이 선행 — 별도 /plan 안건). */
+const NOTIFY_STAMP_KEY="oguogu.notify.tokenAt";
+let _fgBound=false;          // onMessage 리스너 등록 여부(중복 등록=토스트 2번 방지)
+let _tokenRefreshKey=null;   // 이번 실행에서 갱신을 마친 pairId(같은 pair 중복 getToken 방지)
 function notifyIsOn(){ return !!localStorage.getItem("oguogu.notify.on"); }
+function notifyGranted(){
+  return ("Notification" in window) && ("serviceWorker" in navigator) && Notification.permission==="granted";
+}
 function renderNotifyUI(){
   const t=document.getElementById("notifyToggle"), lbl=document.getElementById("notifyStatusLabel");
   if(!t) return;
   if(notifyIsOn()){ t.classList.add("on"); lbl.textContent="켜짐 — 내용은 절대 표시되지 않아요"; }
   else{ t.classList.remove("on"); lbl.textContent="꺼짐 — 내용은 절대 표시되지 않아요"; }
+}
+/* messaging 모듈 지연 로드 + 싱글턴(호출부마다 import 중복해도 getMessaging은 1회). */
+async function _messagingMod(){
+  const mod = await import(SDK+"firebase-messaging.js");
+  if(!fcmMessaging) fcmMessaging = mod.getMessaging(fb.app);
+  return mod;
+}
+/* navigator.serviceWorker.ready는 SW 등록이 실패하면 영원히 pending이라(reject 안 함) 타임아웃을 건다.
+   실패해도 알림만 못 켜질 뿐 앱 흐름은 무해 — 호출부가 전부 catch로 삼킨다. */
+function _swReady(){
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error("sw-ready-timeout")),10000))
+  ]);
+}
+/* 포그라운드 수신 표시 — 내용은 절대 안 띄운다(sw.js onBackgroundMessage와 같은 원칙, 고정 문구만).
+   토스트 + 홈 미읽음 배지 즉시 갱신(홈 탭을 보고 있을 때 숫자가 바로 오르도록).
+   v0.8.20(2026-09-01, 사장님 지시 C안 "실시간 확인 시에는 알림 안 뜨게"): 지금 그 채팅방을
+   보고 있는 중(잠금 아님 + screenChat 활성 + 탭 visible)이면 토스트를 생략한다 — 어차피
+   Firestore onSnapshot으로 화면에 바로 뜨는 메시지라 중복 알림이었다. 다른 화면/백그라운드면
+   기존과 동일하게 토스트 유지. */
+function _isViewingChatNow(){
+  try{
+    const s=document.getElementById("screenChat");
+    return !isLocked() && !!s && s.classList.contains("active") && document.visibilityState==="visible";
+  }catch(e){ return false; }
+}
+function _onForegroundPush(){
+  if(!_isViewingChatNow()) toast("🩷 5959 · 새 소식이 있어요");
+  try{ if(currentTab==="home") renderHome(); }catch(e){ /* 렌더 실패는 무해 */ }
+}
+/* ②수리: 앱 로드 시 항상(권한 granted면) 포그라운드 리스너 등록. 권한이 없으면 조용히 통과하고
+   절대 권한 프롬프트를 띄우지 않는다(사용자가 스위치를 눌렀을 때만 요청). */
+async function bindForegroundNotify(){
+  if(_fgBound || !notifyGranted()) return;
+  try{
+    const mod = await _messagingMod();
+    mod.onMessage(fcmMessaging, _onForegroundPush);
+    _fgBound = true;
+  }catch(err){ console.warn("[notify] 포그라운드 리스너 등록 실패(무해):", err); }
+}
+/* ①수리: 앱 실행마다 getToken()으로 실토큰을 다시 받아 Firestore fcmTokens[내uid]를 최신화.
+   - 권한 granted + 알림 켜짐일 때만(끈 사람을 몰래 재구독시키지 않는다).
+   - 값이 이미 같으면 write는 생략(쓰기 낭비 방지) — 단 "값이 같다"는 판단을 캐시가 아니라
+     방금 받은 실토큰으로 한다는 점이 구 코드와의 결정적 차이다.
+   - 실패는 콘솔 경고만(사용자 화면에 에러 노출 없음, 무해 처리). */
+async function refreshNotifyToken(){
+  if(!notifyGranted() || !notifyIsOn()) return;
+  const key = pairId || "";
+  if(_tokenRefreshKey === key) return;   // 같은 실행·같은 pair에서 중복 호출 방지
+  _tokenRefreshKey = key;
+  try{
+    const mod = await _messagingMod();
+    const token = await mod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await _swReady()});
+    if(!token){ console.warn("[notify] getToken이 빈 값 — 갱신 생략"); _tokenRefreshKey=null; return; }
+    const prev = localStorage.getItem("oguogu.notify.token");
+    localStorage.setItem("oguogu.notify.token", token);
+    if(prev!==token) console.info("[notify] FCM 토큰 회전 감지 → 갱신");
+    if(!pairId) return;   // 아직 공간 없음 — enterChat에서 다시 불린다(_tokenRefreshKey가 pairId로 바뀜)
+    const cur = (currentPairData && currentPairData.fcmTokens) ? currentPairData.fcmTokens[fb.uid] : undefined;
+    if(cur === token){ return; }   // 서버 값이 이미 최신
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token});
+    localStorage.setItem(NOTIFY_STAMP_KEY, new Date().toISOString()); // 등록 시각(다음 진단용, 로컬 표시)
+    console.info("[notify] fcmTokens 갱신 완료");
+  }catch(err){
+    _tokenRefreshKey=null;   // 다음 기회(방 이동 등)에 재시도할 수 있게 되돌림
+    console.warn("[notify] 토큰 자동 갱신 실패(무해):", err);
+  }
 }
 async function enableNotify(){
   if(!("Notification" in window) || !("serviceWorker" in navigator)){ toast("이 브라우저는 알림을 지원하지 않아요"); return; }
@@ -4975,26 +5808,23 @@ async function enableNotify(){
   try{
     const perm = await Notification.requestPermission();
     if(perm!=="granted"){ toast("알림 권한이 거부됐어요"); return; }
-    const messagingMod = await import(SDK+"firebase-messaging.js");
-    if(!fcmMessaging) fcmMessaging = messagingMod.getMessaging(fb.app);
-    const token = await messagingMod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await navigator.serviceWorker.ready});
+    const messagingMod = await _messagingMod();
+    const token = await messagingMod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await _swReady()});
     if(!token){ toast("토큰 발급에 실패했어요"); return; }
     localStorage.setItem("oguogu.notify.token", token); // 캐시 → 합류/방 이동 시 현재 pair로 재기록
     if(pairId){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token}).catch(()=>{}); }
     localStorage.setItem("oguogu.notify.on","1");
-    renderNotifyUI();
+    localStorage.setItem(NOTIFY_STAMP_KEY, new Date().toISOString());
+    _tokenRefreshKey = pairId || "";   // 방금 등록했으므로 이번 실행의 자동 갱신은 생략
+    renderNotifyUI(); renderAppVersion();
     toast("🔔 알림을 켰어요 — 내용은 절대 표시되지 않아요");
-    messagingMod.onMessage(fcmMessaging, ()=>{ toast("🩷 5959 · 새 소식이 있어요"); });
+    await bindForegroundNotify();      // 중복 등록 가드(_fgBound) 안에서 1회만
   }catch(err){ console.error(err); toast("알림 설정에 실패했어요"); }
 }
-/* 토큰이 pair를 따라가게: 알림 켠 사용자가 방을 이동(양쪽-솔로 합류 등)하면, 캐시된 토큰을 현재 pair의
-   fcmTokens[내uid]에 재기록한다(릴레이가 "현재 공간"에서 상대 토큰을 찾도록). enterChat에서 1회 호출. */
-async function syncNotifyToken(){
-  if(!notifyIsOn() || !pairId) return;
-  const tk=localStorage.getItem("oguogu.notify.token"); if(!tk) return;
-  if(currentPairData && currentPairData.fcmTokens && currentPairData.fcmTokens[fb.uid]===tk) return; // 이미 최신
-  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: tk}); }catch(e){ /* 조용히 */ }
-}
+/* 토큰이 pair를 따라가게: 알림 켠 사용자가 방을 이동(양쪽-솔로 합류 등)하면 현재 pair의
+   fcmTokens[내uid]에 재기록한다(릴레이가 "현재 공간"에서 상대 토큰을 찾도록). enterChat에서 1회 호출.
+   v0.8.18: 캐시 토큰 재기록 → refreshNotifyToken()(실토큰 재발급 후 기록)으로 승격. */
+async function syncNotifyToken(){ await refreshNotifyToken(); }
 function disableNotify(){ localStorage.removeItem("oguogu.notify.on"); renderNotifyUI(); toast("알림을 껐어요"); }
 document.getElementById("notifyToggle").onclick=()=>{ notifyIsOn()?disableNotify():enableNotify(); };
 
