@@ -35,6 +35,10 @@
     있으면 2줄, 넘치면 "+N" / 기간 일정은 이어지는 바, 매년 반복 기념일도 표기) ②달력 아래
     "다가오는 일정 (N)" 목록을 **탭 1회 접기/펼치기 토글**(기본 접힘, 선택은 localStorage 기억).
     표시 전용 변경 — events 스키마·rules·발행 경로 무변경.
+  · v0.8.28(2026-09-18 사장님 후속 지시 2건): ①설정 '읽기 > 글씨 크기' 3단계 — CSS 변수 --fs로
+    "읽는 글"(채팅·다이어리 본문/댓글·일정 목록·달력 칸 제목)만 배율 적용, 크롬은 고정, 기기별
+    localStorage ②다이어리 목록을 월 단위 섹션으로 묶고 sticky 헤더 탭 1회 접기/펼치기
+    (기본=최근 달만 펼침, 달별 기억). 렌더만 변경 — 스키마·구독·캡·소거 전부 무변경.
 ================================================================================
 -->
 <style>
@@ -49,8 +53,17 @@ input{font:inherit}
   --r-sm:10px; --r-md:16px; --r-lg:22px; --r-xl:30px; --r-full:999px;
   --t-cap:12.5px; --t-body:15.5px; --t-title:17px; --t-h:22px; --t-display:34px;
   --lh:1.5; --bubble-r:18px;
+  /* ── 읽는 글 크기 (v0.8.28, 사장님 "글씨는 설정에서 크기 조절할 수 있도록") ──────────
+     --fs = "읽는 글"에만 곱해지는 배율. 탭바·헤더·버튼·입력칸 같은 크롬(chrome)은 이 값을
+     쓰지 않으므로 글씨를 키워도 레이아웃 뼈대가 흔들리지 않는다. 적용 대상은 딱 네 곳 —
+     채팅 말풍선 / 다이어리 본문·댓글 / 일정 목록 / 달력 칸 제목 칩.
+     기기별 설정(localStorage)이고 pairs 문서에 올라가지 않는다 = 짝 화면은 안 바뀐다. */
+  --fs:1; --t-read:calc(var(--t-body) * var(--fs));
   --font:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
 }
+[data-fs="sm"]{--fs:.9}
+[data-fs="md"]{--fs:1}
+[data-fs="lg"]{--fs:1.2}
 [data-bubble="soft"]{--bubble-r:22px}
 [data-bubble="sharp"]{--bubble-r:9px}
 [data-bubble="round"]{--bubble-r:18px}
@@ -297,7 +310,7 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 .row.just .bubble{animation:pop .22s ease-out}
 @keyframes pop{from{transform:translateY(6px) scale(.97);opacity:.4}to{transform:none;opacity:1}}
 .bubble{
-  max-width:76%; padding:9px 13px; font-size:var(--t-body); line-height:1.42; font-weight:var(--w-reg);
+  max-width:76%; padding:9px 13px; font-size:var(--t-read); line-height:1.42; font-weight:var(--w-reg); /* v0.8.28: 읽는 글 배율 적용 */
   word-break:break-word; white-space:pre-wrap; border-radius:var(--bubble-r); box-shadow:var(--shadow);
 }
 .me .bubble{background:var(--me-bg); color:var(--me-ink)}
@@ -678,13 +691,13 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
    기간(다일) 일정=accent 바탕 + accent-ink 글자로 "이어지는 바"처럼 보이게 한다.
    가로 넘침 방지가 제1원칙: 칩은 max-width:100% + nowrap + ellipsis 고정. */
 .cal-d .cd-evts{flex:none; display:flex; flex-direction:column; gap:1px; min-width:0}
-.cal-d .cd-ev{display:block; max-width:100%; font-size:9px; line-height:1.5; letter-spacing:-.03em;
+.cal-d .cd-ev{display:block; max-width:100%; font-size:calc(9px * var(--fs)); line-height:1.5; letter-spacing:-.03em;
   padding:0 2px; border-radius:3px; background:var(--accent-soft); color:var(--text);
   font-weight:var(--w-med); text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .cal-d .cd-ev.bar{background:var(--accent); color:var(--accent-ink); border-radius:0}
 .cal-d .cd-ev.bar.b-s{border-top-left-radius:3px; border-bottom-left-radius:3px}
 .cal-d .cd-ev.bar.b-e{border-top-right-radius:3px; border-bottom-right-radius:3px}
-.cal-d .cd-more{font-size:8.5px; line-height:1.45; color:var(--muted); text-align:left; padding:0 2px; white-space:nowrap}
+.cal-d .cd-more{font-size:calc(8.5px * var(--fs)); line-height:1.45; color:var(--muted); text-align:left; padding:0 2px; white-space:nowrap}
 /* 목록(다가오는 일정·그 날의 일정·홈 카드)에서 제목 앞에 붙는 스티커 */
 .evt-stk{margin-right:4px}
 /* ── 목록 접기/펼치기 헤더 (v0.8.27, 사장님 "일정 리스트는 토글 방식으로") ──────────
@@ -725,8 +738,8 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .evt{display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow); margin-bottom:8px}
 .evt .dd{flex:none; min-width:54px; text-align:center; font-size:12px; font-weight:var(--w-bold); color:var(--accent); background:var(--accent-soft); border-radius:var(--r-sm); padding:6px 4px}
 .evt .info{flex:1; min-width:0}
-.evt .info .t{font-size:14.5px; font-weight:var(--w-med); word-break:break-word}
-.evt .info .sub{font-size:12px; color:var(--muted); margin-top:2px; word-break:break-word}
+.evt .info .t{font-size:calc(14.5px * var(--fs)); font-weight:var(--w-med); word-break:break-word} /* v0.8.28 */
+.evt .info .sub{font-size:calc(12px * var(--fs)); color:var(--muted); margin-top:2px; word-break:break-word} /* v0.8.28 */
 .evt .del{flex:none; color:var(--muted); font-size:15px; padding:4px 8px}
 .evt.blk-overlap{border-color:#e0a458; box-shadow:inset 3px 0 0 #e0a458}
 .sec-label{font-size:11px; font-weight:var(--w-bold); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:var(--s5) 0 8px 4px}
@@ -756,7 +769,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .dentry .top{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px}
 .dentry .dt{font-size:12.5px; color:var(--muted)}
 .dentry .au{font-size:11px; font-weight:var(--w-bold); color:var(--accent); background:var(--accent-soft); padding:2px 8px; border-radius:var(--r-full)}
-.dentry .tx{font-size:var(--t-body); line-height:1.5; word-break:break-word; white-space:pre-wrap}
+.dentry .tx{font-size:var(--t-read); line-height:1.5; /* v0.8.28: 읽는 글 배율 */ word-break:break-word; white-space:pre-wrap}
 .dentry .thumbs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
 .dentry .thumbs img{width:76px; height:76px; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
 .dentry .acts{display:flex; gap:16px; margin-top:12px}
@@ -766,7 +779,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .dentry .cbtn{margin-top:10px; font-size:12.5px; font-weight:var(--w-med); color:var(--muted)}
 .dcomments{margin-top:8px; padding-top:10px; border-top:1px solid var(--line)}
 .dcomments .clist{display:flex; flex-direction:column; gap:6px; margin-bottom:8px}
-.ccard{display:flex; align-items:baseline; gap:6px; font-size:12.5px; line-height:1.5; background:var(--surface2); border-radius:var(--r-md); padding:7px 10px}
+.ccard{display:flex; align-items:baseline; gap:6px; font-size:calc(12.5px * var(--fs)); line-height:1.5; /* v0.8.28: 댓글 본문도 읽는 글 */ background:var(--surface2); border-radius:var(--r-md); padding:7px 10px}
 .ccard .cwho{font-weight:var(--w-bold); color:var(--accent); flex:none}
 .ccard .ctx{flex:1; min-width:0; word-break:break-word; white-space:pre-wrap; color:var(--text)}
 .ccard .cdel{flex:none; color:var(--muted); font-size:14px; padding:0 2px}
@@ -775,6 +788,21 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 .cinput textarea{flex:1; min-width:0; background:var(--surface2); border:none; border-radius:var(--r-lg); padding:8px 14px; font-size:12.5px; color:var(--text); font-family:inherit; line-height:1.4; resize:none; max-height:88px; overflow-y:auto}
 .cinput textarea::placeholder{color:var(--muted)}
 .cinput button{flex:none; font-size:12.5px; font-weight:var(--w-bold); color:var(--accent); padding:0 6px}
+/* ── 다이어리 월별 접기 (v0.8.28, 사장님 "누적되면 보기 힘들다 → 심플하게") ──────────
+   목록을 달 단위로 묶고 헤더를 탭 1회로 접고 편다. 기본은 "가장 최근 글이 있는 달"만 펼침.
+   헤더는 sticky — 길게 스크롤해도 지금 보고 있는 달이 항상 위에 남는다.
+   접힘 방식은 v0.8.27 일정 목록 토글의 .list-collapse(max-height + visibility)를 그대로 재사용.
+   ⚠️단, 한 달 치 카드(사진 포함)는 2400px를 쉽게 넘는다 — 펼친 상태의 상한은 none으로 풀고,
+     애니메이션에 쓸 실제 높이는 토글 순간에 JS가 재서 넣는다(잘려서 못 보는 사고 원천 차단). */
+.dmonth{margin-bottom:var(--s3)}
+.month-toggle{position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between;
+  gap:var(--s2); width:100%; padding:10px 10px 8px; margin:0; border-radius:var(--r-sm);
+  background:var(--bg); cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent}
+.month-toggle .mt-t{font-size:12.5px; font-weight:var(--w-bold); color:var(--text); letter-spacing:-.01em}
+.month-toggle .mt-n{font-weight:var(--w-med); color:var(--muted)}
+.month-toggle .mt-chev{flex:none; color:var(--muted); font-size:13px; line-height:1; transform:rotate(-90deg); transition:transform .22s ease}
+.month-toggle[aria-expanded="true"] .mt-chev{transform:rotate(0deg)}
+.dmonth .list-collapse.open{max-height:none}
 .grid-photos{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
 .grid-photos img{width:100%; aspect-ratio:1; object-fit:cover; border-radius:var(--r-sm); background:var(--surface2)}
 .cap-note{font-size:12.5px; color:var(--text); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.65; margin-bottom:var(--s4)}
@@ -1209,6 +1237,23 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     </div>
   </div>
 
+  <!-- 글씨 크기(v0.8.28, 사장님 14:57 "글씨는 설정에서 크기 조절할 수 있도록")
+       꾸미기(테마·말풍선)와 달리 이 설정은 pairs 문서에 안 올라간다 — 눈이 편한 정도는 사람마다
+       다르므로 기기별(localStorage)로만 기억하고 짝 화면은 건드리지 않는다. -->
+  <div class="set-label">읽기</div>
+  <div class="set-group">
+    <div class="set-row set-col">
+      <div class="label">글씨 크기</div>
+      <div class="desc">채팅 말풍선 · 다이어리 글과 댓글 · 일정 목록 · 달력 칸 제목처럼 <b>읽는 글</b>만 커져요. 이 기기에서만 바뀌고 짝 화면은 그대로예요</div>
+      <div class="seg-row" id="fontScalePicker">
+        <button type="button" class="seg-btn" data-fs="sm">작게</button>
+        <button type="button" class="seg-btn" data-fs="md">보통</button>
+        <button type="button" class="seg-btn" data-fs="lg">크게</button>
+      </div>
+      <div class="desc" id="fontScaleSample" style="margin-top:10px; font-size:var(--t-read); color:var(--text); line-height:1.5">오늘 우리, 이렇게 보여요 🩷</div>
+    </div>
+  </div>
+
   <!-- 잠금 -->
   <div class="set-label">잠금 · 알림</div>
   <div class="set-group">
@@ -1491,7 +1536,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.27"; // v0.8.27(2026-09-18 14:26, 사장님 지시 2건) —
+const APP_VERSION = "0.8.28"; // v0.8.28(2026-09-18 14:57, 사장님 후속 지시 2건) —
+// ① "글씨는 설정에서 크기 조절할 수 있도록" → 설정 '읽기 > 글씨 크기' 3단계(작게·보통·크게).
+//    구현은 CSS 변수 --fs(+파생 --t-read) 하나 — html의 data-fs만 바뀌면 채팅 말풍선 / 다이어리
+//    본문·댓글 / 일정 목록 / 달력 칸 제목 칩이 한꺼번에 따라온다. 탭바·헤더·버튼·입력칸은
+//    --fs를 안 쓰므로 뼈대가 안 흔들린다. 기기별(localStorage) — pairs 문서 무관, 짝 화면 그대로.
+// ② "누적되면 보기 힘들다 → 심플하게"(다이어리) → 목록을 **월 단위 섹션**으로 묶고 헤더
+//    "2026년 9월 (N)"을 탭 1회로 접기/펼치기. 기본은 가장 최근 글이 있는 달만 펼침, 선택은
+//    달 단위로 localStorage 기억. 헤더는 sticky. 사진 그리드·댓글·수정·삭제·홈 미리보기·
+//    이별 소거·watchDiary limit(100)은 전부 무변경 — 렌더 묶음만 바뀌었다.
+// 데이터·rules·릴레이·발행 경로 전부 무변경(표시 전용).
+// ── 아래는 v0.8.27(2026-09-18) 기록 ──────────────────────────────────────────
+// v0.8.27(사장님 지시 2건) —
 // ① "일정 등록시 캘린더에 그대로 표기될 수 있도록" → 달력 칸이 점(·)·스티커만 보여주던 걸
 //    구글 캘린더처럼 **제목이 칸 안에 그대로** 보이게 바꿨다(9px 칩, 칸당 3줄·스티커가 있으면
 //    2줄, 넘치면 "+N"). 기간 일정은 시작~종료 모든 날에 이어지는 바로, 매년 반복 기념일도 표기.
@@ -4183,6 +4239,27 @@ function renderUpcoming(){
   el.querySelectorAll("[data-del-evt]").forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delEvt));
   el.querySelectorAll("[data-edit-evt]").forEach(b=>b.onclick=()=>startEditEvent(b.dataset.editEvt)); // 탭=수정(날짜 변경 가능)
 }
+/* ===== 읽는 글 크기 (v0.8.28, 사장님 14:57 "글씨는 설정에서 크기 조절할 수 있도록") =====
+   구현은 CSS 변수 --fs 하나(+파생 --t-read)뿐이다: html에 data-fs를 붙이면 "읽는 글" 규칙들이
+   한꺼번에 따라온다 — 자바스크립트가 개별 요소 폰트를 만지지 않으므로 다시 그릴 필요도,
+   렌더 함수를 고칠 필요도 없다. 탭바·헤더·버튼은 --fs를 안 쓰므로 뼈대는 그대로다.
+   기기별 설정(localStorage) — pairs 문서에 안 올라가니 짝 화면은 영향 없음. */
+const FONT_SCALE_KEY="oguogu.pref.fontScale";
+const FONT_SCALES=["sm","md","lg"];
+function fontScale(){
+  try{ const v=localStorage.getItem(FONT_SCALE_KEY); return FONT_SCALES.indexOf(v)>=0 ? v : "md"; }
+  catch(e){ return "md"; }   // 프라이빗 모드 등 — 기본 "보통"으로 동작(크래시 0)
+}
+function applyFontScale(v){
+  const s=FONT_SCALES.indexOf(v)>=0 ? v : "md";
+  document.documentElement.setAttribute("data-fs", s);
+  document.querySelectorAll("#fontScalePicker [data-fs]").forEach(b=>b.classList.toggle("active", b.dataset.fs===s));
+}
+function setFontScale(v){
+  if(FONT_SCALES.indexOf(v)<0) return;
+  try{ localStorage.setItem(FONT_SCALE_KEY, v); }catch(e){}
+  applyFontScale(v);   // 탭 1회로 즉시 반영 — 화면을 다시 그리지 않아도 CSS가 전 화면에 번진다
+}
 /* ===== 일정 목록 접기/펼치기 (v0.8.27, 사장님 "일정 리스트는 토글 방식으로 볼 수 있도록") =====
    기본은 접힘 — 이제 달력 칸에 제목이 그대로 보이므로 목록은 "더 자세히 볼 때" 펴는 자리다.
    선택은 localStorage에 남긴다(기기별 취향이라 Firestore·스키마 무관). 사파리 프라이빗 등에서
@@ -4560,28 +4637,90 @@ function renderDiary(){
   const body=document.getElementById("diaryBody"); if(!body) return;
   if(_diaryView==="grid") renderDiaryGrid(body); else renderDiaryList(body);
 }
+/* ===== 다이어리 월별 섹션 (v0.8.28, 사장님 14:57 "누적되면 보기 힘들다 → 심플하게") =====
+   기록이 쌓일수록 한 줄로 이어지는 목록은 "언제 글인지"를 찾기 어렵다. 달 단위로 묶고,
+   기본은 가장 최근 글이 있는 달만 펼쳐 첫 화면을 짧게 만든다. 사용자가 직접 접거나 편
+   선택은 달 단위로 localStorage에 남는다(기기별, 스키마·구독 무관 — 렌더만 바뀐다).
+   watchDiary의 limit(100)·정렬(date desc)·사진 그리드·댓글 구독 규칙은 전부 그대로다. */
+const DIARY_MONTHS_KEY="oguogu.pref.diaryMonths";
+function diaryMonthPrefs(){
+  try{ const o=JSON.parse(localStorage.getItem(DIARY_MONTHS_KEY)||"{}"); return (o && typeof o==="object") ? o : {}; }
+  catch(e){ return {}; }   // 프라이빗 모드·깨진 값 — 저장된 선택이 없는 것으로 보고 기본 규칙을 쓴다
+}
+function saveDiaryMonthPref(key, open){
+  try{ const o=diaryMonthPrefs(); o[key]=open?1:0; localStorage.setItem(DIARY_MONTHS_KEY, JSON.stringify(o)); }catch(e){}
+}
+function diaryMonthKey(en){ const d=String((en&&en.date)||""); return /^\d{4}-\d{2}/.test(d) ? d.slice(0,7) : "unknown"; }
+function diaryMonthLabel(key){
+  if(key==="unknown") return "날짜 없음";      // 구버전·깨진 date 방어(카드는 그대로 보인다)
+  const p=key.split("-"); return p[0]+"년 "+parseInt(p[1],10)+"월";
+}
+/* 이 달 섹션이 열려 있어야 하는가 — 직접 접거나 편 적이 있으면 그 선택이 우선,
+   없으면 "가장 최근 글이 있는 달"만 펼친다. */
+function diaryMonthOpen(key, newestKey){
+  const p=diaryMonthPrefs();
+  return (key in p) ? !!p[key] : (key===newestKey);
+}
+/* 탭 1회 = 접기/펼치기. 펼친 상태의 CSS 상한은 none이라 애니메이션 시작·끝 값이 없다 —
+   그래서 토글 순간에 실제 높이(scrollHeight)를 재서 넣고, 전환이 끝나면 다시 풀어준다
+   (사진이 나중에 로드돼 높이가 늘어나도 잘리지 않게). */
+function toggleDiaryMonth(key){
+  const btn=document.querySelector('.month-toggle[data-mtoggle="'+key+'"]');
+  const wrap=btn && btn.nextElementSibling;
+  if(!btn || !wrap) return;
+  const open=btn.getAttribute("aria-expanded")!=="true";
+  btn.setAttribute("aria-expanded", open?"true":"false");
+  if(open){
+    wrap.classList.add("open");
+    wrap.style.maxHeight=wrap.scrollHeight+"px";
+    setTimeout(()=>{ if(wrap.classList.contains("open")) wrap.style.maxHeight=""; }, 260);
+  }else{
+    wrap.style.maxHeight=wrap.scrollHeight+"px";   // none → 실측값 고정(전환 시작점)
+    void wrap.offsetHeight;                         // 리플로 강제(안 하면 0으로 점프)
+    wrap.classList.remove("open");
+    wrap.style.maxHeight="";                        // CSS의 0으로 복귀 → 전환
+  }
+  saveDiaryMonthPref(key, open);
+}
 function renderDiaryList(body){
   if(!_diary.length){ body.innerHTML='<div class="empty-note">아직 기록이 없어요.<br>오늘의 우리를 남겨봐요 📖</div>'; return; }
-  body.innerHTML=_diary.map(en=>{
-    const mine=en.authorUid===fb.uid;
-    const au = mine ? "내 기록" : ((myPartnerLabel()||"상대")+" 기록");
-    const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-thumbid="'+t.photoId+'" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
-    const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
-    const cn=_commentCounts[en.id];
-    const cLabel = cn>0 ? "💬 "+cn : "💬 댓글";
-    const expanded=_expandedComments.has(en.id);
-    return '<div class="dentry"><div class="top"><span class="dt">'+esc(fmtDateK(en.date))+'</span><span class="au">'+esc(au)+'</span></div>'
-      +(en.text?'<div class="tx">'+esc(en.text)+'</div>':"")
-      +(thumbs?'<div class="thumbs">'+thumbs+'</div>':"")+acts
-      +'<button type="button" class="cbtn" data-ctoggle="'+en.id+'">'+cLabel+'</button>'
-      +'<div class="dcomments" data-entry="'+en.id+'" style="display:'+(expanded?"block":"none")+'">'
-        +'<div class="clist"></div>'
-        +'<form class="cinput" data-cform="'+en.id+'"><textarea data-cinput="'+en.id+'" placeholder="댓글 달기" maxlength="300" rows="1"></textarea><button type="submit">보내기</button></form>'
-      +'</div></div>';
+  // _diary는 date desc라 등장 순서가 곧 "최신 달 → 옛 달" — 별도 정렬 없이 그 순서로 묶는다.
+  const groups=[], idx={};
+  _diary.forEach(en=>{ const k=diaryMonthKey(en);
+    if(!(k in idx)){ idx[k]=groups.length; groups.push({key:k, items:[]}); }
+    groups[idx[k]].items.push(en); });
+  const newestKey=groups.length ? groups[0].key : "";
+  body.innerHTML=groups.map(g=>{
+    const open=diaryMonthOpen(g.key, newestKey);
+    return '<div class="dmonth">'
+      +'<button type="button" class="month-toggle" data-mtoggle="'+g.key+'" aria-expanded="'+(open?"true":"false")+'" aria-controls="dm-'+g.key+'">'
+        +'<span class="mt-t">'+esc(diaryMonthLabel(g.key))+' <span class="mt-n">('+g.items.length+')</span></span>'
+        +'<span class="mt-chev" aria-hidden="true">⌄</span></button>'
+      +'<div class="list-collapse'+(open?" open":"")+'" id="dm-'+g.key+'">'+g.items.map(diaryEntryHtml).join("")+'</div>'
+      +'</div>';
   }).join("");
   wireDiaryBody(body);
+  body.querySelectorAll("[data-mtoggle]").forEach(b=>b.onclick=()=>toggleDiaryMonth(b.dataset.mtoggle));
   _expandedComments.forEach(id=>{ if(_diary.some(e=>e.id===id)) renderComments(id); }); // 펼친 항목은 다시 그린 DOM에 캐시 즉시 반영
   refreshCommentCounts(); // 비실시간 뱃지 갱신(펼친 항목은 실시간 구독이 이미 정확한 값을 유지)
+}
+/* 기록 카드 1장 — v0.8.27까지 renderDiaryList 안에 있던 마크업 그대로(월 묶기만 바깥으로 나갔다). */
+function diaryEntryHtml(en){
+  const mine=en.authorUid===fb.uid;
+  const au = mine ? "내 기록" : ((myPartnerLabel()||"상대")+" 기록");
+  const thumbs=(en.thumbs||[]).map(t=>'<img loading="lazy" data-thumbid="'+t.photoId+'" data-photo="'+t.photoId+'" data-entry="'+en.id+'" src="'+thumbUrl(t)+'">').join("");
+  const acts = mine ? '<div class="acts"><button data-edit="'+en.id+'">수정</button><button class="dngr" data-deldiary="'+en.id+'">삭제</button></div>' : "";
+  const cn=_commentCounts[en.id];
+  const cLabel = cn>0 ? "💬 "+cn : "💬 댓글";
+  const expanded=_expandedComments.has(en.id);
+  return '<div class="dentry"><div class="top"><span class="dt">'+esc(fmtDateK(en.date))+'</span><span class="au">'+esc(au)+'</span></div>'
+    +(en.text?'<div class="tx">'+esc(en.text)+'</div>':"")
+    +(thumbs?'<div class="thumbs">'+thumbs+'</div>':"")+acts
+    +'<button type="button" class="cbtn" data-ctoggle="'+en.id+'">'+cLabel+'</button>'
+    +'<div class="dcomments" data-entry="'+en.id+'" style="display:'+(expanded?"block":"none")+'">'
+    +'<div class="clist"></div>'
+    +'<form class="cinput" data-cform="'+en.id+'"><textarea data-cinput="'+en.id+'" placeholder="댓글 달기" maxlength="300" rows="1"></textarea><button type="submit">보내기</button></form>'
+    +'</div></div>';
 }
 function renderDiaryGrid(body){
   const all=[];
@@ -5413,6 +5552,9 @@ function _premGate(b){ if(b && b.dataset.prem==="1" && !isPremium()){ openPayMod
 document.getElementById("themeSwatches").addEventListener("click",e=>{ const b=e.target.closest("[data-pal]"); if(b && !_premGate(b)) setTheme({palette:b.dataset.pal}); });
 document.getElementById("bgPicker").addEventListener("click",e=>{ const b=e.target.closest("[data-bg]"); if(b && !_premGate(b)) setTheme({chatbg:b.dataset.bg}); });
 document.getElementById("bubblePicker").addEventListener("click",e=>{ const b=e.target.closest("[data-bub]"); if(b) setTheme({bubble:b.dataset.bub}); });
+/* 글씨 크기(v0.8.28) — 꾸미기(setTheme)와 달리 pairs 문서를 건드리지 않는다(기기별 설정). */
+document.getElementById("fontScalePicker").addEventListener("click",e=>{ const b=e.target.closest("[data-fs]"); if(b) setFontScale(b.dataset.fs); });
+applyFontScale(fontScale());
 document.getElementById("myEmojiPicker").addEventListener("click",e=>{ const b=e.target.closest("[data-emo]"); if(b && !_premGate(b)) setProfile({emojis:{[fb.uid]:b.dataset.emo}}); });
 /* 응원팩 컨트롤 */
 document.getElementById("btnSupportPack").onclick=openPayModal;
