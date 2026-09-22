@@ -730,6 +730,10 @@ body.kb-open .tabbar.on{ max-height:0; opacity:0; padding-bottom:0; pointer-even
 .stk-acts{display:flex; flex-direction:column; gap:8px; margin-top:4px}
 .stk-acts .secondary-btn{max-width:none; padding:12px; font-size:14px; box-shadow:none}
 .stk-big{font-size:46px; line-height:1; margin-bottom:8px}
+/* v0.8.29: "누가 붙였는지 / 누가 바꿨는지" 작은 표기 — 본문(modal-desc)보다 한 단 작고 흐리게 둬서
+   스티커 자체를 가리지 않는다. 비어 있으면 margin까지 접혀 예전 레이아웃 그대로 보인다(:empty). */
+.stk-by{font-size:11.5px; color:var(--muted); line-height:1.45; margin:2px 0 12px}
+.stk-by:empty{display:none}
 .stk-row2{display:flex; gap:6px; margin-bottom:12px}
 .stk-row2 .fi{flex:1; min-width:0}
 .stk-row2 .secondary-btn{flex:0 0 84px; padding:11px 8px; font-size:13.5px; box-shadow:none}
@@ -1499,9 +1503,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
 <div class="modal" id="stickerModal">
   <div class="modal-card">
     <div class="modal-emoji">🩷</div>
-    <div class="modal-h">스티커 붙이기</div>
+    <div class="modal-h" id="stkModalH">스티커 붙이기</div>
     <div class="modal-desc" id="stkDate" style="margin-bottom:12px"></div>
-    <div class="diary-toggle" style="margin-bottom:12px">
+    <div class="diary-toggle" id="stkTypeRow" style="margin-bottom:12px">
       <button type="button" class="on" id="stkTypeOnce">한 번</button>
       <button type="button" id="stkTypeAnnual">매년 반복</button>
     </div>
@@ -1513,7 +1517,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     </div>
     <!-- v0.8.26: 예전에 "날짜 칸 탭"이 하던 일(일정 추가 / 그 날 일정 보기)을 이 시트 안으로 흡수 -->
     <div class="stk-acts">
-      <button type="button" class="secondary-btn" id="btnStkAddEvt">＋ 일정 추가</button>
+      <button type="button" class="secondary-btn" id="btnStkAddEvt" style="display:block">＋ 일정 추가</button>
       <button type="button" class="secondary-btn" id="btnStkViewDay" style="display:none">📋 이 날 일정 보기</button>
       <button type="button" class="secondary-btn" id="btnStkClose">닫기</button>
     </div>
@@ -1524,6 +1528,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <div class="stk-big" id="stkDetailEmoji"></div>
     <div class="modal-h" id="stkDetailTitle"></div>
     <div class="modal-desc" id="stkDetailDesc"></div>
+    <!-- v0.8.29(케이스 S): 스티커는 둘의 것 — 누가 붙였든 양쪽이 바꾸고 뗄 수 있다 -->
+    <div class="stk-by" id="stkDetailBy"></div>
+    <button type="button" class="secondary-btn" id="btnStkReplace" style="max-width:none;margin-bottom:8px">🔄 스티커 바꾸기</button>
     <button type="button" class="secondary-btn" id="btnStkDelete" style="max-width:none;margin-bottom:8px">🗑 스티커 지우기</button>
     <button type="button" class="secondary-btn" id="btnStkDetailClose" style="max-width:none">닫기</button>
   </div>
@@ -1536,7 +1543,18 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.28"; // v0.8.28(2026-09-18 14:57, 사장님 후속 지시 2건) —
+const APP_VERSION = "0.8.29"; // v0.8.29(2026-09-22 17:32, 사장님 "일정에 스티커 붙이는 거 서로 수정할 수 있게 바꿔줘") —
+// 스티커는 이제 "둘의 것"이다 — 누가 붙였든 양쪽이 바꾸고 뗀다(상세 "🔄 스티커 바꾸기").
+// ★근본: 막고 있던 건 UI가 아니라 firestore.rules였다(실측 2026-09-22, dev/rules-live.js 방식 REST:
+//   짝의 events PATCH·DELETE 모두 403 PERMISSION_DENIED / 같은 events 하위 blocks는 200).
+//   그래서 rules에 케이스 S를 "증설"했다 — 기존 두 문장(작성자 전 필드 수정/삭제)은 한 글자도 안 건드리고,
+//   짝에게는 sticker/stickerBy/stickerAt 세 키만 열어준다(제목·날짜·메모·createdBy는 여전히 작성자만).
+//   삭제는 제목 없는 "스티커만" 문서로 한정 — 제목 있는 일정은 짝이 통째로 못 지우고 "스티커만 떼기".
+// 표기: stickerBy/stickerAt(선택 필드) → 상세에 "🩷 OO가 바꿈 · 9/22 오후 5:40". 붙인 사람과 같으면 안 띄운다.
+// 충돌: 마지막 저장 우선(잠금·버전 필드 없음), 양쪽 화면은 기존 events onSnapshot으로 수렴 — 새 구독 0.
+// 무변경: 달력 칸 표기·홈 미리보기·일정 폼(작성자 전용)·하루 일과·릴레이·발행 경로.
+// ── 아래는 v0.8.28(2026-09-18 14:57) 기록 ────────────────────────────────────
+// v0.8.28(사장님 후속 지시 2건) —
 // ① "글씨는 설정에서 크기 조절할 수 있도록" → 설정 '읽기 > 글씨 크기' 3단계(작게·보통·크게).
 //    구현은 CSS 변수 --fs(+파생 --t-read) 하나 — html의 data-fs만 바뀌면 채팅 말풍선 / 다이어리
 //    본문·댓글 / 일정 목록 / 달력 칸 제목 칩이 한꺼번에 따라온다. 탭바·헤더·버튼·입력칸은
@@ -1575,7 +1593,7 @@ const APP_VERSION = "0.8.28"; // v0.8.28(2026-09-18 14:57, 사장님 후속 지�
 // ② 일정 추가/수정 폼의 "스티커(선택)" 칸 — 제목 있는 일정도 칸·목록에 아이콘 표시(제목 앞)
 // ③ 매년 반복 스티커(기존 type:"annual" 재사용) + 상세에 "N일째"(매년형은 "N주년 · D-n")
 // 데이터: events에 선택 필드 sticker(문자열)만 추가 — 기존 필드 무변경, 없으면 동작 100% 동일.
-// rules 무변경(events는 필드 화이트리스트가 아니라 createdBy/dissolved만 검사 — 실파일 확인).
+// rules: v0.8.29에서 케이스 S(sticker/stickerBy/stickerAt 세 키만 짝에게 개방) 증설 — 기존 문장 불변.
 // 구버전 캐시를 쓰는 상대 폰이 sticker를 만나도 "제목 없는 일정" 한 건으로 보일 뿐이고, 반대로
 // 이 버전이 이상한 sticker 값(비문자열·초장문)을 만나도 stickerOf()가 잘라내어 렌더가 깨지지 않는다.
 // ── 아래는 v0.8.24(2026-09-08) 기록 ──────────────────────────────────────────
@@ -3879,7 +3897,8 @@ function nextOccurrence(ev){
    저장 형태: 기존 events 문서에 선택 필드 sticker(이모지 1~2자)만 얹는다.
      · 스티커만 찍기 → { sticker:"❤️", title:"", date, type:"once"|"annual", memo:"", createdBy }
      · 제목 있는 일정 → 기존 문서에 sticker만 추가(없으면 이전과 완전히 동일한 동작)
-   rules 무변경: events는 필드 화이트리스트가 아니라 createdBy·dissolved만 검사한다(실파일 확인).
+   rules: v0.8.25~28은 무변경이었고, v0.8.29에서 케이스 S 2문만 증설했다(짝의 스티커 교체/떼기).
+   기존 문장(작성자 전 필드 수정/삭제)은 그대로라 예전 동작은 한 줄도 달라지지 않는다.
    방어 원칙: sticker는 "상대 폰의 구버전 캐시가 모를 수도 있는 새 필드"라 양방향으로 막아둔다 —
    구버전은 title 없는 일정 1건으로 볼 뿐 깨지지 않고, 이 버전은 sticker가 문자열이 아니거나
    비정상적으로 길어도 stickerOf()가 잘라 렌더가 무너지지 않는다. */
@@ -3950,6 +3969,15 @@ function renderSchedule(){ renderDday(); renderCalendar(); renderUpcoming(); ren
   // 시트가 열려 있는 동안 짝이 스티커를 붙이거나 지우면 시트 안 "이 날 스티커"도 같이 갱신(v0.8.26)
   const sm=document.getElementById("stickerModal");
   if(sm && sm.style.display==="flex") renderStickerSheetDay();
+  /* v0.8.29: 상세가 열린 채로 짝이 그 스티커를 바꾸면 곧바로 새 이모지·"누가 바꿈" 표기로 갈아끼우고,
+     짝이 지워 문서가 사라졌으면 상세를 닫는다(없는 걸 붙들고 있으면 다음 탭이 허공을 친다).
+     새 구독 없이 기존 events onSnapshot 한 줄기만 쓴다 — 읽기 쿼터에 영향 0. */
+  const dm=document.getElementById("stickerDetail");
+  if(dm && dm.style.display==="flex" && _stkDetailId){
+    const ev=_events.find(x=>x.id===_stkDetailId);
+    if(!ev || !stickerOf(ev)) closeStickerDetail();
+    else openStickerDetail(_stkDetailId);
+  }
 }
 function renderDday(){
   const el=document.getElementById("ddayCard"); if(!el) return;
@@ -4095,7 +4123,13 @@ function renderCalendar(){
    ⚠️iOS 관례(2026-08-05 v0.5.4 사고): touchstart preventDefault로 click을 취소하지 않는다.
      여기 경로는 순수 click 핸들러 하나뿐이라 그 사고 유형 자체가 성립하지 않는다. */
 let _stkDate=null, _stkAnnual=false, _stkDetailId=null;
-function _hideStickerSheet(){ const m=document.getElementById("stickerModal"); if(m) m.style.display="none"; }
+/* v0.8.29(케이스 S, 2026-09-22 사장님 "일정에 스티커 붙이는 거 서로 수정할 수 있게") — 교체 모드.
+   같은 시트를 재사용한다(새 화면 신설 금지): _stkReplaceId가 있으면 고른 스티커가 새 문서를 만드는
+   대신 그 문서의 sticker 필드만 갈아끼운다. 교체는 sticker/stickerBy/stickerAt 세 필드만 건드리므로
+   짝이 만든 일정에도 rules가 통과시킨다(그 외 필드를 같이 보내면 규칙이 거절 — 그래서 여기서만
+   updateDoc을 좁게 쓰고, 제목·날짜 수정은 기존 폼(작성자 전용) 경로 그대로 둔다). */
+let _stkReplaceId=null;
+function _hideStickerSheet(){ const m=document.getElementById("stickerModal"); if(m) m.style.display="none"; _stkReplaceId=null; }
 function closeStickerSheet(){ navCloseSelf("stickerModal", _hideStickerSheet); }
 function setStkType(annual){
   _stkAnnual=!!annual;
@@ -4103,15 +4137,24 @@ function setStkType(annual){
   document.getElementById("stkTypeAnnual").classList.toggle("on", _stkAnnual);
 }
 let _stkDaySt=[]; // 시트에 띄운 "이 날 스티커" 원본(인덱스로만 되짚는다 — 속성에 사용자 문자열 금지)
-function openStickerSheet(dateStr){
+function openStickerSheet(dateStr, replaceId){
   if(!pairId){ toast("먼저 시작해주세요"); return; }
   if(currentPairData && currentPairData.status==="dissolved") return;
   const modal=document.getElementById("stickerModal");
   if(modal.style.display==="flex") return; // 탭 1회 = 시트 1회(이중 오픈 방지)
+  _stkReplaceId=replaceId||null;
   _stkDate=/^\d{4}-\d{2}-\d{2}$/.test(dateStr||"") ? dateStr : todayStr();
   document.getElementById("stkDate").textContent=fmtDateK(_stkDate);
   document.getElementById("stkCustom").value="";
   setStkType(false);
+  /* 교체 모드에선 "그 스티커 하나를 고르는" 일만 남긴다 — 날짜 유형(한 번/매년)은 rules상 이 경로로
+     바꿀 수 없는 필드라 아예 감추고(바꿀 수 없는 걸 보여주면 거짓말), 이 날 스티커 목록·일정 추가
+     같은 곁가지도 접어 오해를 없앤다. 붙이기 모드는 예전과 완전히 동일한 화면. */
+  const rep=!!_stkReplaceId;
+  document.getElementById("stkModalH").textContent = rep ? "스티커 바꾸기" : "스티커 붙이기";
+  document.getElementById("stkTypeRow").style.display = rep ? "none" : "";
+  document.getElementById("btnStkAddEvt").style.display = rep ? "none" : "block";
+  document.getElementById("btnStkCustom").textContent = rep ? "바꾸기" : "붙이기";
   const g=document.getElementById("stkGrid");
   // 프리셋은 상수 배열이라 인덱스로만 되돌린다(속성에 사용자 문자열을 넣지 않음 — esc()는 따옴표를
   // 이스케이프하지 않으므로 속성값 조립은 원칙적으로 피한다).
@@ -4126,6 +4169,12 @@ function openStickerSheet(dateStr){
    events 스냅샷이 갱신되면(짝이 붙였을 때 포함) 시트가 열려 있는 동안에도 다시 그린다. */
 function renderStickerSheetDay(){
   const wrap=document.getElementById("stkDayList"); if(!wrap || !_stkDate) return;
+  // 교체 모드(v0.8.29)에선 곁가지를 전부 접는다 — 지금 바꿀 스티커 하나에만 집중.
+  if(_stkReplaceId){
+    wrap.innerHTML="";
+    const vb0=document.getElementById("btnStkViewDay"); if(vb0) vb0.style.display="none";
+    return;
+  }
   const dt=parseYMD(_stkDate);
   _stkDaySt = dt ? eventsOnDay(dt).filter(ev=>stickerOf(ev)) : [];
   wrap.innerHTML=_stkDaySt.length
@@ -4144,12 +4193,14 @@ function renderStickerSheetDay(){
     vb.textContent="📋 이 날 일정 보기 ("+titled.length+")";
   }
 }
-/* 제목 없는 스티커 1건 저장 — title:"" 이 곧 "스티커만"의 표식(스키마 추가 없음). */
+/* 제목 없는 스티커 1건 저장 — title:"" 이 곧 "스티커만"의 표식(스키마 추가 없음).
+   v0.8.29: _stkReplaceId가 있으면 "새로 붙이기"가 아니라 "그 문서의 스티커만 교체"로 갈라진다. */
 async function saveSticker(raw){
   const st=normSticker(raw);
   if(!st){ toast("스티커를 골라주세요"); return; }
   if(!pairId || !_stkDate) return;
   if(currentPairData && currentPairData.status==="dissolved") return;
+  if(_stkReplaceId){ await replaceSticker(_stkReplaceId, st); return; }
   const dt=parseYMD(_stkDate);
   if(dt && stickersOnDay(dt).length>=STICKER_MAX_PER_DAY){ toast("한 날에 스티커는 "+STICKER_MAX_PER_DAY+"개까지예요"); return; }
   try{
@@ -4158,6 +4209,42 @@ async function saveSticker(raw){
     toast("스티커를 붙였어요");
     closeStickerSheet();
   }catch(e){ console.error(e); toast(isDeniedErr(e)?"붙일 권한이 없어요":"붙이지 못했어요"); }
+}
+/* ===== 스티커 교체/떼기 (v0.8.29, 케이스 S) =====================================
+   ★세 필드만 보낸다(sticker/stickerBy/stickerAt) — firestore.rules의 케이스 S가 딱 이 화이트리스트만
+   짝에게 열어주기 때문이다. 제목·날짜를 같이 실으면 affectedKeys 검사에서 통째로 거절되므로,
+   여기서 updateDoc을 "좁게" 쓰는 것은 취향이 아니라 규칙과의 계약이다.
+   충돌 정책: 마지막 저장 우선(별도 잠금·버전 필드 없음). 둘이 동시에 바꿔도 나중 write가 이기고,
+   양쪽 화면은 기존 events onSnapshot으로 곧바로 같은 값으로 수렴한다(새 구독 채널 없음). */
+async function replaceSticker(id, st){
+  if(!pairId || !id) return;
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  try{
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",id),
+      { sticker:st, stickerBy:fb.uid, stickerAt:M.serverTimestamp() });
+    toast("스티커를 바꿨어요");
+    _stkReplaceId=null;
+    closeStickerSheet();
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"바꿀 권한이 없어요":"바꾸지 못했어요"); }
+}
+/* 제목 있는 일정에서 "스티커만" 떼기 — 문서는 그대로 두고 sticker 필드만 지운다(짝의 일정을 통째로
+   지우는 일은 여전히 작성자만 할 수 있다). deleteField로 필드 자체를 없애 기존 문서 모양을 지킨다. */
+async function detachSticker(id){
+  if(!pairId || !id) return;
+  if(currentPairData && currentPairData.status==="dissolved") return;
+  if(!confirm("이 스티커를 뗄까요?")) return;
+  try{
+    await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",id),
+      { sticker:M.deleteField(), stickerBy:fb.uid, stickerAt:M.serverTimestamp() });
+    toast("스티커를 뗐어요");
+  }catch(e){ console.error(e); toast(isDeniedErr(e)?"뗄 권한이 없어요":"떼지 못했어요"); }
+}
+/* "누가" 표기 — 애칭 모델(2026-08-25)을 그대로 따른다: 내 이름은 상대가 지어준 것, 상대 이름은 내가
+   지어준 것. 이름이 아직 비어 있으면 "나"/"짝"으로 폴백해 빈칸이 보이지 않게 한다. */
+function stickerWhoLabel(uid){
+  if(!uid) return "";
+  if(uid===fb.uid) return (myEmoji()||"🩵")+" "+(myGivenName()||"나");
+  return partnerEmoji()+" "+(myPartnerLabel()||"짝");
 }
 function _hideStickerDetail(){ const m=document.getElementById("stickerDetail"); if(m) m.style.display="none"; }
 function closeStickerDetail(){ navCloseSelf("stickerDetail", _hideStickerDetail); }
@@ -4172,9 +4259,28 @@ function openStickerDetail(id){
   lines.push((ev.type==="annual"?"매년 반복 · ":"")+stickerCountLabel(ev));
   if(ev.memo) lines.push(ev.memo);
   document.getElementById("stkDetailDesc").innerHTML=lines.filter(Boolean).map(esc).join("<br>");
+  /* v0.8.29 "누가 언제" 작은 표기 — 붙인 사람(createdBy)은 늘, 바꾼 사람(stickerBy)은 붙인 사람과
+     다를 때만 덧붙인다(내가 내 걸 고친 걸 굳이 두 줄로 알릴 필요는 없다). stickerAt이 serverTimestamp
+     왕복 전이라 null인 순간이 있어 시각은 있을 때만 붙인다(tsMillis는 그 방어를 이미 담고 있다). */
+  const by=document.getElementById("stkDetailBy");
+  /* 문구는 "{이모지} {이름} 붙임" 꼴 — "OO가/이" 같은 조사를 쓰지 않는다. 애칭은 사용자가 지은
+     임의의 말이라 받침 유무를 알 수 없어(예: "여봉"/"오빠") 조사를 붙이면 반드시 어느 한쪽이 어색해진다. */
+  const byLines=[];
+  if(ev.createdBy) byLines.push(stickerWhoLabel(ev.createdBy)+" 붙임");
+  if(ev.stickerBy && ev.stickerBy!==ev.createdBy){
+    const ms=tsMillis(ev.stickerAt);
+    byLines.push(stickerWhoLabel(ev.stickerBy)+" 바꿈"+(ms?(" · "+fmtDateShort(isoDate(new Date(ms)))+" "+fmtTime(ms)):""));
+  }
+  by.innerHTML=byLines.map(esc).join("<br>");
+  /* 바꾸기는 양쪽 다 — 스티커는 "둘의 것"(사장님 2026-09-22 지시). rules 케이스 S와 같은 범위.
+     지우기만 두 갈래다: 제목 없는 "스티커만" 문서는 스티커가 곧 문서라 양쪽이 지우고, 제목이 있는
+     일정은 짝이 통째로 못 지우므로 "스티커만 떼기"(sticker 필드 제거)로 내려준다. */
+  const mine=(ev.createdBy===fb.uid);
+  document.getElementById("btnStkReplace").style.display=st?"block":"none";
   const del=document.getElementById("btnStkDelete");
-  del.style.display=(ev.createdBy===fb.uid)?"block":"none"; // rules와 동일 — 내가 만든 것만 지울 수 있다
-  del.textContent=title ? "🗑 일정 지우기" : "🗑 스티커 지우기";
+  del.style.display="block";
+  del.dataset.mode = title ? (mine ? "event" : "detach") : "sticker";
+  del.textContent = title ? (mine ? "🗑 일정 지우기" : "🗑 스티커만 떼기") : "🗑 스티커 지우기";
   document.getElementById("stickerDetail").style.display="flex";
   navOpen("stickerDetail", _hideStickerDetail);
 }
@@ -4346,7 +4452,11 @@ async function addEvent(){
   } else end="";
   try{
     if(_editingEvtId){
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField(), sticker: sticker ? sticker : M.deleteField() });
+      // v0.8.29: 폼 수정은 작성자 전용 경로(rules 기존 문장)라 필드 제한이 없다. 여기서 stickerBy를
+      //   내 uid로 다시 찍는 이유는 "짝이 바꿈" 표기를 털어내기 위해서다 — 짝이 바꿔둔 스티커를 내가
+      //   폼에서 다시 고쳤는데 표기가 짝 이름으로 남아 있으면 거짓말이 된다. 스티커를 비우면 표기도 함께 소거.
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField(), sticker: sticker ? sticker : M.deleteField(),
+        stickerBy: sticker ? fb.uid : M.deleteField(), stickerAt: sticker ? M.serverTimestamp() : M.deleteField() });
       toast("일정을 수정했어요");
     } else {
       const doc={ title, date:start, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() };
@@ -5636,8 +5746,19 @@ document.getElementById("btnStkDelete").onclick=()=>{
   const id=_stkDetailId; if(!id) return;
   const ev=_events.find(x=>x.id===id);
   const titled=!!(ev && (ev.title||"").trim());
+  const mode=document.getElementById("btnStkDelete").dataset.mode;
   closeStickerDetail();
+  // v0.8.29: 짝의 "제목 있는 일정"은 통째로 못 지우고 스티커만 뗀다(rules 케이스 S와 같은 경계).
+  //   확인은 어느 갈래든 딱 1회(detachSticker / deleteEvent 각각 confirm 한 번).
+  if(mode==="detach"){ detachSticker(id); return; }
   deleteEvent(id, titled ? "이 일정을 지울까요?" : "이 스티커를 지울까요?"); // 삭제 경로는 기존 deleteEvent 그대로(blocks 정리 포함)
+};
+document.getElementById("btnStkReplace").onclick=()=>{
+  const id=_stkDetailId; if(!id) return;
+  const ev=_events.find(x=>x.id===id); if(!ev) return;
+  const d=ev.date;
+  closeStickerDetail();
+  setTimeout(()=>openStickerSheet(d, id), 80); // history 정합(닫힘 popstate가 먼저 처리되도록 — 시트 탭 경로와 동일)
 };
 document.getElementById("btnAddBlock").onclick=addBlock;
 document.getElementById("blkStart").addEventListener("change", onBlkStartChange);

@@ -287,6 +287,36 @@ service cloud.firestore {
         allow delete: if isMember(pairOf(pairId))
           && (resource.data.createdBy == request.auth.uid || pairOf(pairId).status == "dissolved");
 
+        // ── 케이스 S(2026-09-22 사장님 "일정에 스티커 붙이는 거 서로 수정할 수 있게") ──
+        //   ★위 두 문장은 한 글자도 바꾸지 않는다 — Firestore는 복수 allow를 OR로 평가하므로
+        //     "작성자 본인의 전 필드 수정"(기존)은 그대로 살아있고, 여기에 "짝의 스티커 손질"만
+        //     좁게 덧댄다(messages의 케이스 H/K와 동일한 증설 방식).
+        //   배경 실측(2026-09-22, dev/rules-live.js 방식 REST): 짝이 스티커를 바꾸거나 떼려 하면
+        //     PATCH/DELETE 모두 403 PERMISSION_DENIED였다 — UI 가드가 아니라 이 규칙이 진짜 벽이었다.
+        //     같은 events 하위의 blocks(하루 일과)는 이미 "멤버 누구나"라 200이었고, 스티커도
+        //     "둘이 함께 찍는 것"이라는 점에서 성격이 blocks 쪽에 가깝다.
+        //   · affectedKeys().hasOnly(['sticker','stickerBy','stickerAt']) → 이 경로로는 제목·날짜·
+        //     메모·기간·createdBy를 절대 못 바꾼다. 짝의 "일정"은 여전히 작성자만 고친다(스코프=스티커).
+        //   · stickerBy == request.auth.uid → "누가 바꿨는지" 표기를 남의 이름으로 위조할 수 없다.
+        //   · sticker size()<=16 → 자기 키에 초장문을 실어 문서(1MiB)를 부풀리고 상대의 매 스냅샷
+        //     수신량을 키우는 경로 차단(케이스 K의 32자 캡과 같은 철학, 이모지 1~2자라 16이면 넉넉).
+        //     스티커를 떼는 경우(deleteField)는 필드 자체가 사라지므로 값 검사를 건너뛴다.
+        allow update: if isMember(pairOf(pairId))
+          && pairOf(pairId).status != "dissolved"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sticker','stickerBy','stickerAt'])
+          && (!('sticker' in request.resource.data)
+              || (request.resource.data.sticker is string && request.resource.data.sticker.size() <= 16))
+          && (!('stickerBy' in request.resource.data)
+              || request.resource.data.stickerBy == request.auth.uid);
+        //   삭제는 "제목 없는 스티커만 문서"(title=="" && sticker 있음)로 한정한다 — 그 문서는
+        //   스티커가 곧 문서 전체라 "스티커를 뗀다 == 문서를 지운다"가 같은 뜻이다. 반면 제목이 있는
+        //   일정은 짝이 통째로 지울 수 없고(작성자 고유 권한 유지), 위 update 경로로 sticker 필드만
+        //   떼어낸다(앱의 "스티커만 떼기"). 이별(dissolved) 소거는 기존 delete 문장이 계속 담당.
+        allow delete: if isMember(pairOf(pairId))
+          && pairOf(pairId).status != "dissolved"
+          && resource.data.get('title', '') == ''
+          && resource.data.get('sticker', '') != '';
+
         // ── 하루 일과 시간블록(blocks, 2026-08-28 신설) ────────────────
         //   이벤트 상세 안 "하루 일과". 이벤트 자체(본인 것만 수정)와 달리 "둘이 함께 짜는 시간표"라
         //   멤버 누구나 만들고 고쳐 쓴다(createdBy는 작성자 표기용, 수정 잠금 아님). 이별 시 소거(purgeEventsAll).
