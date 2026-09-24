@@ -3,7 +3,7 @@
    ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
    화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
    주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
-const VER = "oguogu-v0.8.29"; // v0.8.29(2026-09-22): 스티커를 짝 양쪽이 바꾸고 뗄 수 있게(케이스 S) — index.html 배포에 맞춘 앱셸 캐시 무효화. SW 로직 자체는 무변경
+const VER = "oguogu-v0.8.30"; // v0.8.30(2026-09-25): 채팅 "맨 위로 튐" 근본수리 index.html 배포에 맞춘 앱셸 캐시 무효화 — SW 로직 자체는 무변경
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{

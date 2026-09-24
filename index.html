@@ -280,11 +280,27 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
 }
 .solo-banner .go{color:var(--accent); font-weight:var(--w-bold); flex:none}
 
+/* v0.8.30(2026-09-25 "채팅창 누르면 제일 처음으로 가는 오류" 근본수리): scroll-behavior를 smooth→auto.
+   smooth는 코드의 scrollTop 대입까지 수십 프레임짜리 애니메이션으로 바꿔, 진입 시 "0에서 바닥까지"
+   굴러가는 동안 scroll 이벤트가 수십 번 났다 — 그중 top<60px 프레임을 앱이 "사용자가 맨 위로 올렸다"로
+   오인해 과거 대화를 불러오고, 그 위치 보정이 바닥행 애니메이션을 맨 위로 되돌려 첫 메시지에 멈췄다
+   (재현기 dev/repro-chat-scroll.py: 260건 방 진입 시 top=60/바닥까지 18,780px). 손가락 스크롤은 이 속성과
+   무관하고, 부드러움이 필요한 곳(답장 원문 이동)은 scrollIntoView({behavior:"smooth"})로 명시한다. */
 #msgList{
   flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
   padding:var(--s4) var(--s3) var(--s3); display:flex; flex-direction:column; gap:var(--s1);
-  scroll-behavior:smooth; background:var(--bg);
+  scroll-behavior:auto; background:var(--bg);
 }
+/* "새 메시지 ↓" — 위로 올려 과거를 읽는 중에 상대 메시지가 오면 끌어내리지 않고 이 배지로만 알린다.
+   위치는 msgList 바닥 바로 위(JS가 msgList 실제 높이로 계산 — 입력바·답장바·키보드 높이가 제각각이라
+   CSS 고정값으로는 못 맞춘다). 배경은 테마 악센트 1색(디자인 원칙), 글자는 악센트 위 전용 잉크색. */
+#screenChat{position:relative}
+.new-msg-badge{position:absolute; left:50%; transform:translateX(-50%); z-index:6; display:none;
+  padding:8px 16px; border:0; border-radius:var(--r-full); background:var(--accent); color:var(--accent-ink);
+  font-size:13px; font-weight:var(--w-bold); letter-spacing:-.01em; box-shadow:var(--shadow-lg); white-space:nowrap;
+  -webkit-tap-highlight-color:transparent; cursor:pointer}
+.new-msg-badge.show{display:block}
+.new-msg-badge:active{transform:translateX(-50%) scale(.96)}
 /* 채팅 배경 패턴(꾸미기) */
 [data-chatbg="dots"] #msgList{background-image:radial-gradient(var(--pattern) 1.6px, transparent 1.7px); background-size:18px 18px}
 [data-chatbg="grid"] #msgList{background-image:linear-gradient(var(--pattern) 1px,transparent 1px),linear-gradient(90deg,var(--pattern) 1px,transparent 1px); background-size:22px 22px}
@@ -1024,6 +1040,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <span class="go">초대하기 →</span>
   </button>
   <div id="msgList"><div class="msg-empty"><div class="empty-emoji">🩷</div>둘만의 공간이 열렸어요.<br>첫 인사를 건네보세요.</div></div>
+  <!-- v0.8.30: msgList 밖(형제)에 둔다 — msgList는 렌더마다 innerHTML이 통째로 바뀌어 안에 두면 지워진다 -->
+  <button type="button" class="new-msg-badge" id="newMsgBadge" aria-live="polite">새 메시지 ↓</button>
   <div class="attach-menu" id="attachMenu" style="display:none">
     <label class="attach-opt">🖼️ 앨범에서<input type="file" id="chatAlbum" accept="image/*" multiple></label>
     <label class="attach-opt">📷 사진 찍기<input type="file" id="chatCamera" accept="image/*" capture="environment"></label>
@@ -1543,7 +1561,19 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.29"; // v0.8.29(2026-09-22 17:32, 사장님 "일정에 스티커 붙이는 거 서로 수정할 수 있게 바꿔줘") —
+const APP_VERSION = "0.8.30"; // v0.8.30(2026-09-25 08:21, 사장님 "5959 채팅창 누르면 제일 처음으로 가는 오류") —
+// ★근본원인(재현기 dev/repro-chat-scroll.py 실측): #msgList의 CSS scroll-behavior:smooth가 코드의 "바닥으로"
+//   대입을 수십 프레임 애니메이션으로 만들고, 8/25 핫픽스의 1회용 _programmaticScroll 플래그는 첫 프레임만
+//   걸러 2프레임째(top≈16px)를 사용자 스크롤로 오인 → loadOlderMessages() 발동 → 위치 보정이 애니메이션을
+//   맨 위로 재지정 → 과거 페이지가 붙으며 첫 메시지에 고정. 200건 넘긴 방에서만 매 진입마다 발생
+//   (미만이면 _noMoreOlder로 과거 로드 자체가 막혀 안 보였다 — 8/25 수리 때 못 잡은 이유).
+// 수리: ①smooth 제거(대입 즉시) ②과거 로드는 사용자 제스처(터치·휠·포인터·키) 직후의 scroll에서만
+//   ③ResizeObserver로 사진·스티커·글씨 크기·키보드로 높이가 나중에 바뀌어도 바닥 근처면 최신 유지
+//   ④위로 올려 읽는 중 상대 메시지 → 끌어내리지 않고 "새 메시지 ↓" 배지(탭=최신) ⑤내가 보낸 건 항상 최신으로
+//   ⑥_noMoreOlder가 한 번 true면 안 풀리던 부수 결함 수리(켜둔 채 200건 넘기면 과거 대화를 못 열었음).
+// 무변경: rules·데이터·릴레이·달력·다이어리. 답장 원문 이동은 scrollIntoView smooth 명시로 그대로 부드럽다.
+// ── 아래는 v0.8.29(2026-09-22) 기록 ──────────────────────────────────────────
+// v0.8.29(2026-09-22 17:32, 사장님 "일정에 스티커 붙이는 거 서로 수정할 수 있게 바꿔줘") —
 // 스티커는 이제 "둘의 것"이다 — 누가 붙였든 양쪽이 바꾸고 뗀다(상세 "🔄 스티커 바꾸기").
 // ★근본: 막고 있던 건 UI가 아니라 firestore.rules였다(실측 2026-09-22, dev/rules-live.js 방식 REST:
 //   짝의 events PATCH·DELETE 모두 403 PERMISSION_DENIED / 같은 events 하위 blocks는 200).
@@ -2008,7 +2038,11 @@ function showTab(tab){
     // (실기기: "채팅 들어가면 메시지가 젤 처음으로 올라가 있음"). _chatNearBottom을 강제로 true로
     // 되돌리고, 화면이 실제로 active인 지금 다시 그려 바닥 앵커링을 확실히 한다.
     _chatNearBottom = true;
+    hideNewMsgBadge(); // v0.8.30: 들어오면 어차피 최신이므로 배지는 비운다
     renderMessages();
+    // v0.8.30: 화면이 방금 display:none→flex로 바뀐 직후라 첫 프레임 레이아웃(입력바·설치 안내·답장바 등)이
+    //   한 번 더 움직일 수 있다 — 다음 프레임에 한 번 더 붙인다(바닥 근처일 때만, 사용자가 곧장 올렸으면 무시).
+    requestAnimationFrame(()=>pinChatBottomIfNear());
     if(!isLocked()) markRead();
   }
   else if(tab==="schedule"){ renderSchedule(); }
@@ -3077,13 +3111,64 @@ const CHAT_NEAR_BOTTOM_PX=96; // 메시지 1~2줄 높이 정도 — 이 안이�
    만든 대입은 항상 setChatScrollTop()을 거치게 해 _programmaticScroll을 표시하고, 스크롤
    리스너는 그 표시가 있는 이벤트 1건만 소비(무시)한 뒤 과거 로드 트리거를 재개한다 — 진짜 사용자
    스크롤만 과거 페이지를 연다(요건: 초기 진입·프로그램적 스크롤은 트리거 제외). */
-let _programmaticScroll=false;
-function setChatScrollTop(list, px){ _programmaticScroll=true; list.scrollTop=px; }
+/* ★v0.8.30(2026-09-25 08:21 사장님 "채팅창 누르면 제일 처음으로 가는 오류") — 위 8/25 핫픽스의 재발 근본수리.
+   8/25 가드는 "우리 scrollTop 대입 1번 = scroll 이벤트 1번"을 전제로 한 1회용 플래그였다. 그런데 msgList에
+   CSS scroll-behavior:smooth가 걸려 있어 대입 1번이 수십 프레임 애니메이션(= scroll 이벤트 수십 번)이 됐고,
+   플래그는 첫 프레임에서 소진 → 2프레임째(top≈16px)가 "사용자가 맨 위로 올렸다"로 오인돼 과거 로드 발동 →
+   그 위치 보정이 바닥행 애니메이션을 맨 위로 되돌려 첫 메시지에서 멈췄다(재현기 실측 로그:
+   SET 14992→got 0 / scroll top=4 / LOAD_OLDER top=16 / SET 66). 200건 미만 방은 _noMoreOlder로 과거
+   로드가 막혀 있어 안 보였고, 200건을 넘긴 방에서만 매 진입마다 난다.
+   수리 2겹: ①smooth 제거(CSS) — 대입은 즉시, 이벤트 1번. ②"프로그램 스크롤을 빼는" 네거티브 방식을
+   버리고 "사용자 제스처가 있었을 때만 과거 로드"라는 포지티브 방식으로 바꿨다 — 터치·휠·포인터·키 입력이
+   최근(CHAT_USER_SCROLL_MS) 있었던 scroll만 사용자 스크롤로 인정하고, 관성 스크롤 동안은 창을 이어간다.
+   이제 우리 코드가 몇 번을 어떻게 굴려도(렌더·잠금 화면·사진 로드·글씨 크기·키보드) 과거 로드는 안 열린다. */
+let _chatUserScrollAt=-1e9;          // 마지막 사용자 스크롤 제스처 시각(performance.now 기준)
+const CHAT_USER_SCROLL_MS=1200;      // 제스처 후 이 안의 scroll만 "사용자 스크롤"(관성 동안은 scroll마다 연장)
+function markChatUserScroll(){ _chatUserScrollAt=performance.now(); }
+function setChatScrollTop(list, px){ list.scrollTop=px; } // 우리 코드의 유일한 대입 경로(즉시 적용 — CSS smooth 없음)
+function _chatScreenActive(){ const scr=document.getElementById("screenChat"); return !!(scr && scr.classList.contains("active")); }
 function pinChatBottomIfNear(){
   const list=document.getElementById("msgList");
-  const scr=document.getElementById("screenChat");
-  if(!list || !scr || !scr.classList.contains("active")) return; // 채팅 화면이 아니면 절대 손대지 않음
+  if(!list || !_chatScreenActive()) return; // 채팅 화면이 아니면 절대 손대지 않음
   if(_chatNearBottom) setChatScrollTop(list, list.scrollHeight);
+  positionNewMsgBadge();
+}
+/* 무조건 최신으로(진입·배지 탭·내가 보낸 메시지) — 바닥 판정도 함께 되돌려 이후 높이 변화에도 붙어 있게 한다. */
+function scrollChatToBottom(){
+  const list=document.getElementById("msgList"); if(!list) return;
+  _chatNearBottom=true;
+  setChatScrollTop(list, list.scrollHeight);
+  hideNewMsgBadge();
+}
+/* 높이가 "나중에" 바뀌는 모든 경우(사진·스티커 디코드, 글씨 크기, 큰 이모지, 웹폰트, 키보드·탭바 접힘)를
+   한 곳에서 받는다 — 목록 상자와 각 행의 크기 변화를 ResizeObserver로 보고, 바닥 근처였을 때만 다시 붙인다.
+   (8/25의 img load 리스너는 그대로 두되 이게 상위 안전망이다. scrollTop만 바꾸고 크기는 안 바꾸므로
+   관찰 루프가 생기지 않는다.) 렌더마다 행이 새로 생기므로 renderMessages 끝에서 다시 건다. */
+let _chatRO=null;
+function observeChatLayout(list){
+  if(!list || typeof ResizeObserver!=="function") return;
+  if(!_chatRO) _chatRO=new ResizeObserver(()=>pinChatBottomIfNear());
+  _chatRO.disconnect();
+  _chatRO.observe(list);
+  for(const ch of list.children) _chatRO.observe(ch);
+}
+/* "새 메시지 ↓" 배지 — 위로 올려 읽는 중(= !_chatNearBottom)에 상대 메시지가 오면 끌어내리지 않고 알린다. */
+let _newMsgUnseen=0;
+function positionNewMsgBadge(){
+  const b=document.getElementById("newMsgBadge"), list=document.getElementById("msgList");
+  if(!b || !list || !b.classList.contains("show")) return;
+  b.style.top=Math.max(8, list.offsetTop + list.clientHeight - b.offsetHeight - 12)+"px";
+}
+function showNewMsgBadge(){
+  const b=document.getElementById("newMsgBadge"); if(!b) return;
+  _newMsgUnseen++;
+  b.textContent = (_newMsgUnseen>1 ? "새 메시지 "+_newMsgUnseen+"개" : "새 메시지")+" ↓";
+  b.classList.add("show");
+  positionNewMsgBadge();
+}
+function hideNewMsgBadge(){
+  _newMsgUnseen=0;
+  const b=document.getElementById("newMsgBadge"); if(b) b.classList.remove("show");
 }
 /* 이전 대화 페이지네이션(2026-08-25 사장님 GO) — limitToLast(200) 실시간 창 밖의 과거 메시지는
    삭제된 게 아니라 그냥 화면에 안 뜨던 것뿐(저장은 무기한, 실측 확인됨). 설계 원칙(정석):
@@ -3103,9 +3188,10 @@ function pinChatBottomIfNear(){
 let _olderMsgDocs=[];      // 과거 페이지(오름차순, getDocs 일회성) — 실시간 구독 밖
 let _liveAnchorDoc=null;   // _olderMsgDocs 중 가장 최근 것(=older/live 경계) — watchMessages() 재구독 하한
 let _loadingOlder=false, _noMoreOlder=false;
+let _noMoreOlderConfirmed=false; // v0.8.30: 과거 조회가 실제로 "더 없음"을 확인했는가(스냅샷 크기 추정과 구분)
 const OLDER_PAGE_SIZE=100;
 const CHAT_NEAR_TOP_PX=60;  // 이 안으로 스크롤하면 과거 페이지 로드 트리거
-function resetChatPagination(){ _olderMsgDocs=[]; _liveAnchorDoc=null; _loadingOlder=false; _noMoreOlder=false; }
+function resetChatPagination(){ _olderMsgDocs=[]; _liveAnchorDoc=null; _loadingOlder=false; _noMoreOlder=false; _noMoreOlderConfirmed=false; hideNewMsgBadge(); }
 function allChatMsgDocs(){ return _olderMsgDocs.concat(_lastMsgSnapshotDocs||[]); } // _olderMsgDocs는 항상 _lastMsgSnapshotDocs[0]보다 이전(endBefore 커서로 보장) → 단순 concat으로 오름차순 유지
 async function loadOlderMessages(){
   if(_loadingOlder || _noMoreOlder || !pairId) return;
@@ -3118,11 +3204,11 @@ async function loadOlderMessages(){
   try{
     const q=M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.endBefore(cursorDoc), M.limitToLast(OLDER_PAGE_SIZE));
     const snap=await M.getDocs(q);
-    if(snap.empty){ _noMoreOlder=true; }
+    if(snap.empty){ _noMoreOlder=true; _noMoreOlderConfirmed=true; }
     else{
       _olderMsgDocs=snap.docs.concat(_olderMsgDocs);
       _liveAnchorDoc=_olderMsgDocs[_olderMsgDocs.length-1]; // "가장 최근"(경계) — 위 핵심 위험② 참조, [0](가장 오래된) 아님
-      if(snap.docs.length<OLDER_PAGE_SIZE) _noMoreOlder=true;
+      if(snap.docs.length<OLDER_PAGE_SIZE){ _noMoreOlder=true; _noMoreOlderConfirmed=true; }
       watchMessages(); // 앵커(_liveAnchorDoc) 갱신 → 실시간 구독 하한도 함께 이동(구멍·중복 방지, 위 설계 메모)
     }
   }catch(e){ console.error(e); toast("이전 대화를 불러오지 못했어요"); }
@@ -3347,6 +3433,8 @@ function renderMessages(opts){
   } else if(_chatNearBottom){
     setChatScrollTop(list, list.scrollHeight);
   }
+  observeChatLayout(list); // v0.8.30: 사진·스티커·글씨 크기 등으로 높이가 나중에 바뀌어도 바닥 근처면 계속 최신 유지
+  positionNewMsgBadge();
 }
 function watchMessages(){
   if(unsubMsgs) unsubMsgs();
@@ -3360,10 +3448,23 @@ function watchMessages(){
     ? M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.startAfter(_liveAnchorDoc))
     : M.query(M.collection(fb.db,"pairs",pairId,"messages"), M.orderBy("ts","asc"), M.limitToLast(200));
   unsubMsgs = M.onSnapshot(q, snap=>{
+    // v0.8.30: 끝에 "새로" 붙은 메시지를 알아본다(직전 스냅샷에 없던 id가 맨 끝에 옴). 첫 스냅샷(앱 열기)·
+    //   수정(같은 id)·과거 페이지 재구독(끝 문서 동일)은 새 메시지가 아니다. 삭제로 끝이 앞당겨지는 경우도
+    //   끝 id가 이전 집합에 있으므로 새 메시지로 안 센다.
+    const prevIds=new Set((_lastMsgSnapshotDocs||[]).map(d=>d.id));
     _lastMsgSnapshotDocs = snap.empty ? [] : snap.docs;
     // limitToLast(200) 모드에서 전체가 200개 미만이면 이미 처음부터 다 실려있는 것 — 불필요한
     // 페이지 요청(빈 응답 왕복) 없이 바로 "대화의 시작이에요"를 보여준다.
-    if(!_liveAnchorDoc && !snap.empty && snap.docs.length<200) _noMoreOlder=true;
+    // v0.8.30: 이 판정을 "매 스냅샷마다" 다시 한다 — 예전엔 한 번 true가 되면 끝까지 안 풀려, 앱을 켜둔
+    //   채 대화가 200건을 넘기면(첫 스냅샷이 199건 이하였던 세션) 새로고침 전까지 과거 대화를 못 열었다.
+    //   단 과거 조회로 "진짜 처음"이 확인된 경우(_noMoreOlderConfirmed)는 되돌리지 않는다(빈 조회 반복 방지).
+    if(!_liveAnchorDoc && !snap.empty && !_noMoreOlderConfirmed) _noMoreOlder = snap.docs.length<200;
+    const last=_lastMsgSnapshotDocs.length ? _lastMsgSnapshotDocs[_lastMsgSnapshotDocs.length-1] : null;
+    if(prevIds.size && last && !prevIds.has(last.id)){
+      const ld=last.data()||{};
+      if(ld.sender===fb.uid) _chatNearBottom=true;                       // 내가 보낸 건 읽던 중이어도 최신으로(메신저 관례)
+      else if(!_chatNearBottom && _chatScreenActive() && !isLocked()) showNewMsgBadge(); // 읽는 중이면 끌어내리지 않고 배지만
+    }
     renderMessages();
     if(currentTab==="home" && inAppTabs()) renderHome(); // 홈 안 읽은 배지 갱신
     if(!isLocked() && document.getElementById("screenChat").classList.contains("active") && document.visibilityState==="visible") markRead();
@@ -5516,15 +5617,20 @@ document.getElementById("msgInput").addEventListener("input", autoGrowMsg);
 document.getElementById("msgList").addEventListener("scroll", ()=>{
   const list=document.getElementById("msgList");
   _chatNearBottom = (list.scrollHeight - list.scrollTop - list.clientHeight) < CHAT_NEAR_BOTTOM_PX;
-  // 2026-08-25 14:30 핫픽스: 이 이벤트가 우리 자신의 scrollTop 대입(setChatScrollTop) 때문에 발화한
-  // 것이면(_programmaticScroll) 딱 1건만 소비하고 과거 로드는 절대 트리거하지 않는다 — 진입 시
-  // "바닥으로 가라"는 프로그램적 스크롤이 상단 근접 임계값을 스쳐 지나가며 loadOlderMessages()를
-  // 오발동시켰던 게 "채팅 들어가면 위로 올라가 있다" 버그의 근본원인이었다(요건: 초기 진입·
-  // 프로그램적 스크롤은 트리거 제외, 진짜 사용자 스크롤만 과거 페이지를 연다).
-  const wasProgrammatic = _programmaticScroll;
-  _programmaticScroll = false;
-  if(!wasProgrammatic && list.scrollTop < CHAT_NEAR_TOP_PX) loadOlderMessages(); // 요건1(2026-08-25): 상단 근접 시 이전 대화 페이지 로드
+  if(_chatNearBottom) hideNewMsgBadge(); // 바닥까지 내려와 봤으면 배지는 할 일을 다 했다
+  // v0.8.30: 과거 로드는 "사용자 제스처가 만든 scroll"에서만 연다(위 ★v0.8.30 메모). 8/25의 1회용
+  //   _programmaticScroll 플래그는 smooth 애니메이션의 수십 프레임을 못 걸러 재발했다 — 제스처 창
+  //   방식은 우리 코드의 대입이 몇 번이든(렌더·잠금 화면 비우기·사진 로드·키보드) 원천적으로 제외된다.
+  //   관성(손을 뗀 뒤 계속 굴러가는) 스크롤은 사용자 스크롤의 연장이므로 scroll마다 창을 이어간다.
+  const now=performance.now();
+  const userDriven = (now - _chatUserScrollAt) < CHAT_USER_SCROLL_MS;
+  if(userDriven) _chatUserScrollAt = now;
+  if(userDriven && list.scrollTop < CHAT_NEAR_TOP_PX) loadOlderMessages(); // 요건1(2026-08-25): 상단 근접 시 이전 대화 페이지 로드
 }, {passive:true});
+/* 사용자 스크롤 제스처의 원천 — 손가락(touch)·트랙패드/휠·마우스 드래그(pointer)·키보드(PageUp/Home 등). */
+["touchstart","touchmove","wheel","pointerdown","keydown"].forEach(ev=>
+  document.getElementById("msgList").addEventListener(ev, markChatUserScroll, {passive:true}));
+document.getElementById("newMsgBadge").addEventListener("click", ()=>scrollChatToBottom());
 document.getElementById("msgInput").addEventListener("keydown", e=>{
   // IME 조합 중 Enter는 조합 확정이지 전송 아님. 터치 기기·Shift+Enter는 줄바꿈(기본 동작 유지). 데스크톱 Enter만 전송.
   if(e.key==="Enter" && !e.shiftKey && !e.isComposing && !_prefersTouchEnter()){ e.preventDefault(); sendMessage(); }
