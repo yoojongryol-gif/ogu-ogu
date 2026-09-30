@@ -3,7 +3,7 @@
    ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
    화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
    주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
-const VER = "oguogu-v0.8.30"; // v0.8.30(2026-09-25): 채팅 "맨 위로 튐" 근본수리 index.html 배포에 맞춘 앱셸 캐시 무효화 — SW 로직 자체는 무변경
+const VER = "oguogu-v0.8.31"; // v0.8.31(2026-09-30): 일정·다이어리 등록 알림 문구 표시 + notificationclick 딥링크(postMessage/openWindow)
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
@@ -44,23 +44,40 @@ try{
   });
   const messaging = firebase.messaging();
   messaging.onBackgroundMessage((payload) => {
-    // 본문·발신자 절대 미노출. 오직 "종류 플래그"(t: 메시지 m / 합류요청 req)만 읽어 고정 문구를 고른다.
-    //   t는 내용이 아니라 카테고리 → 내용 숨김 원칙 유지(문구는 항상 고정).
-    const t = payload && payload.data && payload.data.t;
-    const isReq = (t === "req");
+    // 채팅(m)·합류요청(req)은 그대로 본문·발신자 절대 미노출(고정 문구) — 앱 창립 원칙.
+    // 일정(sch*)·다이어리(diary*)는 2026-09-30 사장님 지시로 예외: 릴레이가 이름·날짜·제목/첫줄을
+    //   이미 문구로 조립해 data.body에 실어 보낸다(scripts/ogu_push_relay.py _send 참고) — 그 문구를
+    //   그대로 보여준다. data.tab/data.id는 알림을 탭했을 때 열 화면(딥링크)일 뿐 내용이 아니다.
+    const d = (payload && payload.data) || {};
+    const t = d.t;
+    let body, tag;
+    if(t === "req"){ body="연결 요청이 도착했어요"; tag="oguogu-req"; }
+    else if(t === "sch" || t === "sch_batch" || t === "sch_date"){ body = d.body || "일정 소식이 있어요"; tag="oguogu-sch"; }
+    else if(t === "diary" || t === "diary_batch"){ body = d.body || "다이어리 소식이 있어요"; tag="oguogu-diary"; }
+    else { body = "새 소식이 도착했어요"; tag="oguogu-msg"; } // 기본(m 포함 미지정) — 내용 미노출 유지
     self.registration.showNotification("5959", {
-      body: isReq ? "연결 요청이 도착했어요" : "새 소식이 도착했어요",
+      body,
       icon: "./icon-512.png",
       badge: "./icon-512.png",
-      tag: isReq ? "oguogu-req" : "oguogu-msg", // 종류별 1개로 합쳐 볼륨 노출 방지
+      tag, // 종류별 1개로 합쳐 볼륨 노출 방지(기존 메시지/요청과 동일 원칙)
+      data: { tab: d.tab || "", id: d.id || "" },
     });
   });
 }catch(e){ /* 구형 브라우저 등 importScripts 실패 시 캐시 SW 동작만 유지 */ }
 
 self.addEventListener("notificationclick", e=>{
   e.notification.close();
-  e.waitUntil(clients.matchAll({type:"window"}).then(list=>{
-    for(const c of list){ if("focus" in c) return c.focus(); }
-    return clients.openWindow("./");
+  const nd = e.notification.data || {};
+  const tab = nd.tab || "", id = nd.id || "";
+  e.waitUntil(clients.matchAll({type:"window", includeUncontrolled:true}).then(list=>{
+    for(const c of list){
+      if("focus" in c){
+        if(tab) c.postMessage({type:"deeplink", tab, id});
+        return c.focus();
+      }
+    }
+    let url="./";
+    if(tab) url += "?tab="+encodeURIComponent(tab)+(id?"&id="+encodeURIComponent(id):"");
+    return clients.openWindow(url);
   }));
 });

@@ -1305,6 +1305,21 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
       <div><div class="label">알림</div><div class="desc" id="notifyStatusLabel">꺼짐 — 내용은 절대 표시되지 않아요</div></div>
       <button class="toggle" id="notifyToggle"><span class="knob"></span></button>
     </div>
+    <!-- 일정·다이어리 등록 알림(2026-09-30, 사장님 지시) — 위 "알림"이 꺼져 있으면(토큰 미등록) 어차피
+         발송 자체가 안 되니 이 셋은 그 아래에서 "세부"로 존재. 채팅 알림과 달리 여기는 문구에 이름·제목이
+         그대로 실린다(사장님이 예시 문구로 직접 지정) — 앱의 "알림 내용 완전 숨김" 원칙과는 다른 결정. -->
+    <div class="set-row" id="scheduleNotifyRow">
+      <div><div class="label">일정 알림</div><div class="desc">상대가 새 일정을 등록하면 알려줘요</div></div>
+      <button class="toggle" id="scheduleNotifyToggle"><span class="knob"></span></button>
+    </div>
+    <div class="set-row" id="scheduleDateChangeNotifyRow">
+      <div><div class="label">일정 날짜변경 알림</div><div class="desc">상대가 기존 일정의 날짜를 바꾸면 알려줘요</div></div>
+      <button class="toggle" id="scheduleDateChangeNotifyToggle"><span class="knob"></span></button>
+    </div>
+    <div class="set-row" id="diaryNotifyRow">
+      <div><div class="label">다이어리 알림</div><div class="desc">상대가 새 다이어리를 쓰면 알려줘요</div></div>
+      <button class="toggle" id="diaryNotifyToggle"><span class="knob"></span></button>
+    </div>
   </div>
 
   <!-- 복구 · 앱 -->
@@ -1561,7 +1576,10 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.30"; // v0.8.30(2026-09-25 08:21, 사장님 "5959 채팅창 누르면 제일 처음으로 가는 오류") —
+const APP_VERSION = "0.8.31"; // v0.8.31(2026-09-30, 사장님 "일정이나 다이어리도 등록되면 알림") — 일정·다이어리
+// 등록 알림(+일정 날짜변경 알림, 토글 3종 신설) + 알림 탭 딥링크. 상세는 scripts/ogu_push_relay.py 상단 주석
+// 및 아래 myNotifyPrefs()/addEvent() dateChangedAt 주석 참고. 구 v0.8.30(2026-09-25 08:21, "채팅창 누르면
+// 제일 처음으로 가는 오류") —
 // ★근본원인(재현기 dev/repro-chat-scroll.py 실측): #msgList의 CSS scroll-behavior:smooth가 코드의 "바닥으로"
 //   대입을 수십 프레임 애니메이션으로 만들고, 8/25 핫픽스의 1회용 _programmaticScroll 플래그는 첫 프레임만
 //   걸러 2프레임째(top≈16px)를 사용자 스크롤로 오인 → loadOlderMessages() 발동 → 위치 보정이 애니메이션을
@@ -2047,8 +2065,38 @@ function showTab(tab){
   }
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
-  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderDecorUI(); renderAppVersion(); }
+  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderNotifyPrefsUI(); renderDecorUI(); renderAppVersion(); }
   renderOfflineBanner();
+}
+
+/* ===== 알림 딥링크(2026-09-30) — 일정/다이어리 푸시를 탭하면 그 탭(+가능하면 그 항목)으로 이동.
+   sw.js가 (a) 이미 열린 창이 있으면 postMessage(type:"deeplink")로, (b) 새로 열 때는 "?tab=&id="
+   쿼리로 전달한다. 항목은 _events/_diary 로컬 캐시(onSnapshot 구독)가 아직 안 찼을 수 있어 짧게
+   재시도하고, 못 찾아도 탭 이동만은 항상 보장한다(안전측 폴백 — 일정·다이어리 탭 자체엔 항상 닿는다). */
+let _pendingDeepLink=null;
+function queueDeepLink(tab, id){ if(tab==="schedule"||tab==="diary") _pendingDeepLink={tab, id:id||null, tries:0}; }
+function applyPendingDeepLink(){
+  const dl=_pendingDeepLink; if(!dl || !inAppTabs()) return;
+  showTab(dl.tab);
+  if(!dl.id){ _pendingDeepLink=null; return; }
+  const found = dl.tab==="schedule" ? (_events||[]).find(e=>e.id===dl.id) : (_diary||[]).find(e=>e.id===dl.id);
+  if(found){
+    _pendingDeepLink=null;
+    if(dl.tab==="schedule") startEditEvent(dl.id); else startEditDiary(dl.id);
+  } else if(dl.tries<10){ dl.tries++; setTimeout(applyPendingDeepLink, 250); }
+  else { _pendingDeepLink=null; } // 항목을 못 찾았어도 탭 이동은 이미 됐다(사양: "해당 화면으로 딥링크")
+}
+function consumeURLDeepLink(){
+  try{
+    const q=new URLSearchParams(location.search);
+    const tab=q.get("tab");
+    if(tab){ queueDeepLink(tab, q.get("id")); history.replaceState(null, "", location.pathname); } // 새로고침 재실행 방지
+  }catch(e){ /* 무해 — 딥링크 실패가 앱 부팅을 막으면 안 됨 */ }
+}
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.addEventListener("message", e=>{
+    if(e.data && e.data.type==="deeplink"){ queueDeepLink(e.data.tab, e.data.id); applyPendingDeepLink(); }
+  });
 }
 
 /* ===== 오프라인 배너 — navigator.onLine + online/offline 이벤트.
@@ -3032,6 +3080,7 @@ function watchPair(){
       _prevPremium=nowPrem; _premSeen=true;
     }
     applyThemeFromData(); // 꾸미기 실시간 동기화(테마/배경/말풍선)
+    if(currentTab==="settings") renderNotifyPrefsUI(); // 상대 기기에서 바꿀 일은 없지만(본인 uid 키만 쓰기 가능) 다른 기기 동기화 대비
     renderJoinReqBanner(); // 합류 요청 배너(초대한 멤버에게 수락/거절 노출) — 상태 무관 항상 평가
     if(currentPairData.status==="dissolved"){ handleDissolved(); return; }
     if(currentPairData.status==="paired" && (currentPairData.memberUids||[]).length===2){
@@ -3089,6 +3138,7 @@ function enterChat(){   // 앱 진입 = 홈 탭부터(구성은 renderHome). 이
   if(!isLocked()) markRead();
   maybeShowInstallHint();
   syncNotifyToken(); // v0.8.18: 알림 켠 상태면 getToken()으로 실토큰을 다시 받아 현재 pair에 최신화(회전·방 이동 대응)
+  applyPendingDeepLink(); // 2026-09-30: 알림 탭 진입으로 예약된 딥링크가 있으면 지금 화면이 갖춰졌으니 적용
 }
 
 /* ===== 채팅 (렌더는 항상 renderMessages로만 — 잠금 중엔 실제 텍스트를 DOM에 넣지 않음) ===== */
@@ -4556,8 +4606,16 @@ async function addEvent(){
       // v0.8.29: 폼 수정은 작성자 전용 경로(rules 기존 문장)라 필드 제한이 없다. 여기서 stickerBy를
       //   내 uid로 다시 찍는 이유는 "짝이 바꿈" 표기를 털어내기 위해서다 — 짝이 바꿔둔 스티커를 내가
       //   폼에서 다시 고쳤는데 표기가 짝 이름으로 남아 있으면 거짓말이 된다. 스티커를 비우면 표기도 함께 소거.
-      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), { title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField(), sticker: sticker ? sticker : M.deleteField(),
-        stickerBy: sticker ? fb.uid : M.deleteField(), stickerAt: sticker ? M.serverTimestamp() : M.deleteField() });
+      // 2026-09-30: 날짜가 실제로 바뀔 때만 dateChangedAt/dateChangedBy를 찍는다 — 릴레이(ogu_push_relay.py
+      //   process_pair_events)가 이 필드가 새로 생긴 문서만 "날짜변경 알림 1회" 대상으로 본다. 제목·메모만
+      //   고친 경우엔 이 필드를 아예 안 실어(값 없음 유지) 알림이 뜨지 않는다(사양 ②: 수정=기본 무알림).
+      const prevEv=_events.find(e=>e.id===_editingEvtId);
+      const prevEnd=(prevEv && prevEv.type!=="annual") ? (prevEv.endDate||prevEv.date) : prevEv&&prevEv.date;
+      const dateChanged = !!prevEv && (prevEv.date!==start || (prevEnd||"")!==(end||start||""));
+      const patch={ title, date:start, type:_evtType, memo, endDate: end ? end : M.deleteField(), sticker: sticker ? sticker : M.deleteField(),
+        stickerBy: sticker ? fb.uid : M.deleteField(), stickerAt: sticker ? M.serverTimestamp() : M.deleteField() };
+      if(dateChanged){ patch.dateChangedAt=M.serverTimestamp(); patch.dateChangedBy=fb.uid; }
+      await M.updateDoc(M.doc(fb.db,"pairs",pairId,"events",_editingEvtId), patch);
       toast("일정을 수정했어요");
     } else {
       const doc={ title, date:start, type:_evtType, memo, createdBy:fb.uid, createdAt:M.serverTimestamp() };
@@ -6102,6 +6160,40 @@ function renderNotifyUI(){
   if(notifyIsOn()){ t.classList.add("on"); lbl.textContent="켜짐 — 내용은 절대 표시되지 않아요"; }
   else{ t.classList.remove("on"); lbl.textContent="꺼짐 — 내용은 절대 표시되지 않아요"; }
 }
+/* ===== 일정·다이어리 등록 알림 세부설정(2026-09-30, 사장님 "일정이나 다이어리도 등록되면 알림") =====
+   저장 위치: pairs.notifyPrefs[내uid] = {schedule, scheduleDateChange, diary}(각 bool). rules 케이스
+   D''(firestore.rules)가 "본인 uid 키만" 갱신을 허용 — fcmTokens 케이스 D'와 동일 패턴이라 새 rules
+   구조를 만들지 않았다. 값이 아예 없으면(신규 배포 직후, 기존 pair 전부가 이 상태) 기본값은 항상
+   ON — 이 기본값(true)은 scripts/ogu_push_relay.py의 _pref_on()과 반드시 같아야 한다(서버가 보는
+   기본값과 클라이언트가 보여주는 기본값이 어긋나면 "껐는데 오는" 또는 "켰는데 안 오는" 사고가 난다). */
+function myNotifyPrefs(){
+  const p=(currentPairData && currentPairData.notifyPrefs && currentPairData.notifyPrefs[fb.uid]) || {};
+  return { schedule: p.schedule!==false, scheduleDateChange: p.scheduleDateChange!==false, diary: p.diary!==false };
+}
+async function setNotifyPref(key, on){
+  if(!pairId) return;
+  const prev=myNotifyPrefs();
+  if(currentPairData){ // 낙관적 반영 — setTheme/setProfile과 같은 패턴
+    currentPairData.notifyPrefs = currentPairData.notifyPrefs || {};
+    currentPairData.notifyPrefs[fb.uid] = Object.assign({}, prev, {[key]: on});
+  }
+  renderNotifyPrefsUI();
+  try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["notifyPrefs."+fb.uid+"."+key]: on}); }
+  catch(e){
+    console.error(e);
+    if(currentPairData) currentPairData.notifyPrefs[fb.uid]=prev; // 실패 시 되돌리기(실패를 조용히 숨기지 않는다)
+    renderNotifyPrefsUI();
+    toast(isDeniedErr(e)?"설정을 바꿀 권한이 없어요":"설정을 저장하지 못했어요");
+  }
+}
+function renderNotifyPrefsUI(){
+  const p=myNotifyPrefs();
+  [["scheduleNotifyToggle","schedule"],["scheduleDateChangeNotifyToggle","scheduleDateChange"],["diaryNotifyToggle","diary"]]
+    .forEach(([id,key])=>{ const el=document.getElementById(id); if(el) el.classList.toggle("on", !!p[key]); });
+}
+document.getElementById("scheduleNotifyToggle").onclick=()=>setNotifyPref("schedule", !myNotifyPrefs().schedule);
+document.getElementById("scheduleDateChangeNotifyToggle").onclick=()=>setNotifyPref("scheduleDateChange", !myNotifyPrefs().scheduleDateChange);
+document.getElementById("diaryNotifyToggle").onclick=()=>setNotifyPref("diary", !myNotifyPrefs().diary);
 /* messaging 모듈 지연 로드 + 싱글턴(호출부마다 import 중복해도 getMessaging은 1회). */
 async function _messagingMod(){
   const mod = await import(SDK+"firebase-messaging.js");
@@ -6222,6 +6314,7 @@ function legacyContinue(){
 }
 (async function boot(){
   document.title="5959"; // 탭 타이틀 불변 원칙
+  consumeURLDeepLink(); // 2026-09-30: 알림→새 창으로 열렸을 때의 ?tab=&id= 를 로그인 전에 먼저 큐잉
   applyThemeFromData(); // 페어링 전에도 마지막 팔레트 취향 반영
   try{
     await initFirebase();

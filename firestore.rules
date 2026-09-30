@@ -84,6 +84,15 @@ service cloud.firestore {
           && (!("fcmTokens" in resource.data)
               || resource.data.fcmTokens.diff(request.resource.data.fcmTokens).affectedKeys().hasOnly([request.auth.uid])))
         ||
+        // 케이스 D'': 알림 세부설정(일정 등록/일정 날짜변경/다이어리, 2026-09-30 사장님 지시) — D'와
+        //   완전히 같은 패턴. 본인 uid 키만 갱신 가능(상대의 알림 취향을 몰래 끄거나 켤 수 없다).
+        //   값 자체(스케줄on/오프 등)는 클라이언트 판단 영역이라 rules는 "누구 것만 고칠 수 있는가"만 본다.
+        (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["notifyPrefs"])
+          && (!("notifyPrefs" in resource.data)
+              || resource.data.notifyPrefs.diff(request.resource.data.notifyPrefs).affectedKeys().hasOnly([request.auth.uid])))
+        ||
         // 케이스 E: 꾸미기(테마/프로필) — 멤버만, theme/profile 필드만 갱신. 멤버·상태 불변.
         (isMember(resource.data) && request.resource.data.memberUids == resource.data.memberUids
           && request.resource.data.status == resource.data.status
