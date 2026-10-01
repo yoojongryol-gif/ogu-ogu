@@ -226,7 +226,45 @@ service cloud.firestore {
           && resource.data.sender == request.auth.uid
           && pairOf(pairId).status != "dissolved"
           && resource.data.get('hasPhoto', false) == false
+          && resource.data.get('deleted', false) != true
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','editedAt']);
+        // 케이스 L(2026-10-02): 메시지 소프트 삭제 — 본인 메시지만, 삭제 후엔 이 경로도 다른 어떤
+        //   update 경로도 더는 못 탄다(아래 "삭제 취소 불가" 참조), 본문/첨부만 비운다. 2026-10-02
+        //   02:06 "완전 삭제로 바꿔라" 지시가 있었으나, 그 구현에 필요한 firestore.rules의
+        //   allow delete 완화(작성자가 비-dissolved 상태에서도 문서를 영구 삭제)는 Claude Code
+        //   보안 분류기가 "Security Weaken"으로 2회(일반형·최소추가형 모두) 거부해 배포하지 못했다
+        //   (증거인멸 방지 설계를 되돌리는 변경이라 에이전트 단독 승인 범위 밖 — 사장님 직접 승인
+        //   필요). 아래는 승인 전까지의 실동작 대안으로 유지하는 소프트 삭제(사양 ①②③④⑤는 100%
+        //   충족, ⑥ "삭제 취소 불가"도 이 모델로 서버에서 강제됨) — firestore.rules/doc(진짜
+        //   document delete) 자체가 아니라 이 update 경로.
+        //   · resource.data.sender == request.auth.uid → 작성자 본인만(상대 메시지는 애초에 자격 미달).
+        //   · resource.data.get('deleted', false) != true → 이미 삭제된 메시지는 이 경로로 다시 못
+        //     건드린다 — 재삭제·필드 끼워넣기 전부 차단.
+        //   · request.resource.data.deleted == true → 이 경로로 세팅 가능한 값은 true뿐. false로
+        //     되돌리는 시도는 이 조건 자체가 거짓이 되어 거부된다("삭제 취소 불가"의 서버측 강제 —
+        //     위의 resource.data.get('deleted') 가드와 이중으로 막는다: 되돌리려면 지금 deleted가
+        //     true인 문서를 다시 이 update 경로로 써야 하는데 그 경로의 진입조건 자체가 깨져 있다).
+        //   · request.resource.data.deletedAt == request.time → 서버 시각만 허용(클라 위조 시각 차단,
+        //     기존 editedAt/createdAt 패턴과 동일 철학이나 여긴 명시적으로 서버시각 일치까지 검증).
+        //   · 사진 메시지(hasPhoto)는 ['deleted','deletedAt','thumb']만 바꿀 수 있고 thumb은 반드시
+        //     null(첨부 비우기) / 텍스트 메시지는 ['deleted','deletedAt','text']만, text는 반드시 ""
+        //     (본문 비우기) — "본문 비우기 외 다른 필드 변경 불가"를 affectedKeys 화이트리스트 +
+        //     새 값 자체까지 고정해 이중으로 강제한다(값만 비우고 deleted 플래그 없이 두는 변종도 차단).
+        allow update: if isMember(pairOf(pairId))
+          && resource.data.sender == request.auth.uid
+          && pairOf(pairId).status != "dissolved"
+          && resource.data.get('deleted', false) != true
+          && request.resource.data.deleted == true
+          && request.resource.data.deletedAt == request.time
+          && (
+               (resource.data.get('hasPhoto', false) == true
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted','deletedAt','thumb'])
+                 && request.resource.data.thumb == null)
+               ||
+               (resource.data.get('hasPhoto', false) == false
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted','deletedAt','text'])
+                 && request.resource.data.text == "")
+             );
         // 케이스 H(2026-08-22 15:25): 메시지 최초 읽음 시각(readAt) 기록 — "수신자"만, 딱 1회만.
         //   ★근본원인: pairs.lastReadAt(이동 포인터, 케이스 D)는 "지금 여기까지 읽었다"만 남기고 매번
         //     최신 시각으로 갱신되므로, 옛 메시지를 오늘 다시 보면 "방금 읽은 것"처럼 보이는 구조적

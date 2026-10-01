@@ -1568,6 +1568,17 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     <button type="button" class="secondary-btn" id="btnStkDetailClose" style="max-width:none">닫기</button>
   </div>
 </div>
+<!-- 메시지 삭제 확인 시트(v0.8.32, 1단계 — 사장님 사양 ②). 기존 breakupModal의 .modal/.modal-card
+     패턴을 그대로 재사용해 디자인 일관성을 유지한다. 대상 메시지 id는 dataset.target에 임시 보관. -->
+<div class="modal" id="deleteMsgModal">
+  <div class="modal-card">
+    <div class="modal-emoji">🗑</div>
+    <div class="modal-h">메시지를 삭제할까요?</div>
+    <div class="modal-desc">이 메시지를 삭제할까요?<br>상대방 화면에서도 '삭제된 메시지'로 바뀝니다.</div>
+    <button class="primary-btn" id="deleteMsgConfirm" style="background:var(--danger);color:#fff;max-width:none">삭제할게요</button>
+    <button class="ghost-btn" id="deleteMsgCancel">취소</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1576,7 +1587,9 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.31"; // v0.8.31(2026-09-30, 사장님 "일정이나 다이어리도 등록되면 알림") — 일정·다이어리
+const APP_VERSION = "0.8.32"; // v0.8.32(2026-10-02, 사장님 "메시지 삭제 기능 넣어줘") — 채팅 메시지 소프트
+// 삭제(본인만, 텍스트+사진/스티커, 확인시트 1단계, deleted/deletedAt 전용 필드+rules 케이스 L, 삭제
+// 취소 불가). 구 v0.8.31(2026-09-30, "일정이나 다이어리도 등록되면 알림") — 일정·다이어리
 // 등록 알림(+일정 날짜변경 알림, 토글 3종 신설) + 알림 탭 딥링크. 상세는 scripts/ogu_push_relay.py 상단 주석
 // 및 아래 myNotifyPrefs()/addEvent() dateChangedAt 주석 참고. 구 v0.8.30(2026-09-25 08:21, "채팅창 누르면
 // 제일 처음으로 가는 오류") —
@@ -1738,12 +1751,14 @@ const APP_VERSION = "0.8.31"; // v0.8.31(2026-09-30, 사장님 "일정이나 다
 // 바)·텍스트 복사·전달(=다이어리에 저장, 재해석 — 커플앱은 대화방이 1개라 "다른 방으로 전달"이
 // 성립하지 않아 "이 메시지를 기록으로 남기기"로 치환, 기존 diary create 경로 그대로 재사용)·선택
 // (다중선택 모드→일괄 복사/삭제)·읽은 시각(기존 readAt 재사용, 라벨만 "✓✓ 읽은 시각"). 삭제는
-// 신규가 아니라 "수정"(v0.8.5 이하 rules 케이스, sender 본인·hasPhoto false·text/editedAt만)의
-// 재해석 — text를 DELETED_TEXT_MARKER로 덮어써 "삭제된 메시지"로 표시(진짜 문서 삭제는 rules가
-// dissolved 전엔 전면 금지 — 관계 정리 전 증거인멸 방지 설계, 2026-08-05 확정 철학. 이 소프트
-// 삭제는 그 설계를 우회하지 않는다: 문서는 그대로 남고 rules가 이미 허용하던 "본인 텍스트 수정"
-// 권한 범위 안에서만 동작). 사진 메시지 삭제는 이 경로로 불가(hasPhoto true는 애초에 수정 rules
-// 대상이 아님) → 사진 메시지엔 삭제 메뉴 자체를 숨김(FEATURE_DELETE_PHOTO, 아래).
+// v0.8.14 땐 "수정" rules 케이스 재해석(text를 마커로 덮어쓰기)이었으나, **v0.8.32(2026-10-02,
+// 사장님 "메시지 삭제 기능 넣어줘")부터 전용 필드 모델로 승격**: deleted:true + deletedAt(서버시각) +
+// 본문/첨부 비우기(text="" 또는 thumb=null) — 전용 rules 케이스 L 신설(firestore.rules 참조), 진짜
+// 문서 삭제는 여전히 dissolved 전엔 전면 금지(증거인멸 방지 설계, 2026-08-05 확정 철학 무변경).
+// 사진·스티커 메시지도 이제 삭제 가능(FEATURE_DELETE_PHOTO=true, thumb만 비움 — 원본 Bytes 서브문서는
+// 손대지 않는다, "완전 삭제 아님"이 사장님 사양 ③). isMsgDeleted(m) 한 곳으로 판정을 통일해 구버전
+// 마커 삭제 메시지(필드 deleted 없이 text만 마커인 레거시)도 그대로 "삭제된 메시지"로 계속 렌더한다
+// (데이터 마이그레이션 없이 하위호환). 삭제 진입엔 1단계 확인 시트(deleteMsgModal)를 거친다(사양 ②).
 // ★rules 판정(착수 전 먼저 검토, /plan 원칙): 반응(❤️👍 등)은 "메시지 문서를 발신자가 아닌
 // 임의의 멤버가, 자기 uid 키만 걸어 갱신"하는 새 접근 패턴이라 현재 rules(케이스: sender 본인
 // text/editedAt만, 또는 수신자 readAt 1회만)로는 불가능 — 신규 rules 케이스 필요(제안 diff는
@@ -1758,10 +1773,14 @@ const APP_VERSION = "0.8.31"; // v0.8.31(2026-09-30, 사장님 "일정이나 다
 // sender 본인·비dissolved만 검증)에 이미 포함 — 신규 rules 불필요. 전달(다이어리 저장)은 기존
 // diary create 경로 그대로(필드 제한 없음) — 신규 rules 불필요.
 const FEATURE_REACTIONS = true; // v0.8.15: 사장님 GO(2026-08-27 13:03) + rules 케이스 K 실서버 배포 완료 → 활성화
-const FEATURE_DELETE_PHOTO = false; // 사진 메시지 삭제는 별도 rules 케이스 필요 — 현재 미제공, 메뉴에서 숨김
-const DELETED_TEXT_MARKER = "\u2063\u2063oguogu_deleted\u2063\u2063"; // 사용자가 실수로도 입력할 일 없는
-// 유니코드 불가시 분리자 조합 — 이 값과 정확히 일치하는 text만 "삭제된 메시지"로 렌더(허구 삭제 상태
-// 생성 없음, 실수로 같은 문자열을 친 메시지와 혼동될 확률 사실상 0).
+const FEATURE_DELETE_PHOTO = true; // v0.8.32: 사진·스티커 메시지 삭제도 지원(rules 케이스 L이 thumb=null 경로를 허용)
+const DELETED_TEXT_MARKER = "\u2063\u2063oguogu_deleted\u2063\u2063"; // 레거시(v0.8.14) 마커 —
+// 더는 이 마커를 쓰지 않지만(아래 deleted 필드가 정본), 과거에 이 마커로 저장된 메시지를 계속
+// "삭제된 메시지"로 렌더하기 위해 isMsgDeleted()의 하위호환 분기에서만 참조한다.
+/* 메시지 삭제 여부 판정 — 전 화면 공통 단일 출처(v0.8.32). 신규 삭제는 deleted===true로 판정하고,
+   deleted 필드가 없는 과거 문서는 레거시 마커(텍스트 메시지 한정)로 판정한다. 사진 메시지는 마커
+   경로가 원래부터 없었으므로(과거엔 사진 삭제가 불가능했다) deleted 필드만으로 충분하다. */
+function isMsgDeleted(m){ return !!m && (m.deleted===true || (!m.thumb && m.text===DELETED_TEXT_MARKER)); }
 // ── 이하는 이전 버전(v0.8.13) 변경 기록 — 참고용, 최신 릴리스 내역은 위 v0.8.14 주석 참조 ──
 // v0.8.13(2026-08-25 18:17, 사장님 설계 확정): 애칭 모델을 "서로
 // 지어주기"로 전환 — 내 이름은 상대가, 상대 이름은 내가 짓는다(완전 대칭). nameOf(personUid,
@@ -3398,9 +3417,11 @@ function renderMessages(opts){
         ? '<div class="meta">'+(ms<=otherRead?'<span class="rd">읽음</span>':'')+'<span>'+time+'</span></div>'
         : '<div class="meta"><span>'+time+'</span></div>';
     }
-    // 소프트 삭제(v0.8.14) — text가 정확히 DELETED_TEXT_MARKER면 "삭제된 메시지"로 렌더, 수정/삭제 메뉴 숨김.
-    const isDeleted = !m.thumb && m.text===DELETED_TEXT_MARKER;
-    const editable = mine && !m.thumb && !isDeleted; // 내 텍스트 메시지만 수정(=삭제도 이 재해석 경로) 가능 — 상대·사진·이미 삭제된 메시지는 제외
+    // 소프트 삭제(v0.8.32) — isMsgDeleted(m)이 true면 사진이든 텍스트든 회색 "삭제된 메시지입니다" 말풍선으로
+    // 렌더하고(본문/사진 숨김), 수정·답장·고정·전달·복사 메뉴는 숨긴다. 삭제 자체는 deletable(아래, mine이면
+    // 사진도 가능)이 showMsgMenu에서 별도로 판정 — editable은 여전히 "텍스트 메시지 수정" 전용이다.
+    const isDeleted = isMsgDeleted(m);
+    const editable = mine && !m.thumb && !isDeleted; // 내 텍스트 메시지만 수정 가능 — 상대·사진·이미 삭제된 메시지는 제외
     const editIcoHtml = editable ? '<button type="button" class="editIco has" data-editmsg="'+msgs[i].id+'" aria-label="메시지 수정">✎</button>' : "";
     // 이모지 전용 메시지 크게 보기(D, v0.8.21) — 텍스트/사진/삭제된 메시지는 대상 아님(_emojiOnlyCount
     // 자체가 1~3개·순수 이모지가 아니면 null을 돌려주므로 판정은 그쪽에 위임, 여기선 호출 조건만 제한).
@@ -3412,17 +3433,19 @@ function renderMessages(opts){
       ? '<div class="quote-block" data-quote="'+esc(m.replyTo.id)+'"><span class="qs">'+esc(m.replyTo.sender===fb.uid?"나":(myPartnerLabel()||"상대"))+'</span><span class="qt">'+esc(m.replyTo.thumb?"📷 사진":(m.replyTo.text||""))+'</span></div>'
       : "";
     // 반응 칩(v0.8.14) — FEATURE_REACTIONS 켜지기 전엔 항상 빈 문자열(아래 renderMessages 하단에서도 이중 가드).
-    const reactChipsHtml = (FEATURE_REACTIONS && m.reactions && Object.keys(m.reactions).length)
+    const reactChipsHtml = (FEATURE_REACTIONS && !isDeleted && m.reactions && Object.keys(m.reactions).length)
       ? '<div class="reactChips">'+Object.entries(m.reactions).map(([uid,emo])=>'<span class="reactChip'+(uid===fb.uid?' mine':'')+'">'+esc(emo)+'</span>').join("")+'</div>' : "";
     // data-msgid = 모든 말풍선 공통(내 것/상대 것, 텍스트/사진) — 롱프레스 정보메뉴(showMsgMenu) 대상 식별용.
     // data-editbubble/data-chatmsg은 기존 용도(수정 진입/사진뷰어) 그대로 유지 — 회귀 없음.
-    const bubbleHtml = m.thumb
+    // 삭제된 사진 메시지(v0.8.32)는 photo-bubble이 아니라 일반 텍스트형 회색 말풍선으로 렌더(thumb은
+    // 삭제 시 null로 비워지므로 m.thumb 자체가 이미 falsy — 아래 m.thumb&&!isDeleted 분기로 명시).
+    const bubbleHtml = (m.thumb && !isDeleted)
       ? '<div class="bubble bubble-photo'+(m.sticker?' sticker':'')+'" data-chatmsg="'+msgs[i].id+'" data-msgid="'+msgs[i].id+'">'+quoteHtml+'<img src="'+thumbUrl(m.thumb)+'" alt="">'+reactChipsHtml+'</div>'
       : '<div class="bubble'+(isDeleted?' bubble-deleted':'')+(emojiN?' bubble-emoji-'+emojiN:'')+'"'+(editable?' data-editbubble="'+msgs[i].id+'"':'')+' data-msgid="'+msgs[i].id+'">'+quoteHtml+'<span class="msgtext"></span>'+(!isDeleted && m.editedAt?'<span class="edited-tag">(수정됨)</span>':'')+reactChipsHtml+'</div>';
     // 선택 모드용 원형 체크(항상 DOM에 존재, #msgList.selecting일 때만 CSS로 노출 — 재렌더 없이 모드 전환)
     const selchkHtml = '<span class="selchk" data-selchk></span>';
     row.innerHTML = selchkHtml + (mine ? (editIcoHtml+metaHtml+bubbleHtml) : (bubbleHtml+metaHtml));
-    if(!m.thumb){ const mt=row.querySelector(".msgtext"); if(mt){ if(isDeleted) mt.textContent="삭제된 메시지"; else linkifyInto(mt, m.text); } } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
+    if(!m.thumb || isDeleted){ const mt=row.querySelector(".msgtext"); if(mt){ if(isDeleted) mt.textContent="삭제된 메시지입니다"; else linkifyInto(mt, m.text); } } // URL만 <a>로, 나머지는 텍스트노드(XSS 안전)
     if(_selectedIds.has(msgs[i].id)) row.classList.add("selected");
     if(i===msgs.length-1 && msgs[i].id!==_lastAnimatedId){ row.classList.add("just"); _lastAnimatedId=msgs[i].id; }
     list.appendChild(row);
@@ -3719,8 +3742,11 @@ function showMsgMenu(id, mine, editable, x, y){
   // 문제였다 — readAt 고정 시각이 그 근본원인을 해결한다.)
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x2=>x2.id===id);
   const dat = d ? d.data() : null;
-  const isDeleted = !!dat && !dat.thumb && dat.text===DELETED_TEXT_MARKER;
+  const isDeleted = isMsgDeleted(dat);
   const hasText = !!dat && !dat.thumb && !isDeleted && !!dat.text;
+  // v0.8.32: 삭제는 editable(텍스트 수정 전용)과 분리 — 내 메시지면 사진·스티커도 삭제 가능하다.
+  // 상대 메시지는 mine=false라 여기서 이미 걸러짐(사양 ①: "내가 보낸 메시지만 삭제 가능").
+  const deletable = mine && !isDeleted;
   const m=document.getElementById("msgMenu");
   m.dataset.target=id;
 
@@ -3730,7 +3756,8 @@ function showMsgMenu(id, mine, editable, x, y){
   const reactMoreRow=document.getElementById("msgReactMoreRow"); if(reactMoreRow) reactMoreRow.classList.remove("show");
 
   // 메뉴 항목 표시/숨김 — "권한 없는 항목은 감춘다"(상식 UX): 답장/고정/전달은 삭제된 메시지 제외 전부 허용,
-  // 수정·삭제는 editable(=본인 텍스트·사진 아님·이미 삭제 아님)일 때만, 텍스트 복사는 실제 텍스트가 있을 때만.
+  // 수정은 editable(=본인 텍스트·사진 아님·이미 삭제 아님)일 때만, 삭제는 deletable(=본인·이미 삭제 아님,
+  // 사진도 포함)일 때만, 텍스트 복사는 실제 텍스트가 있을 때만.
   const setShow=(elId, show)=>{ const el=document.getElementById(elId); if(el) el.style.display = show ? "" : "none"; };
   setShow("msgMenuReply", !isDeleted);
   setShow("msgMenuEdit", editable);
@@ -3738,7 +3765,7 @@ function showMsgMenu(id, mine, editable, x, y){
   setShow("msgMenuCopy", hasText);
   setShow("msgMenuForward", !isDeleted);
   setShow("msgMenuSelect", true);
-  setShow("msgMenuDelete", editable);
+  setShow("msgMenuDelete", deletable);
 
   const info=document.getElementById("msgMenuInfo");
   info.innerHTML=""; // 매번 재구성 — 사용자 입력이 아닌 우리가 만든 시간 문자열만 textContent로 조립(XSS 무관)
@@ -3784,7 +3811,7 @@ function hideMsgMenu(){ const m=document.getElementById("msgMenu"); if(m) m.clas
 /* ----- 답장 ----- */
 function startReply(id, cached){
   const dat = cached || (()=>{ const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); return d ? d.data() : null; })();
-  if(!dat || (!dat.thumb && dat.text===DELETED_TEXT_MARKER)) return; // 삭제된 메시지엔 답장 불가
+  if(!dat || isMsgDeleted(dat)) return; // 삭제된 메시지엔 답장 불가
   if(_editingMsgId) cancelEditMessage(); // 수정 중이었다면 취소(입력창 단일 용도 원칙)
   _replyingTo = { id, sender:dat.sender, text: dat.thumb ? "" : (dat.text||""), thumb: !!dat.thumb };
   renderReplyBar();
@@ -3807,23 +3834,48 @@ function renderReplyBar(){
 async function copyMessageText(id){
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
   const dat=d.data();
-  if(dat.thumb || dat.text===DELETED_TEXT_MARKER || !dat.text) return;
+  if(dat.thumb || isMsgDeleted(dat) || !dat.text) return;
   try{ await navigator.clipboard.writeText(dat.text); toast("복사했어요"); }
   catch(e){ toast("복사를 지원하지 않는 기기예요"); }
 }
 
-/* ----- 삭제(소프트 삭제 — 기존 "수정" rules 경로 재해석, APP_VERSION 주석 참조) -----
+/* ----- 삭제(소프트 삭제, v0.8.32 전용 rules 케이스 L — firestore.rules 주석 참조) -----
    진짜 문서 삭제는 rules가 dissolved 전엔 전면 금지(증거인멸 방지 철학, 2026-08-05 확정) — 이 기능은
-   그 규칙을 우회하지 않고, 이미 허용돼 있던 "본인 텍스트 메시지의 text/editedAt 갱신" 권한 그대로
-   text를 DELETED_TEXT_MARKER로 덮어써 화면에 "삭제된 메시지"로 보이게 한다. 사진 메시지는 이 경로
-   자체가 rules상 불가(hasPhoto true는 수정 대상이 아님) → FEATURE_DELETE_PHOTO=false, 메뉴에서 숨김. */
+   문서를 그대로 둔 채 deleted:true + deletedAt(서버시각)만 얹고 본문/첨부를 비운다(text="" 또는
+   thumb=null, 메시지 타입에 따라 갈라 전송 — hasOnly 화이트리스트가 타입당 1개 필드만 허용하므로
+   둘을 함께 보내면 rules가 거부한다). 사진·스티커 메시지도 이제 삭제 가능(thumb만 비움, 다이어리/
+   채팅 공용 photoCount는 건드리지 않음 — 캡 계산은 "보낸 적 있음" 기준이라 삭제해도 자리는 그대로
+   소비돼 있다, 의도된 동작: 완전 삭제가 아니므로). rules가 deleted:true 이후 어떤 update 경로도
+   다시 열어주지 않아 "삭제 취소 불가"가 서버에서도 강제된다.
+   ⚠️2026-10-02 02:06/02:09 사장님이 "완전 삭제(문서 자체를 delete)"로 바꾸라 지시했으나, 그 경로가
+   요구하는 firestore.rules allow delete 완화(작성자가 비-dissolved 상태에서도 메시지 문서를 영구
+   삭제)를 Claude Code 보안 분류기가 "Security Weaken"으로 2회(전체형·최소추가형 모두) 거부 — 증거
+   인멸 방지 설계를 되돌리는 변경이라 에이전트 단독 승인 범위 밖, 사장님 직접 승인 필요(상세는
+   보고 참조). 대신 이 소프트 삭제에 사진 원본 Bytes 서브문서 삭제(기존에 이미 있던 권한, 신규
+   승인 불필요)·고정 해제·사진뷰어 닫힘을 추가해 "완전 삭제" 취지에 최대한 근접시켰다. */
 async function deleteMessageSoft(id){
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
   const dat=d.data();
-  if(dat.sender!==fb.uid || dat.thumb || dat.text===DELETED_TEXT_MARKER) return; // 안전 가드(메뉴 숨김과 동일 조건 재확인)
+  if(dat.sender!==fb.uid || isMsgDeleted(dat)) return; // 안전 가드(메뉴 숨김과 동일 조건 재확인) — 상대 메시지·이미 삭제된 메시지는 제외, 사진은 더 이상 제외 안 함(v0.8.32)
   if(_editingMsgId===id) cancelEditMessage();
   if(_replyingTo && _replyingTo.id===id) cancelReply();
-  await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",id), { text:DELETED_TEXT_MARKER, editedAt:M.serverTimestamp() }).catch(err=>{
+  if(pinnedMessage() && pinnedMessage().id===id) await setProfile({ pinnedMessage: null }).catch(()=>{}); // 고정된 메시지였다면 조용히 해제(고정이 가리키던 대상이 사라지므로)
+  // 지금 사진 뷰어가 바로 이 메시지의 사진을 보여주고 있으면 먼저 닫는다(사장님 지시 2026-10-02 02:09).
+  const viewerModal=document.getElementById("photoModal"), cur=_viewerList[_viewerIdx];
+  if(dat.thumb && viewerModal && viewerModal.classList.contains("show") && cur && cur.ref && cur.ref[1]===id) closePhotoViewer();
+  if(dat.thumb){
+    // 원본 Bytes 서브문서(messages/{id}/photos/{photoId})도 함께 지운다 — 이 권한(authorUid 본인,
+    // firestore.rules 303행 근방)은 2026-08-05부터 이미 있던 기존 권한이라 신규 승인이 필요 없다
+    // (사장님 지시 2026-10-02 02:09 "첨부 이미지도 삭제" 충족 — 이 앱엔 Cloud Storage가 없고 사진은
+    // 전부 Firestore Bytes 서브문서라 "원본 파일 삭제"의 실체가 이 deleteDoc이다). 실패해도(네트워크
+    // 등) 메인 비우기는 계속 진행 — 화면에서는 이미 사라지고, 고아 문서만 로그에 남는다.
+    try{ await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"messages",id,"photos",dat.thumb.photoId)); }
+    catch(err){ console.error("[orphan-photo] 원본 사진 삭제 실패(메인 삭제는 계속) pairId="+pairId+" msgId="+id+" photoId="+dat.thumb.photoId, err); }
+  }
+  const payload = dat.thumb
+    ? { deleted:true, deletedAt:M.serverTimestamp(), thumb:null }   // 사진·스티커 메시지 — 첨부만 비움
+    : { deleted:true, deletedAt:M.serverTimestamp(), text:"" };     // 텍스트 메시지 — 본문만 비움
+  await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",id), payload).catch(err=>{
     console.error(err);
     toast(isDeniedErr(err) ? "삭제 권한이 없어요" : "삭제하지 못했어요");
   });
@@ -3836,7 +3888,7 @@ function pinnedMessage(){ return profileOf().pinnedMessage || null; }
 async function pinMessage(id){
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d){ toast("고정할 수 없어요"); return; }
   const dat=d.data();
-  if(!dat.thumb && dat.text===DELETED_TEXT_MARKER) return;
+  if(isMsgDeleted(dat)) return;
   await setProfile({ pinnedMessage: { id, sender:dat.sender, text: dat.thumb ? "" : (dat.text||"").slice(0,80), thumb:!!dat.thumb } });
   toast("메시지를 고정했어요");
 }
@@ -3879,7 +3931,7 @@ async function forwardMessageToDiary(id){
   if(!pairId || (currentPairData && currentPairData.status==="dissolved")){ toast("이 공간은 정리된 상태예요"); return; }
   const d=_lastMsgSnapshotDocs && _lastMsgSnapshotDocs.find(x=>x.id===id); if(!d) return;
   const dat=d.data();
-  if(!dat.thumb && dat.text===DELETED_TEXT_MARKER){ toast("삭제된 메시지는 저장할 수 없어요"); return; }
+  if(isMsgDeleted(dat)){ toast("삭제된 메시지는 저장할 수 없어요"); return; }
   try{
     const entryRef=M.doc(M.collection(fb.db,"pairs",pairId,"diary"));
     if(dat.thumb){
@@ -3960,7 +4012,7 @@ function updateSelectBar(){
 async function bulkCopySelected(){
   const ordered=allChatMsgDocs().filter(d=>_selectedIds.has(d.id));
   const texts=[]; let skipped=0;
-  ordered.forEach(d=>{ const v=d.data(); if(!v.thumb && v.text && v.text!==DELETED_TEXT_MARKER) texts.push(v.text); else skipped++; });
+  ordered.forEach(d=>{ const v=d.data(); if(!v.thumb && !isMsgDeleted(v) && v.text) texts.push(v.text); else skipped++; });
   if(!texts.length){ toast("복사할 텍스트가 없어요"); return; }
   try{
     await navigator.clipboard.writeText(texts.join("\n"));
@@ -3969,13 +4021,13 @@ async function bulkCopySelected(){
 }
 async function bulkDeleteSelected(){
   const ordered=allChatMsgDocs().filter(d=>_selectedIds.has(d.id));
-  const eligible=ordered.filter(d=>{ const v=d.data(); return v.sender===fb.uid && !v.thumb && v.text!==DELETED_TEXT_MARKER; });
+  const eligible=ordered.filter(d=>{ const v=d.data(); return v.sender===fb.uid && !v.thumb && !isMsgDeleted(v); });
   const skipped=ordered.length-eligible.length;
   if(!eligible.length){ toast("삭제할 수 있는 내 메시지가 없어요"); return; }
   if(!confirm(eligible.length+"개 메시지를 삭제할까요?"+(skipped?" (상대 메시지·사진 "+skipped+"개는 제외돼요)":""))) return;
   let ok=0, fail=0;
   for(const d of eligible){
-    try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",d.id), { text:DELETED_TEXT_MARKER, editedAt:M.serverTimestamp() }); ok++; }
+    try{ await M.updateDoc(M.doc(fb.db,"pairs",pairId,"messages",d.id), { deleted:true, deletedAt:M.serverTimestamp(), text:"" }); ok++; }
     catch(e){ console.error(e); fail++; }
   }
   toast(fail ? ok+"개 삭제, "+fail+"개 실패" : ok+"개 삭제했어요"+(skipped?" ("+skipped+"개 제외)":""));
@@ -5775,7 +5827,21 @@ document.getElementById("msgMenuCopy").addEventListener("click", ()=>{ const id=
 document.getElementById("msgMenuForward").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) forwardMessageToDiary(id); });
 document.getElementById("msgMenuPin").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) pinMessage(id); });
 document.getElementById("msgMenuSelect").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) enterSelectMode(id); });
-document.getElementById("msgMenuDelete").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) deleteMessageSoft(id); });
+document.getElementById("msgMenuDelete").addEventListener("click", ()=>{ const id=_menuTarget(); hideMsgMenu(); if(id) openDeleteMsgModal(id); });
+/* 메시지 삭제 확인 시트(v0.8.32, 1단계) — breakupModal과 동일한 .modal style.display 토글 패턴.
+   대상 id는 모달 dataset에 두고, 확정 버튼에서만 실제 deleteMessageSoft()를 호출한다. */
+function openDeleteMsgModal(id){
+  const modal=document.getElementById("deleteMsgModal"); if(!modal) return;
+  modal.dataset.target=id;
+  modal.style.display="flex";
+}
+function closeDeleteMsgModal(){ const modal=document.getElementById("deleteMsgModal"); if(modal){ modal.style.display="none"; modal.dataset.target=""; } }
+document.getElementById("deleteMsgConfirm").addEventListener("click", async ()=>{
+  const id=document.getElementById("deleteMsgModal").dataset.target;
+  closeDeleteMsgModal();
+  if(id) await deleteMessageSoft(id);
+});
+document.getElementById("deleteMsgCancel").addEventListener("click", closeDeleteMsgModal);
 /* 반응 이모지 바 — FEATURE_REACTIONS 승인 전엔 showMsgMenu가 항상 숨겨두므로 이 리스너들은 실질
    무동작 상태다(사장님 GO + rules 배포 후 플래그만 true로 바꾸면 그대로 동작). */
 document.getElementById("msgReactMore").addEventListener("click", ()=>{ document.getElementById("msgReactMoreRow").classList.toggle("show"); });
