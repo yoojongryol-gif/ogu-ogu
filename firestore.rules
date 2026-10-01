@@ -265,6 +265,16 @@ service cloud.firestore {
                  && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted','deletedAt','text'])
                  && request.resource.data.text == "")
              );
+        // 케이스 N(2026-10-02, v0.8.33 "나에게만 삭제" — 텔레그램식): 어느 멤버든 자기 uid 키만
+        //   hiddenFor map에 true로 추가할 수 있다. 콘텐츠를 지우거나 상대 화면에 영향을 주는 게
+        //   아니라 "내 화면에서만 숨김" 플래그라 케이스 K(반응)와 완전히 동일한 안전 패턴 — 자기
+        //   키만, 다른 필드는 전혀 못 바꿈. 해제(숨김 취소) UI는 없어 값은 늘 true만 허용한다.
+        //   상대 메시지에도 쓸 수 있는 게 의도(각자 자기 화면만 정리하는 기능이므로 저자 여부 무관).
+        allow update: if isMember(pairOf(pairId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hiddenFor'])
+          && request.resource.data.hiddenFor is map
+          && resource.data.get('hiddenFor', {}).diff(request.resource.data.hiddenFor).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.hiddenFor[request.auth.uid] == true;
         // 케이스 H(2026-08-22 15:25): 메시지 최초 읽음 시각(readAt) 기록 — "수신자"만, 딱 1회만.
         //   ★근본원인: pairs.lastReadAt(이동 포인터, 케이스 D)는 "지금 여기까지 읽었다"만 남기고 매번
         //     최신 시각으로 갱신되므로, 옛 메시지를 오늘 다시 보면 "방금 읽은 것"처럼 보이는 구조적

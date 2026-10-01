@@ -1,0 +1,17 @@
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -304,6 +304,14 @@
+         // 삭제는 이별 프로토콜(관계 정리) 완료 후에만 허용 — 그 전에는 어느 쪽도 상대 몰래
+         // 개별 메시지를 지울 수 없다(증거 인멸 방지, "인질 방지"의 반대 방향 오남용 차단).
+         allow delete: if isMember(pairOf(pairId)) && pairOf(pairId).status == "dissolved";
++        // 메시지 완전 삭제(2026-10-02 v0.8.33, 사장님 직접 승인·실행 — dev/apply_hard_delete_rules.py):
++        //   작성자 본인은 자기 메시지를 언제든(이별 전에도) 완전히 지울 수 있다. 위 규칙(이별
++        //   전엔 전면 금지)은 '상대' 메시지에 대한 보장이라 그대로 남는다 — 상대 메시지는
++        //   이별 전엔 그 누구도 못 지우는 기존 전제가 이 추가로 약해지지 않는다(사양①).
++        //   클라(index.html deleteMessageSoft)는 이 규칙이 아직 없으면 permission-denied를
++        //   감지해 소프트 삭제로 자동 폴백한다 — 이 규칙 배포는 하드 삭제로의 '업그레이드'일
++        //   뿐, 선행 배포 없이도 앱은 정상 동작한다.
++        allow delete: if request.auth != null && resource.data.sender == request.auth.uid;
+ 
+         // 채팅 사진 원본(Bytes) — 다이어리 photos와 동일 규격. 멤버 전용. 이별(dissolved) 시 소거 허용.
+         //   메시지 문서 자체엔 인라인 썸네일(thumb.bytes)만, 원본은 여기에. 캡은 pair.photoCount(케이스 J)로 공용.
