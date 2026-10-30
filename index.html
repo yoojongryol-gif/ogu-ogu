@@ -581,6 +581,18 @@ input.code-input::placeholder{color:var(--muted); letter-spacing:4px}
   opacity:0; pointer-events:none; transition:.25s; z-index:800; max-width:86%; text-align:center;
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+/* 쓰기 실패 패널(v0.8.35) — 토스트와 달리 사라지지 않고 [다시 시도]를 준다. 기존 토큰만 사용 */
+.failpanel{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(76px + env(safe-area-inset-bottom,0px));
+  width:min(92%,420px); display:none; flex-direction:column; gap:6px; z-index:850}
+.failpanel.show{display:flex}
+.fail-row{display:flex; align-items:center; gap:8px; background:var(--surface,#fff); color:var(--text,#2a2226);
+  border:1px solid var(--danger,#d9534f); border-radius:14px; padding:9px 10px 9px 12px; box-shadow:0 6px 20px rgba(0,0,0,.12); font-size:13px}
+.fail-txt{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; line-height:1.4}
+.fail-txt b{color:var(--danger,#d9534f)} .fail-txt span{color:var(--muted,#8a7f84); font-size:12px; word-break:break-all}
+.fail-btn{flex:none; border:0; border-radius:999px; padding:7px 12px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px}
+.fail-btn:disabled{opacity:.55}
+.fail-x{flex:none; border:0; background:transparent; color:var(--muted,#8a7f84); font-size:18px; padding:2px 4px}
+.ver-mark{text-align:center; margin:10px auto 0; font-size:11px; opacity:.7}
 
 /* ═══════════════ 하단 탭 바 [채팅·일정·다이어리·설정] ═══════════════ */
 /* 기존 토큰만 사용(신규 토큰 없음). 앱 내부(채팅/일정/다이어리/설정)에서만 노출. */
@@ -918,6 +930,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   -->
   <div class="errline" id="authErr" style="min-height:16px"></div>
   <div class="notice">이메일 주소만 확인해요. 연락처·친구 목록은 절대 가져오지 않아요. 로그인은 폰을 바꿔도 우리 공간을 다시 여는 열쇠로만 써요.</div>
+  <div class="hint ver-mark" id="authVersionLine"></div>
 </div>
 
 <!-- 이사 안내(구 github.io 배포) -->
@@ -1347,6 +1360,13 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
     </div>
   </div>
 
+  <!-- FAULT 스위치(v0.8.35) — 실패 패널 점검용. 이 기기 localStorage에만 저장, 1회 실패 후 자동 꺼짐 -->
+  <div class="set-group">
+    <div class="set-row">
+      <div><div class="label">실패 안내 점검(FAULT)</div><div class="desc">켜면 다음 저장 1번을 일부러 실패시켜 실패 안내가 뜨는지 확인해요. 이 기기에서만, 1번 뒤 자동으로 꺼져요</div></div>
+      <button class="toggle" id="faultToggle"><span class="knob"></span></button>
+    </div>
+  </div>
   <div class="set-group danger">
     <div class="set-row">
       <div><div class="label" style="color:var(--danger)">관계 정리</div><div class="desc">이 공간을 정리하고 기록을 삭제해요</div></div>
@@ -1581,6 +1601,7 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="failpanel" id="failPanel" role="alert" aria-live="assertive"></div>
 
 <script>
 /* =========================================================
@@ -1588,7 +1609,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.34"; // v0.8.34(2026-10-28, 알림 결손 관측) — notif_ack 기기 수신확인 기록 추가, 기존 기능 무변경
+const APP_VERSION = "0.8.35"; // v0.8.35(2026-10-30, 품질 수리 1호) — 쓰기 실패 패널+FAULT 스위치, 아이콘 192/512/maskable 분리, 로그인 화면 버전 표식
+// v0.8.34: v0.8.34(2026-10-28, 알림 결손 관측) — notif_ack 기기 수신확인 기록 추가, 기존 기능 무변경
 // v0.8.33(2026-10-02, 사장님 "텔레그램처럼") — 완전 삭제 우선 시도+소프트
 // 삭제 자동 폴백(deleteMessage, rules 미배포면 permission-denied로 감지해 조용히 폴백)·이미 삭제된
 // 내 자리표시 "완전히 지우기"(purgeDeletedMessage)·"나에게만 삭제"(hideMessageForMe, hiddenFor map
@@ -1977,6 +1999,133 @@ function toast(msg){
   t.textContent=msg; t.classList.add("show");
   clearTimeout(toast._h); toast._h=setTimeout(()=>t.classList.remove("show"),2200);
 }
+
+/* ===== 쓰기 실패 가시화 + FAULT 스위치 (v0.8.35, 2026-10-30 품질 수리 1호) =====
+   원칙(사장님 2026-08-30): "쓰기 동작엔 실패 패널+FAULT 스위치 기본 세트".
+   - 공통 경로: initFirebase()가 M.setDoc/updateDoc/addDoc/deleteDoc/writeBatch(commit)를 _guardWrite로 감싼다.
+     → 호출부가 catch로 삼키든(.catch(()=>{}) 등) 말든, 실패는 반드시 하단 실패 패널에 "무엇이·왜"+[다시 시도]로 남는다.
+     호출부의 기존 toast·폴백 동작은 그대로(에러는 다시 throw).
+   - 예상된 실패(코드 충돌 재시도·완전삭제 rules 폴백·정리성 삭제·수신확인 관측)는 quietWrite()로 감싸 패널 제외.
+   - FAULT: localStorage 플래그(이 기기만, 상대 기기 무영향). 켜면 다음 "패널 대상" 쓰기 1회를 실제 전송 없이
+     고의 실패시키고 자동으로 꺼진다. */
+const FAULT_KEY = "oguogu_fault_once";
+let _writeQuiet = 0;           // >0 이면 지금 호출되는 쓰기는 패널 제외(quietWrite 동기 구간)
+let _writeQuietExpect = null;  // 패널 제외 조건(err→bool). null=전부 제외
+let _writeBg = 0;             // >0 이면 자동(배경) 쓰기 — 실패는 패널에 보이되 FAULT 대상에서 제외(사용자 동작 점검용)
+let _writeRetryHook = null;    // 패널 [다시 시도] 성공 후 호출부 정리(예: 복원해둔 입력창 비우기 — 중복 전송 방지)
+function faultArmed(){ try{ return localStorage.getItem(FAULT_KEY)==="1"; }catch(e){ return false; } }
+function setFault(on){
+  try{ if(on) localStorage.setItem(FAULT_KEY,"1"); else localStorage.removeItem(FAULT_KEY); }
+  catch(e){ toast("이 기기에서는 FAULT 스위치를 저장할 수 없어요"); }
+  renderFaultToggle();
+}
+function renderFaultToggle(){ const t=document.getElementById("faultToggle"); if(t) t.classList.toggle("on", faultArmed()); }
+function _faultConsume(){ if(!faultArmed()) return false; setFault(false); return true; }
+function bgWrite(fn){ _writeBg++; try{ return fn(); } finally{ _writeBg--; } }
+function withRetryHook(fn, onRetried){
+  const prev=_writeRetryHook; _writeRetryHook=onRetried;
+  try{ return fn(); } finally{ _writeRetryHook=prev; }
+}
+/* 예상된 실패 경로 전용: fn() 안에서 "동기적으로" 호출되는 쓰기만 표시 제외(await 이전 호출 시점 기준). */
+function quietWrite(fn, expect){
+  const prevQ=_writeQuietExpect; _writeQuiet++; _writeQuietExpect = expect || null;
+  try{ return fn(); } finally{ _writeQuiet--; _writeQuietExpect=prevQ; }
+}
+function _refPath(ref){ return String((ref && (ref.path || (Array.isArray(ref.segments) && ref.segments.join("/")))) || ""); } // 실 SDK=.path, dev 목=.segments
+const _WRITE_VERB = { setDoc:"저장", updateDoc:"저장", addDoc:"보내기", deleteDoc:"삭제", commit:"일괄 저장" };
+function _writeTarget(ref){
+  const p = _refPath(ref);
+  const seg = p.split("/");
+  if(seg[0]==="pairs"){
+    if(seg[2]==="messages") return seg[4]==="photos" ? "채팅 사진" : "채팅";
+    if(seg[2]==="events") return "일정";
+    if(seg[2]==="diary") return "다이어리";
+    return seg.length<=2 ? "우리 공간 정보" : seg[2];
+  }
+  return ({codeIndex:"초대 코드", purchase_requests:"응원팩 접수", notif_ack:"알림 수신확인"})[seg[0]] || seg[0] || "데이터";
+}
+function _writeReason(err){
+  const c = (err && err.code) || "";
+  if(c==="oguogu/fault") return "FAULT 스위치(고의 실패 점검)";
+  if(/permission-denied/.test(c)) return "권한이 없어요(permission-denied)";
+  if(/unavailable/.test(c)) return "서버에 연결되지 않아요(unavailable)";
+  if(/deadline-exceeded/.test(c)) return "응답 시간 초과(deadline-exceeded)";
+  if(/resource-exhausted/.test(c)) return "용량·한도 초과(resource-exhausted)";
+  if(/invalid-argument/.test(c)) return "내용이 너무 크거나 형식 오류(invalid-argument)";
+  if(/not-found/.test(c)) return "대상이 이미 없어요(not-found)";
+  return c ? ("오류: "+c) : ("오류: "+((err && err.message) || "알 수 없음").slice(0,60));
+}
+const _failItems = new Map(); // key -> {what, reason, retry}
+function reportWriteFailure(key, what, err, retry){
+  try{ console.error("[write-fail]", what, err); }catch(e){}
+  _failItems.delete(key); _failItems.set(key, {what, reason:_writeReason(err), retry});
+  while(_failItems.size>3) _failItems.delete(_failItems.keys().next().value); // 최근 3건만
+  renderFailPanel();
+}
+function renderFailPanel(){
+  const box=document.getElementById("failPanel"); if(!box) return;
+  box.textContent="";
+  _failItems.forEach((it,key)=>{
+    const row=document.createElement("div"); row.className="fail-row";
+    const txt=document.createElement("div"); txt.className="fail-txt";
+    const b=document.createElement("b"); b.textContent="⚠️ "+it.what+" 실패";
+    const r=document.createElement("span"); r.textContent=it.reason;
+    txt.append(b, r);
+    const again=document.createElement("button"); again.className="fail-btn"; again.type="button";
+    if(it.retry){
+      again.textContent="다시 시도";
+      again.onclick=async()=>{
+        again.disabled=true; again.textContent="다시 시도 중…";
+        try{ await it.retry(); _failItems.delete(key); renderFailPanel(); toast("다시 시도해서 "+it.what+"했어요"); }
+        catch(e){ /* 재실패는 _guardWrite가 같은 key로 패널을 다시 갱신 — 여기선 버튼만 복구 */ renderFailPanel(); }
+      };
+    } else { again.textContent="다시 시도 불가"; again.disabled=true; }
+    const x=document.createElement("button"); x.className="fail-x"; x.type="button"; x.setAttribute("aria-label","닫기"); x.textContent="×";
+    x.onclick=()=>{ _failItems.delete(key); renderFailPanel(); };
+    row.append(txt, again, x); box.appendChild(row);
+  });
+  box.classList.toggle("show", _failItems.size>0);
+}
+function _guardWrite(name, fn, getRef){
+  const wrapped = function(...args){
+    const quiet = _writeQuiet>0, expect=_writeQuietExpect, hook=_writeRetryHook, bg=_writeBg>0;
+    let p;
+    if(!quiet && !bg && _faultConsume()){
+      const fe=new Error("FAULT 스위치: 고의 실패(실제 전송 안 함)"); fe.code="oguogu/fault";
+      p=Promise.reject(fe);
+    } else {
+      try{ p=Promise.resolve(fn.apply(this,args)); }catch(e){ p=Promise.reject(e); }
+    }
+    return p.catch(err=>{
+      const hide = quiet && (!expect || expect(err));
+      if(!hide){
+        const ref=getRef ? getRef(args) : args[0];
+        const what=_writeTarget(ref)+" "+(_WRITE_VERB[name]||"저장");
+        const key=name+"|"+(_refPath(ref) || what);
+        reportWriteFailure(key, what, err, ()=>wrapped.apply(this,args).then(r=>{ if(hook){ try{ hook(); }catch(e){ console.error(e); } } return r; }));
+      }
+      throw err;
+    });
+  };
+  return wrapped;
+}
+function installWriteGuard(){
+  ["setDoc","updateDoc","addDoc","deleteDoc"].forEach(n=>{ if(typeof M[n]==="function") M[n]=_guardWrite(n, M[n]); });
+  if(typeof M.writeBatch==="function"){
+    const origWB=M.writeBatch;
+    M.writeBatch=function(db){
+      const ops=[]; const b=origWB(db);
+      ["set","update","delete"].forEach(op=>{ const o=b[op].bind(b); b[op]=(...a)=>{ ops.push([op,a]); o(...a); return b; }; });
+      const realCommit=b.commit.bind(b);
+      // 재시도: 커밋된 배치는 재사용 불가 → 같은 작업 목록으로 새 배치를 만들어 다시 커밋
+      const replay=()=>{ const nb=origWB(db); ops.forEach(([op,a])=>nb[op](...a)); return nb.commit(); };
+      let first=true;
+      b.commit=_guardWrite("commit", function(){ if(first){ first=false; return realCommit(); } return replay(); },
+                           ()=> (ops[0] && ops[0][1][0]) || null);
+      return b;
+    };
+  }
+}
 function show(id){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
@@ -2090,7 +2239,7 @@ function showTab(tab){
   }
   else if(tab==="schedule"){ renderSchedule(); }
   else if(tab==="diary"){ renderDiary(); }
-  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderNotifyPrefsUI(); renderDecorUI(); renderAppVersion(); }
+  else if(tab==="settings"){ renderLockToggle(); renderNotifyUI(); renderNotifyPrefsUI(); renderDecorUI(); renderAppVersion(); renderFaultToggle(); }
   renderOfflineBanner();
 }
 
@@ -2762,6 +2911,7 @@ async function initFirebase(){
     const dbMod = await import(SDK+"firebase-firestore.js");
     Object.assign(M, appMod, authMod, dbMod);
   }
+  installWriteGuard(); // v0.8.35: 쓰기 실패 패널+FAULT 공통 경로(목/실 SDK 공용)
   fb.app = M.initializeApp(firebaseConfig);
   fb.auth = M.getAuth(fb.app);
   fb.db = M.getFirestore(fb.app);
@@ -2844,9 +2994,11 @@ function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
 function codeRef(code){ return M.doc(fb.db,"codeIndex",String(code)); }
 /* 인덱스 발급(create). 6자리 충돌(타 pair 선점) 시 setDoc가 permission-denied → 호출부가 코드 재생성해 재시도. */
 async function putCodeIndex(code, pid, type, expiresAt){
-  await M.setDoc(codeRef(code), { pairId:pid, type, expiresAt, createdBy:fb.uid });
+  // 6자리 충돌(permission-denied)은 호출부가 재생성으로 처리하는 예상 실패 → 패널 제외, 그 외 실패는 패널 표시
+  await quietWrite(()=>M.setDoc(codeRef(code), { pairId:pid, type, expiresAt, createdBy:fb.uid }), isDeniedErr);
 }
-async function delCodeIndex(code){ try{ await M.deleteDoc(codeRef(code)); }catch(e){} }
+/* 정리성 best-effort 삭제: 이미 지워졌거나(1회용 소비 후) 비멤버면 rules가 거부하는 게 정상 → 패널 제외, 콘솔에만 기록 */
+async function delCodeIndex(code){ try{ await quietWrite(()=>M.deleteDoc(codeRef(code))); }catch(e){ console.warn("[codeIndex] 정리 삭제 생략(예상 가능):", e && e.code); } }
 /* invite 코드 발급 헬퍼: 유일 코드를 확보(충돌 재시도)해 codeIndex에 기록하고 그 코드를 반환.
    반환 코드를 pair.code에도 저장(표시/서버측 증명용 권위값). */
 async function issueInviteCode(pid, oldCode){
@@ -3582,8 +3734,8 @@ async function markRead(){
   if(!document.getElementById("screenChat").classList.contains("active")) return;
   safeClearOguNotifications(); // 채팅을 실제로 확인하는 시점(v0.7.6 안읽음 배지와 동일 트리거) — 시스템 알림창에 남은 푸시 정리(완전 분리 실행)
   try{
-    await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["lastReadAt."+fb.uid]: M.serverTimestamp()});
-  }catch(e){ /* 조용히 무시 */ }
+    await bgWrite(()=>M.updateDoc(M.doc(fb.db,"pairs",pairId), {["lastReadAt."+fb.uid]: M.serverTimestamp()}));
+  }catch(e){ /* 채팅 흐름은 막지 않음 — 실패 자체는 쓰기 가드가 실패 패널에 표시(v0.8.35) */ }
   markMessagesReadOnce(); // 메시지별 최초 읽음 시각(readAt) 배치 기록 — lastReadAt 갱신과 완전 분리(실패해도 서로 영향 없음)
 }
 /* ----- 메시지별 최초 읽음 시각(readAt, 2026-08-22 15:25 근본수정) -----
@@ -3601,8 +3753,8 @@ async function markMessagesReadOnce(){
   try{
     const batch=M.writeBatch(fb.db);
     targets.forEach(d=>batch.update(M.doc(fb.db,"pairs",pairId,"messages",d.id), {readAt: M.serverTimestamp()}));
-    await batch.commit();
-  }catch(e){ /* 조용히 무시 — 읽음 시각 기록 실패가 채팅 흐름을 막으면 안 됨(markRead와 동일 원칙) */ }
+    await bgWrite(()=>batch.commit());
+  }catch(e){ /* 흐름 비차단, 실패는 실패 패널 표시(v0.8.35) — 읽음 시각 기록 실패가 채팅 흐름을 막으면 안 됨(markRead와 동일 원칙) */ }
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) markRead(); });
 
@@ -3618,7 +3770,9 @@ async function sendMessage(){
   // 답장(v0.8.14) — replyTo는 "생성" 시점에만 싣는 필드라 rules 변경이 필요 없다(create 규칙은
   // sender·dissolved 여부만 검사하고 필드를 제한하지 않는다, 위 APP_VERSION 주석 참조).
   if(replyTo) payload.replyTo = { id: replyTo.id, sender: replyTo.sender, text: (replyTo.text||"").slice(0,80), thumb: !!replyTo.thumb };
-  await M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), payload).catch(err=>{
+  // 실패 패널 [다시 시도]로 보내지면 아래 catch가 복원해둔 입력을 비운다(같은 글 두 번 전송 방지, v0.8.35)
+  await withRetryHook(()=>M.addDoc(M.collection(fb.db,"pairs",pairId,"messages"), payload),
+    ()=>{ if(input.value===text){ input.value=""; autoGrowMsg(); } if(replyTo && _replyingTo && _replyingTo.id===replyTo.id) cancelReply(); }).catch(err=>{
     console.error(err);
     input.value=text; // 실패 시 입력 복원(침묵 금지 — 사용자가 다시 시도 가능)
     if(replyTo) startReply(replyTo.id, replyTo); // 답장 상태도 함께 복원
@@ -3883,7 +4037,7 @@ async function deleteMessage(id){
     catch(err){ console.error("[orphan-photo] 원본 사진 삭제 실패(계속 진행) pairId="+pairId+" msgId="+id+" photoId="+dat.thumb.photoId, err); }
   }
   try{
-    await M.deleteDoc(M.doc(fb.db,"pairs",pairId,"messages",id));
+    await quietWrite(()=>M.deleteDoc(M.doc(fb.db,"pairs",pairId,"messages",id)), isDeniedErr); // denied=소프트 삭제 폴백(예상) → 패널 제외
     return; // 완전 삭제 성공 — 문서 자체가 사라졌으니 소프트 삭제 폴백은 불필요(자리표시 없음)
   }catch(hardErr){
     if(!isDeniedErr(hardErr)){
@@ -6320,6 +6474,9 @@ function renderNotifyPrefsUI(){
 document.getElementById("scheduleNotifyToggle").onclick=()=>setNotifyPref("schedule", !myNotifyPrefs().schedule);
 document.getElementById("scheduleDateChangeNotifyToggle").onclick=()=>setNotifyPref("scheduleDateChange", !myNotifyPrefs().scheduleDateChange);
 document.getElementById("diaryNotifyToggle").onclick=()=>setNotifyPref("diary", !myNotifyPrefs().diary);
+document.getElementById("faultToggle").onclick=()=>{ const on=!faultArmed(); setFault(on); toast(on ? "FAULT 켜짐 — 다음 저장 1번이 일부러 실패해요" : "FAULT 꺼짐"); };
+renderFaultToggle();
+(function(){ const el=document.getElementById("authVersionLine"); if(el) el.textContent="5959 v"+APP_VERSION; })(); // 로그인 전에도 배포 버전 실측 가능(v0.8.35)
 /* messaging 모듈 지연 로드 + 싱글턴(호출부마다 import 중복해도 getMessaging은 1회). */
 async function _messagingMod(){
   const mod = await import(SDK+"firebase-messaging.js");
@@ -6352,13 +6509,13 @@ function _writeNotifAckFg(payload){
   try{
     const nid = payload && payload.data && payload.data.nid;
     if(!nid || !fb || !fb.db || !fb.uid) return;
-    M.setDoc(M.doc(fb.db,"notif_ack",nid), {
+    quietWrite(()=>M.setDoc(M.doc(fb.db,"notif_ack",nid), {
       uid: fb.uid,
       receivedAt: M.serverTimestamp(),
       shown: false, // 포그라운드=OS 알림 미표시(토스트로 대체), 수신 자체 확인용
       foreground: true,
       permission: (typeof Notification!=="undefined" && Notification.permission) || "unknown",
-    }).catch(err=>console.warn("[notify] ack 기록 실패(무해):", err));
+    })).catch(err=>console.warn("[notify] ack 기록 실패(무해, 관측 전용이라 패널 제외):", err));
   }catch(e){ /* 무음 */ }
 }
 function _onForegroundPush(payload){
@@ -6415,7 +6572,7 @@ async function enableNotify(){
     const token = await messagingMod.getToken(fcmMessaging, {vapidKey:VAPID_KEY, serviceWorkerRegistration: await _swReady()});
     if(!token){ toast("토큰 발급에 실패했어요"); return; }
     localStorage.setItem("oguogu.notify.token", token); // 캐시 → 합류/방 이동 시 현재 pair로 재기록
-    if(pairId){ await M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token}).catch(()=>{}); }
+    if(pairId){ await bgWrite(()=>M.updateDoc(M.doc(fb.db,"pairs",pairId), {["fcmTokens."+fb.uid]: token})).catch(()=>{ /* 실패는 실패 패널 표시(쓰기 가드) */ }); }
     localStorage.setItem("oguogu.notify.on","1");
     localStorage.setItem(NOTIFY_STAMP_KEY, new Date().toISOString());
     _tokenRefreshKey = pairId || "";   // 방금 등록했으므로 이번 실행의 자동 갱신은 생략
