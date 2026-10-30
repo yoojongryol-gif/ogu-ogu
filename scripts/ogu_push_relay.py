@@ -44,7 +44,7 @@ Firestore의 신규 대화 메시지를 감지해, 그 메시지를 "받는 쪽(
        python scripts/ogu_push_relay.py --once    (1회 스윕 후 종료, 점검용)
 로그:  C:/Users/NHNE/ogu-ogu-secrets/ogu_push_relay.log
 """
-import os, sys, json, time, logging, socket, atexit
+import os, sys, json, time, logging, socket, atexit, uuid
 from datetime import datetime, timezone
 
 PROJECT_ID = "ogu-ogu-app-e4193"
@@ -64,6 +64,14 @@ EVT_LIMIT = 50                                                             # 한
 DIARY_LIMIT = 50                                                          # 한 번에 처리할 신규 다이어리 상한
 NOTIFY_BATCH_THRESHOLD = 3                                                # 같은 작성자의 신규 항목이 이 수를 "넘으면" 묶음 문구로
 FREE_READ_QUOTA = 50000                                                    # Spark 무료 일일 문서 읽기 한도(비교용)
+ACK_WAIT_SEC = int(os.environ.get("OGU_ACK_WAIT_SEC", "300"))             # 2026-10-28: 발송 후 이 시간(초) 내 notif_ack 없으면 [notif][no_ack] 1줄
+ACK_CHECK_SEC = int(os.environ.get("OGU_ACK_CHECK_SEC", "60"))            # ack 점검 주기(초) — 채팅 폴링과 별도, 느슨하게
+
+# 2026-10-28 알림 결손 관측(10/22 진단: FCM 발송 성공 로그는 있는데 사장님 폰 미수신 — 서버 쪽은
+# "발송 성공" 이후를 볼 수 없는 구조적 한계가 있었다). 발송마다 고유 nid를 같이 실어보내고,
+# 클라이언트(sw.js/index.html)가 수신 시 notif_ack/{nid} 문서를 쓰면 여기서 그 존재를 확인한다.
+# 이 dict는 프로세스 메모리에만 있다(재시작 시 비워짐 — 관측용이라 영속화 불필요, state.json과 무관).
+_PENDING_ACKS = {}  # nid -> {"pid":str, "kind":str, "sent_ms":int}
 
 os.makedirs(SECRETS_DIR, exist_ok=True)
 _handlers = [logging.FileHandler(LOG_PATH, encoding="utf-8")]
@@ -177,6 +185,7 @@ def main():
     skip_logged = set()   # 토큰 없는 pair는 로그에 1회만 남긴다(로그 폭주 방지)
     last_estimate = None
     last_evdiary_poll = 0  # 2026-09-30: 일정·다이어리는 채팅보다 느슨한 별도 주기(EVDIARY_POLL_SEC)
+    last_ack_check = 0     # 2026-10-28: notif_ack 점검(ACK_CHECK_SEC) — 채팅 폴링과 분리된 느슨한 주기
 
     while True:
         now = time.time()
@@ -216,6 +225,13 @@ def main():
         save_state(state)
         if sent:
             log.info("이번 스윕 발송 %d건", sent)
+
+        if now - last_ack_check >= ACK_CHECK_SEC:  # 2026-10-28: 발송 성공 이후(단말 도착) 관측, 발송 자체는 안 함
+            try:
+                check_notif_acks(db)
+            except Exception as e:
+                log.warning("[notif] ack 점검 실패(무해, 다음 주기 재시도): %s", type(e).__name__)
+            last_ack_check = now
 
         if once:
             break
@@ -354,7 +370,7 @@ def process_pair(db, messaging, pid, meta, state):
             if uid == sender:
                 continue  # 본인에겐 미발송
             if _already_read(last_read_map, uid, ts):
-                log.info("[%s] [스킵] 기읽음 (uid=%s)", pid, uid[:6])
+                log.info("[notif][skip_read] [%s] [스킵] 기읽음 (uid=%s)", pid, uid[:6])
                 continue  # 이미 읽고 나감(또는 실시간 확인 중 markRead 갱신) — 알림 불필요
             token = tokens.get(uid)
             if not token:
@@ -365,7 +381,7 @@ def process_pair(db, messaging, pid, meta, state):
             # "발송 시도 건수"에 비례(process_pair 함수 docstring의 기존 비용 모델과 다른 축).
             fresh_ms = _fresh_last_read_ms(db, pid, uid)
             if fresh_ms is not None and fresh_ms >= ts:
-                log.info("[%s] [스킵] 기읽음(재확인, uid=%s)", pid, uid[:6])
+                log.info("[notif][skip_read] [%s] [스킵] 기읽음(재확인, uid=%s)", pid, uid[:6])
                 continue
             if _send(messaging, token, pid):
                 sent += 1
@@ -564,9 +580,13 @@ def _send(messaging, token, pid, kind="m", extra=None):
     """FCM data-only 발송(공용 경로 — 채팅/합류요청/일정/다이어리 전부 여기를 지난다).
     kind: 'm'=새 메시지 / 'req'=합류요청(내용 미노출, 고정 문구) / 'sch'·'sch_batch'·'sch_date'·
     'diary'·'diary_batch'=2026-09-30 신설(내용 노출, extra['body']가 곧 사장님이 지정한 알림 문구).
-    extra: {'body':str, 'tab':str, 'id':str} 중 있는 것만 문자열로 실어 보낸다(id는 묶음 알림엔 없음)."""
+    extra: {'body':str, 'tab':str, 'id':str} 중 있는 것만 문자열로 실어 보낸다(id는 묶음 알림엔 없음).
+    2026-10-28: data.nid(난수)를 같이 실어보내 클라이언트가 notif_ack/{nid}를 쓸 수 있게 한다
+    (알림 내용과 무관한 관측용 식별자 — 내용 미노출 원칙과 충돌 없음). 반환값은 성공 시 nid(진리값
+    True와 동등), 실패 시 None — 기존 호출부의 `if _send(...): sent+=1` 패턴은 그대로 동작한다."""
+    nid = uuid.uuid4().hex[:16]
     try:
-        data = {"t": kind}
+        data = {"t": kind, "nid": nid}
         if extra:
             for k, v in extra.items():
                 if v:
@@ -581,12 +601,37 @@ def _send(messaging, token, pid, kind="m", extra=None):
             ),
         )
         messaging.send(msg)
-        return True
+        _PENDING_ACKS[nid] = {"pid": pid, "kind": kind, "sent_ms": _now_ms()}
+        log.info("[notif][sent] pid=%s kind=%s nid=%s", pid, kind, nid)
+        return nid
     except Exception as e:
         name = type(e).__name__
         # 무효/만료 토큰 등은 조용히 스킵(다음 구독 갱신 때 정리됨). 내용은 로그에도 안 남김.
         log.info("[%s] 발송 스킵(%s)", pid, name)
-        return False
+        return None
+
+
+def check_notif_acks(db):
+    """2026-10-28: 발송 후 ACK_WAIT_SEC(기본 5분)이 지났는데 notif_ack/{nid} 문서가 없는 건을
+    [notif][no_ack] 1줄로 남긴다. ★관측만 — 추가 알림 발송·재시도는 전혀 하지 않는다(지시사항).
+    ack 문서 조회 실패(권한/네트워크 등)는 판정을 유보하고 다음 점검 때 재시도(여기서 삭제 안 함)."""
+    if not _PENDING_ACKS:
+        return
+    now = _now_ms()
+    for nid, meta in list(_PENDING_ACKS.items()):
+        age_ms = now - meta["sent_ms"]
+        if age_ms < ACK_WAIT_SEC * 1000:
+            continue
+        try:
+            doc = db.collection("notif_ack").document(nid).get()
+            if doc.exists:
+                del _PENDING_ACKS[nid]  # 수신 확인됨 — 더 볼 필요 없음(조용히 종료, 로그는 no_ack만 남김)
+                continue
+        except Exception as e:
+            log.warning("[notif] ack 조회 실패(nid=%s): %s — 다음 점검에 재시도", nid, type(e).__name__)
+            continue  # 판정 보류, pending 유지
+        log.info("[notif][no_ack] pid=%s kind=%s nid=%s age_s=%d", meta["pid"], meta["kind"], nid, age_ms // 1000)
+        del _PENDING_ACKS[nid]  # 같은 건을 매 점검마다 다시 로그하지 않는다(1회 보고)
 
 
 if __name__ == "__main__":

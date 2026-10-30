@@ -13,3 +13,17 @@ ogu-ogu-secrets/
 *-firebase-adminsdk-*.json
 ogu_push_relay_state.json
 ogu_push_relay.lock
+
+# Play(TWA) 안드로이드 빌드 산출물 — 키스토어/AAB/APK/gradle 캐시 커밋 금지
+android/.gradle/
+android/build/
+android/app/build/
+android/keystore/
+android/*.apk
+android/*.aab
+android/local.properties
+
+# 백업·캐시 파일 (2026-10-30 품질 수리 1호)
+*.bak
+*.bak_*
+__pycache__/

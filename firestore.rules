@@ -455,5 +455,20 @@ service cloud.firestore {
       allow update: if false;   // 접수 내용은 만든 뒤 바꿀 수 없다(사후 위조 차단)
       allow delete: if false;   // 입금 대사 근거이므로 클라이언트 삭제 금지
     }
+
+    // ── notif_ack/{ackId} : 기기 수신 확인(2026-10-28, 알림 결손 관측용) ─────────
+    //   문서 id = 릴레이가 발송 시 data.nid로 실어보낸 난수(ogu_push_relay.py _send 참고).
+    //   클라이언트(sw.js onBackgroundMessage·index.html onMessage)가 메시지를 "받은 그 순간"
+    //   본인 uid로만 1회 생성. 릴레이(Admin SDK)는 rules를 안 타고 읽어 N분 후 미도착건을 판별.
+    //   ★본인 것만 쓰기(uid==auth.uid), 위조·사후수정 차단, list/get은 클라에서 쓸 일 없어 전면 금지.
+    match /notif_ack/{ackId} {
+      allow get: if false;
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(["uid","pairId","receivedAt","shown","foreground","permission"]);
+      allow update: if false;
+      allow delete: if false;
+    }
   }
 }

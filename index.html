@@ -1588,7 +1588,8 @@ textarea.fi{resize:vertical; min-height:64px; font-family:inherit; line-height:1
    회사 패턴 재사용: team-messenger(채팅/Firestore), my-planner(PIN 잠금)
    ========================================================= */
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
-const APP_VERSION = "0.8.33"; // v0.8.33(2026-10-02, 사장님 "텔레그램처럼") — 완전 삭제 우선 시도+소프트
+const APP_VERSION = "0.8.34"; // v0.8.34(2026-10-28, 알림 결손 관측) — notif_ack 기기 수신확인 기록 추가, 기존 기능 무변경
+// v0.8.33(2026-10-02, 사장님 "텔레그램처럼") — 완전 삭제 우선 시도+소프트
 // 삭제 자동 폴백(deleteMessage, rules 미배포면 permission-denied로 감지해 조용히 폴백)·이미 삭제된
 // 내 자리표시 "완전히 지우기"(purgeDeletedMessage)·"나에게만 삭제"(hideMessageForMe, hiddenFor map
 // 케이스 N, 내 화면에서만 숨김). ⚠️"상대 메시지도 완전삭제"(멤버 전체 delete)는 Claude Code 보안
@@ -6345,8 +6346,24 @@ function _isViewingChatNow(){
     return !isLocked() && !!s && s.classList.contains("active") && document.visibilityState==="visible";
   }catch(e){ return false; }
 }
-function _onForegroundPush(){
+/* notif_ack 기록(2026-10-28, 알림 결손 관측용) — 포그라운드 수신은 uid가 이미 확실(fb.uid)해
+   sw.js의 인증 복원 추측이 필요 없다. 쓰기 실패는 콘솔 경고만(무음, 토스트/렌더에 영향 0). */
+function _writeNotifAckFg(payload){
+  try{
+    const nid = payload && payload.data && payload.data.nid;
+    if(!nid || !fb || !fb.db || !fb.uid) return;
+    M.setDoc(M.doc(fb.db,"notif_ack",nid), {
+      uid: fb.uid,
+      receivedAt: M.serverTimestamp(),
+      shown: false, // 포그라운드=OS 알림 미표시(토스트로 대체), 수신 자체 확인용
+      foreground: true,
+      permission: (typeof Notification!=="undefined" && Notification.permission) || "unknown",
+    }).catch(err=>console.warn("[notify] ack 기록 실패(무해):", err));
+  }catch(e){ /* 무음 */ }
+}
+function _onForegroundPush(payload){
   if(!_isViewingChatNow()) toast("🩷 5959 · 새 소식이 있어요");
+  _writeNotifAckFg(payload);
   try{ if(currentTab==="home") renderHome(); }catch(e){ /* 렌더 실패는 무해 */ }
 }
 /* ②수리: 앱 로드 시 항상(권한 granted면) 포그라운드 리스너 등록. 권한이 없으면 조용히 통과하고

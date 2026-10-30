@@ -3,7 +3,7 @@
    ⚠️정직한 범위: 이 핸들러는 payload에 무엇이 실려오든(릴레이가 실수로 본문을 넣더라도)
    화면에는 항상 고정 문구만 띄운다. 단 실제 발송 인프라(VAPID+릴레이)는 index.html 상단
    주석 참고 — 콘솔 작업(사장님) 전까지는 이 핸들러가 트리거될 발송 자체가 없다. */
-const VER = "oguogu-v0.8.33"; // v0.8.33(2026-10-02): 완전삭제 우선+소프트삭제 폴백, 완전히 지우기, 나에게만 삭제
+const VER = "oguogu-v0.8.34"; // v0.8.34(2026-10-28): 알림 수신확인(ack) 기록 — notif_ack 관측용, 기존 표시 로직 무변경
 const SHELL = ["./","./index.html","./manifest.json","./icon-512.png"];
 
 self.addEventListener("install", e=>{
@@ -34,6 +34,12 @@ self.addEventListener("fetch", e=>{
 try{
   importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
   importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
+  // 2026-10-28 수신확인(ack) 관측용 — auth/firestore compat 추가 로드. 이 두 import가 실패해도
+  // (구형 브라우저 등) 바깥 try가 전체를 삼켜 메시징은 그대로 살아있다(기존 안전망 재사용).
+  try{
+    importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
+    importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+  }catch(e){ /* ack 기록 불가 상태로만 계속 진행 — 무음 */ }
   firebase.initializeApp({
     apiKey: "AIzaSyDa_6d_j2wW0FZ2wFOsbB9hXgD_u1SLKGw",
     authDomain: "ogu-ogu-app-e4193.firebaseapp.com",
@@ -43,6 +49,34 @@ try{
     appId: "1:663259886074:web:dfa2eecf74034bfe923443"
   });
   const messaging = firebase.messaging();
+  /* notif_ack 기록 — 알림 결손 관측(2026-10-28, 10/22 진단: FCM 발송 성공≠단말 도착 확인 불가 구멍).
+     SW의 firebase.auth()는 같은 오리진 IndexedDB에 저장된 기존 로그인 세션을 복원 시도한다(페이지가
+     이미 로그인돼 있으면 보통 즉시 복원됨). 복원 안 되거나 쓰기가 실패해도 전부 무음 처리 —
+     이 기록은 순수 관측용이라 실패가 알림 표시(showNotification)에 영향을 주면 안 된다. */
+  function _ackAuthUser(){
+    return new Promise(resolve=>{
+      try{
+        const auth = firebase.auth();
+        if(auth.currentUser){ resolve(auth.currentUser); return; }
+        let done=false;
+        const unsub = auth.onAuthStateChanged(u=>{ if(done) return; done=true; try{unsub();}catch(e){} resolve(u); });
+        setTimeout(()=>{ if(done) return; done=true; try{unsub();}catch(e){} resolve(null); }, 2500);
+      }catch(e){ resolve(null); }
+    });
+  }
+  function _writeNotifAck(nid, shown){
+    if(!nid) return Promise.resolve();
+    return _ackAuthUser().then(user=>{
+      if(!user) return; // 세션 복원 실패 — 무음(이 건은 관측 불가로만 남음)
+      return firebase.firestore().collection("notif_ack").doc(nid).set({
+        uid: user.uid,
+        receivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        shown: !!shown,
+        foreground: false,
+        permission: (self.Notification && self.Notification.permission) || "unknown",
+      });
+    }).catch(()=>{}); // 쓰기 실패 무음(앱/알림 동작에 영향 0)
+  }
   messaging.onBackgroundMessage((payload) => {
     // 채팅(m)·합류요청(req)은 그대로 본문·발신자 절대 미노출(고정 문구) — 앱 창립 원칙.
     // 일정(sch*)·다이어리(diary*)는 2026-09-30 사장님 지시로 예외: 릴레이가 이름·날짜·제목/첫줄을
@@ -55,13 +89,17 @@ try{
     else if(t === "sch" || t === "sch_batch" || t === "sch_date"){ body = d.body || "일정 소식이 있어요"; tag="oguogu-sch"; }
     else if(t === "diary" || t === "diary_batch"){ body = d.body || "다이어리 소식이 있어요"; tag="oguogu-diary"; }
     else { body = "새 소식이 도착했어요"; tag="oguogu-msg"; } // 기본(m 포함 미지정) — 내용 미노출 유지
-    self.registration.showNotification("5959", {
-      body,
-      icon: "./icon-512.png",
-      badge: "./icon-512.png",
-      tag, // 종류별 1개로 합쳐 볼륨 노출 방지(기존 메시지/요청과 동일 원칙)
-      data: { tab: d.tab || "", id: d.id || "" },
-    });
+    // ack 기록은 알림 표시와 분리된 체인이라 하나가 실패해도 다른 하나를 막지 않는다(allSettled).
+    return Promise.allSettled([
+      self.registration.showNotification("5959", {
+        body,
+        icon: "./icon-512.png",
+        badge: "./icon-512.png",
+        tag, // 종류별 1개로 합쳐 볼륨 노출 방지(기존 메시지/요청과 동일 원칙)
+        data: { tab: d.tab || "", id: d.id || "" },
+      }),
+      _writeNotifAck(d.nid, true),
+    ]);
   });
 }catch(e){ /* 구형 브라우저 등 importScripts 실패 시 캐시 SW 동작만 유지 */ }
 
